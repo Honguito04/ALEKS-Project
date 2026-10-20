@@ -1,0 +1,54 @@
+import { z } from 'zod';
+export const BACKEND = 'http://127.0.0.1:8000';
+export const ALEKS = 'https://latam.aleks.com';
+export const mathSchema = z.object({
+  family:z.enum(['arithmetic','percentage','proportion','linear','quadratic','single_choice']),
+  expression:z.string().max(240).nullable().optional(), lhs:z.string().max(240).nullable().optional(), rhs:z.string().max(240).nullable().optional(),
+  percent:z.string().max(240).nullable().optional(), base:z.string().max(240).nullable().optional(),
+  a:z.string().max(240).nullable().optional(), b:z.string().max(240).nullable().optional(), c:z.string().max(240).nullable().optional()
+}).strict();
+export const exerciseSchema = z.object({
+  source:z.enum(['simulator','aleks']), activity_id:z.string().min(1).max(80), fingerprint:z.string().regex(/^[a-f0-9]{64}$/),
+  statement:z.string().min(1).max(2000), math:mathSchema.nullable(),
+  fields:z.array(z.object({id:z.string().min(1).max(40),kind:z.enum(['text','radio'])}).strict()).length(1),
+  choices:z.array(z.object({id:z.string().min(1).max(40),expression:z.string().max(240)}).strict()).max(12),
+  domain:z.enum(['real','rational','integer']),units:z.string().max(30),format:z.enum(['exact','decimal']),decimal_places:z.number().int().min(0).max(8),
+  evidence:z.array(z.string().max(500)).min(1).max(10), ambiguities:z.array(z.string().max(500)).max(10)
+}).strict();
+export type Exercise = z.infer<typeof exerciseSchema>;
+export const solutionSchema = z.object({
+  status:z.enum(['verified','unverifiable']),answer:z.string().max(300),values:z.array(z.string().max(300)).max(4),explanation:z.string().max(2000),
+  provider:z.enum(['deterministic','openai']),proposed_by_ai:z.boolean(),provider_calls:z.number().int().min(0).max(1)
+}).strict();
+export type Solution = z.infer<typeof solutionSchema>;
+export const limitsSchema = z.object({maxExercises:z.number().int().min(1).max(100),maxMinutes:z.number().min(.01).max(120),maxAICalls:z.number().int().min(0).max(100),preview:z.boolean()}).strict();
+export type Limits = z.infer<typeof limitsSchema>;
+export type State = 'INACTIVO'|'LEYENDO'|'RESOLVIENDO'|'VERIFICANDO'|'ESCRIBIENDO'|'ENVIANDO'|'COMPROBANDO'|'AVANZANDO'|'PAUSADO'|'COMPLETADO'|'ERROR';
+export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string}
+export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}
+export interface Adapter {
+  detect():Promise<Detection>;
+  read():Promise<Exercise>;
+  write(exercise:Exercise,answer:string,signal:AbortSignal):Promise<void>;
+  submit(exercise:Exercise,operation:string,signal:AbortSignal):Promise<void>;
+  result(fingerprint:string,signal:AbortSignal):Promise<Feedback>;
+  next(signal:AbortSignal):Promise<void>;
+}
+export interface Run {
+  id:string;origin:string;activity:string;state:State;limits:Limits;started:number;count:number;aiCalls:number;
+  current?:string;message:string;operations:Record<string,{id:string;status:'submitting'|'accepted'|'rejected'|'uncertain'}>;
+  events:{at:number;state:State;message:string}[];
+}
+export const runSchema = z.object({
+  id:z.uuid(),origin:z.literal(BACKEND),activity:z.string().min(1).max(80),
+  state:z.enum(['INACTIVO','LEYENDO','RESOLVIENDO','VERIFICANDO','ESCRIBIENDO','ENVIANDO','COMPROBANDO','AVANZANDO','PAUSADO','COMPLETADO','ERROR']),
+  limits:limitsSchema,started:z.number(),count:z.number().int().min(0).max(100),aiCalls:z.number().int().min(0).max(100),
+  current:z.string().regex(/^[a-f0-9]{64}$/).optional(),message:z.string().max(2200),
+  operations:z.record(z.string().regex(/^[a-f0-9]{64}$/),z.object({id:z.string().max(180),status:z.enum(['submitting','accepted','rejected','uncertain'])})).refine(x=>Object.keys(x).length<=1000),
+  events:z.array(z.object({at:z.number(),state:z.string().max(20),message:z.string().max(2200)})).max(100)
+}).strict();
+export function simulatorURL(raw:string) {
+  const u=new URL(raw);
+  return u.origin===BACKEND && (u.pathname==='/simulator' || u.pathname.startsWith('/simulator/'));
+}
+export function allowedTab(raw:string) { const u=new URL(raw); return simulatorURL(raw) || u.origin===ALEKS; }

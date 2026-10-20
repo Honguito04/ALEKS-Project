@@ -1,0 +1,33 @@
+{
+  "manifest_version": 3,
+  "name": "Asistente Matem\u00e1tico \u2014 MVP",
+  "version": "0.1.0",
+  "description": "Prueba verificada en simulador. Integraci\u00f3n ALEKS pendiente de validaci\u00f3n.",
+  "minimum_chrome_version": "116",
+  "permissions": [
+    "storage",
+    "scripting",
+    "sidePanel",
+    "activeTab",
+    "identity"
+  ],
+  "optional_host_permissions": [
+    "http://127.0.0.1:8000/*",
+    "https://latam.aleks.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "action": {
+    "default_title": "Abrir asistente matem\u00e1tico"
+  },
+  "side_panel": {
+    "default_path": "panel.html"
+  },
+  "options_page": "options.html",
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://127.0.0.1:8000"
+  },
+  "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiLk6woSGGOfgq1dOzm/CkTP+GWDtFveoxLu4lhWmLElAtjvNJauonAaoaBvcNeNfUQTC9v+ySjnSxi7nGMWsysLpRr9IvDDKpH1iAhPsJVqpjdsBbMiQ4G4J2GIrZJfVTd3rfjRd2CfLtwdtNRh/JPWbszbGgM5Hs57Ikwox4R+dTZSpSSC3Q0ZISX4KyMK8ISbwfUS8Z9J+L+ZBI914m/erjtS/R/F/5ahzjlsh9iaIlv4L8+QTyc051hr6wwQgnrcCcF7H03o9xcarnE4lsMzs2su4Rm39DqWm++fA9hRhhKfWhCIL2Ak2qlk5iXT+QJDphqoBzYod6wX6+yUieQIDAQAB"
+}

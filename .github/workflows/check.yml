@@ -1,0 +1,30 @@
+name: Comprobaciones
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: backend/requirements.lock
+      - run: npm ci
+      - run: python -m pip install -r backend/requirements.lock
+      - run: npm run build
+      - run: npm test
+      - run: python -m pytest backend/tests -q
+      - run: npx playwright install --with-deps chromium
+      - name: Flujo del simulador en Chromium
+        env:
+          PYTHON_EXECUTABLE: python
+        run: |
+          export CHROMIUM_PATH="$(node --input-type=module -e 'import {chromium} from "@playwright/test"; process.stdout.write(chromium.executablePath())')"
+          npm run test:e2e
