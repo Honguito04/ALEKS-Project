@@ -71,6 +71,12 @@ describe('controlador automático',()=>{
   it('vista previa no escribe ni envía',async()=>{
     const h=harness();await h.start({preview:true});expect(h.c.solution?.answer).toBe('2');expect(h.a.writes).toBe(0);expect(h.a.submits).toBe(0);
   });
+  it.each([undefined,'cm^2','m^3'])('no escribe un volumen con unidad no verificada: %s',async(unit)=>{
+    const h=harness();h.a.current=()=>({...exercise(),units:'cm^3',fields:[{id:'answer',kind:'quantity'}],
+      math:{family:'cylinder_volume',radius:'2',height:'18',pi_value:'3.14',radius_unit:'cm',height_unit:'cm',height_is_perpendicular:true}});
+    h.services.solve=async()=>({...solution,answer:'226',unit});await h.start();
+    expect(h.a.writes).toBe(0);expect(h.a.submits).toBe(0);expect(h.c.run?.message).toContain('unidad');
+  });
   it('rechazo confirmado pausa sin ensayar otra respuesta',async()=>{
     const h=harness();h.a.accepted=false;await h.start();expect(h.a.submits).toBe(1);expect(h.c.run?.message).toContain('rechazó');
     await expect(h.c.resume()).rejects.toThrow('rechazada');

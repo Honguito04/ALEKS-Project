@@ -1,4 +1,5 @@
 import { BACKEND, ALEKS, exerciseSchema, type Adapter, type Exercise, type Detection, type Feedback } from './shared';
+import { inspectAleksEditor } from './aleks-editor';
 
 function assertSignal(signal:AbortSignal) { signal.throwIfAborted(); }
 async function waitFor<T>(read:()=>T|undefined,signal:AbortSignal,timeout=8000):Promise<T> {
@@ -15,6 +16,7 @@ async function waitFor<T>(read:()=>T|undefined,signal:AbortSignal,timeout=8000):
 }
 
 export class SimulatorAdapter implements Adapter {
+  private prepared?:{fingerprint:string;answer:string;unit:string};
   private root() {
     if(location.origin!==BACKEND || !location.pathname.startsWith('/simulator')) throw Error('Dominio fuera de la autorización');
     const root=document.querySelector<HTMLElement>('#exercise');
@@ -41,25 +43,43 @@ export class SimulatorAdapter implements Adapter {
     if(!d.session || d.human || current.fingerprint!==exercise.fingerprint || current.activity_id!==exercise.activity_id) throw Error('La página cambió antes de escribir o enviar');
   }
   async write(exercise:Exercise,answer:string,signal:AbortSignal) {
+    this.prepared=undefined;
     await this.same(exercise,signal);
-    if(exercise.fields[0].kind==='text') {
+    if(exercise.fields[0].kind==='text' || exercise.fields[0].kind==='quantity') {
       const input=document.querySelector<HTMLInputElement>('#answer');
       if(!input || input.type!=='text') throw Error('Este editor matemático todavía no es compatible');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,answer);
       input.dispatchEvent(new Event('input',{bubbles:true}));input.dispatchEvent(new Event('change',{bubbles:true}));
       if(input.value!==answer) throw Error('El campo no conservó la respuesta');
+      if(exercise.fields[0].kind==='quantity') {
+        const select=document.querySelector<HTMLSelectElement>('#answer-unit');
+        if(!select || ![...select.options].some(o=>o.value===exercise.units)) throw Error('El selector no admite la unidad de volumen verificada');
+        select.value=exercise.units;
+        select.dispatchEvent(new Event('input',{bubbles:true}));select.dispatchEvent(new Event('change',{bubbles:true}));
+        if(select.value!==exercise.units) throw Error('La unidad no quedó seleccionada');
+      }
     } else {
       const radio=[...document.querySelectorAll<HTMLInputElement>('input[name="answer"][type="radio"]')].find(r=>r.value===answer);
       if(!radio || !exercise.choices.some(c=>c.id===answer)) throw Error('No se pudo localizar la alternativa verificada');
       radio.click();if(!radio.checked) throw Error('La alternativa no quedó seleccionada');
     }
-    await waitFor(()=>document.querySelector('#reflected')?.textContent===answer ? true:undefined,signal,1000);
+    await waitFor(()=>{
+      const reflected=document.querySelector<HTMLOutputElement>('#reflected');
+      return reflected?.textContent===answer && (exercise.fields[0].kind!=='quantity' || reflected.dataset.unit===exercise.units) ? true:undefined;
+    },signal,1000);
+    assertSignal(signal);this.prepared={fingerprint:exercise.fingerprint,answer,unit:exercise.fields[0].kind==='quantity' ? exercise.units:''};
   }
   async submit(exercise:Exercise,operation:string,signal:AbortSignal) {
     await this.same(exercise,signal);assertSignal(signal);
     const button=document.querySelector<HTMLButtonElement>('#submit-answer');
+    const prepared=this.prepared;
+    if(!prepared || prepared.fingerprint!==exercise.fingerprint) throw Error('No hay una respuesta preparada para este ejercicio');
+    const currentAnswer=exercise.fields[0].kind==='radio' ? document.querySelector<HTMLInputElement>('input[name="answer"]:checked')?.value:document.querySelector<HTMLInputElement>('#answer')?.value;
+    const reflected=document.querySelector<HTMLOutputElement>('#reflected');
+    if(currentAnswer!==prepared.answer || reflected?.textContent!==prepared.answer) throw Error('La respuesta cambió antes del envío');
+    if(exercise.fields[0].kind==='quantity' && (document.querySelector<HTMLSelectElement>('#answer-unit')?.value!==prepared.unit || reflected?.dataset.unit!==prepared.unit)) throw Error('La unidad cambió antes del envío');
     if(!button || button.disabled) throw Error('El control de envío no está disponible');
-    this.root().dataset.operation=operation;button.click();
+    this.prepared=undefined;this.root().dataset.operation=operation;button.click();
   }
   async result(fingerprint:string,signal:AbortSignal):Promise<Feedback> {
     try {
@@ -82,8 +102,16 @@ export class SimulatorAdapter implements Adapter {
 
 export class PendingAleksAdapter implements Adapter {
   async detect():Promise<Detection> {
+    const editorObservation=inspectAleksEditor(document);
+    const description={
+      observed:'Se identificaron el editor numérico y el botón de centímetros cúbicos. ',
+      missing:'No se encuentran todos los controles del fragmento de editor observado. ',
+      ambiguous:'Hay varios editores o botones de unidad; no se puede identificar uno sin ambigüedad. ',
+      disabled:'El editor o el botón de unidad están deshabilitados. '
+    }[editorObservation.status];
     return {origin:ALEKS,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
-      reason:'Integración ALEKS pendiente: se necesita evidencia autorizada del ejercicio y sus controles. No se capturan credenciales ni se envían respuestas.'};
+      editorObservation,
+      reason:description+'Inspección de solo lectura: faltan validar la actividad, la respuesta con unidad registrada, el control de entrega y su resultado. La sesión y los envíos reales siguen sin habilitar.'};
   }
   private unavailable():never {throw Error('Adaptador ALEKS pendiente de validación con la interfaz autenticada');}
   async read():Promise<Exercise> {return this.unavailable();}

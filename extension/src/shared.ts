@@ -2,15 +2,17 @@ import { z } from 'zod';
 export const BACKEND = 'http://127.0.0.1:8000';
 export const ALEKS = 'https://latam.aleks.com';
 export const mathSchema = z.object({
-  family:z.enum(['arithmetic','percentage','proportion','linear','quadratic','single_choice']),
+  family:z.enum(['arithmetic','percentage','proportion','linear','quadratic','single_choice','cylinder_volume']),
   expression:z.string().max(240).nullable().optional(), lhs:z.string().max(240).nullable().optional(), rhs:z.string().max(240).nullable().optional(),
   percent:z.string().max(240).nullable().optional(), base:z.string().max(240).nullable().optional(),
-  a:z.string().max(240).nullable().optional(), b:z.string().max(240).nullable().optional(), c:z.string().max(240).nullable().optional()
+  a:z.string().max(240).nullable().optional(), b:z.string().max(240).nullable().optional(), c:z.string().max(240).nullable().optional(),
+  radius:z.string().max(240).nullable().optional(), height:z.string().max(240).nullable().optional(),pi_value:z.string().max(240).nullable().optional(),
+  radius_unit:z.enum(['mm','cm','m']).nullable().optional(),height_unit:z.enum(['mm','cm','m']).nullable().optional(),height_is_perpendicular:z.boolean().nullable().optional()
 }).strict();
 export const exerciseSchema = z.object({
   source:z.enum(['simulator','aleks']), activity_id:z.string().min(1).max(80), fingerprint:z.string().regex(/^[a-f0-9]{64}$/),
   statement:z.string().min(1).max(2000), math:mathSchema.nullable(),
-  fields:z.array(z.object({id:z.string().min(1).max(40),kind:z.enum(['text','radio'])}).strict()).length(1),
+  fields:z.array(z.object({id:z.string().min(1).max(40),kind:z.enum(['text','radio','quantity'])}).strict()).length(1),
   choices:z.array(z.object({id:z.string().min(1).max(40),expression:z.string().max(240)}).strict()).max(12),
   domain:z.enum(['real','rational','integer']),units:z.string().max(30),format:z.enum(['exact','decimal']),decimal_places:z.number().int().min(0).max(8),
   evidence:z.array(z.string().max(500)).min(1).max(10), ambiguities:z.array(z.string().max(500)).max(10)
@@ -18,13 +20,16 @@ export const exerciseSchema = z.object({
 export type Exercise = z.infer<typeof exerciseSchema>;
 export const solutionSchema = z.object({
   status:z.enum(['verified','unverifiable']),answer:z.string().max(300),values:z.array(z.string().max(300)).max(4),explanation:z.string().max(2000),
-  provider:z.enum(['deterministic','openai']),proposed_by_ai:z.boolean(),provider_calls:z.number().int().min(0).max(1)
+  provider:z.enum(['deterministic','openai']),proposed_by_ai:z.boolean(),provider_calls:z.number().int().min(0).max(1),unit:z.string().max(30).optional()
 }).strict();
 export type Solution = z.infer<typeof solutionSchema>;
 export const limitsSchema = z.object({maxExercises:z.number().int().min(1).max(100),maxMinutes:z.number().min(.01).max(120),maxAICalls:z.number().int().min(0).max(100),preview:z.boolean()}).strict();
 export type Limits = z.infer<typeof limitsSchema>;
 export type State = 'INACTIVO'|'LEYENDO'|'RESOLVIENDO'|'VERIFICANDO'|'ESCRIBIENDO'|'ENVIANDO'|'COMPROBANDO'|'AVANZANDO'|'PAUSADO'|'COMPLETADO'|'ERROR';
-export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string}
+export interface EditorObservation {
+  status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
+}
+export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation}
 export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}
 export interface Adapter {
   detect():Promise<Detection>;

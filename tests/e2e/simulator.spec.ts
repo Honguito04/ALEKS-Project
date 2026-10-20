@@ -4,7 +4,7 @@ import type { Exercise,Run,Solution } from '../../extension/src/shared';
 
 let bundle:string;
 test.beforeAll(async()=>{bundle=(await build({entryPoints:['tests/e2e/harness.ts'],bundle:true,write:false,format:'iife',target:'es2022'})).outputFiles[0].text;});
-async function prepare(page:Page,request:APIRequestContext,solver?:(exercise:Exercise,ai:boolean)=>Promise<Solution>) {
+async function prepare(page:Page,request:APIRequestContext,solver?:(exercise:Exercise,ai:boolean)=>Promise<Solution>,path='/simulator/',onSave?:(run:Run)=>Promise<void>) {
   let saved:Run|undefined;
   const session=await (await request.post('/auth/demo')).json();
   const solve=async(exercise:Exercise,allow_ai:boolean)=>{
@@ -12,9 +12,9 @@ async function prepare(page:Page,request:APIRequestContext,solver?:(exercise:Exe
     if(!response.ok())throw Error(JSON.stringify(await response.json()));return response.json();
   };
   await page.exposeFunction('__testSolve',solver || solve);
-  await page.exposeFunction('__testSave',(run:Run)=>{saved=structuredClone(run);});
+  await page.exposeFunction('__testSave',async(run:Run)=>{saved=structuredClone(run);if(onSave)await onSave(run);});
   await page.route('**/__test_controller.js',route=>route.fulfill({contentType:'application/javascript',body:bundle}));
-  await page.goto('/simulator/');await page.locator('#answer').waitFor();
+  await page.goto(path);await page.locator('#answer').waitFor();
   await page.addScriptTag({url:'/__test_controller.js'});
   return {saved:()=>saved!,solve};
 }
@@ -82,3 +82,34 @@ test('sesión perdida y verificación humana requieren intervención',async({pag
   await page.evaluate(()=>window.mathTest.start());await expect.poll(()=>h.saved()?.state).toBe('PAUSADO');
   expect(h.saved().message).toContain('humana');
 });
+test('cilindros: escribe el número y selecciona la unidad antes de enviar',async({page,request})=>{
+  const h=await prepare(page,request,undefined,'/simulator/?activity=cylinder');
+  const submissions:{answer:string;unit:string}[]=[];
+  page.on('request',r=>{if(r.url().endsWith('/grade'))submissions.push(r.postDataJSON());});
+  await page.evaluate(()=>window.mathTest.start());
+  await expect.poll(()=>h.saved()?.state,{timeout:15000}).toBe('COMPLETADO');
+  expect(h.saved().count).toBe(2);expect(submissions.map(({answer,unit})=>({answer,unit}))).toEqual([{answer:'283',unit:'cm^3'},{answer:'57',unit:'m^3'}]);
+  expect(Object.values(h.saved().operations).every(o=>o.status==='accepted')).toBe(true);
+});
+test('vista previa de volumen conserva vacíos número y unidad',async({page,request})=>{
+  const h=await prepare(page,request,undefined,'/simulator/?activity=cylinder');
+  await page.evaluate(()=>window.mathTest.start({preview:true}));
+  await expect.poll(()=>h.saved()?.state).toBe('PAUSADO');
+  const result=await page.evaluate(()=>window.mathTest.controller.solution);
+  expect(result?.answer).toBe('283');expect(result?.unit).toBe('cm^3');
+  await expect(page.locator('#answer')).toHaveValue('');await expect(page.locator('#answer-unit')).toHaveValue('');
+});
+for(const field of ['number','unit'] as const) {
+  test(`un cambio manual de ${field} entre escritura y envío cancela la entrega`,async({page,request})=>{
+    let submissions=0;page.on('request',r=>{if(r.url().endsWith('/grade'))submissions++;});
+    const h=await prepare(page,request,undefined,'/simulator/?activity=cylinder',async(run)=>{
+      if(run.state==='ENVIANDO')await page.evaluate(field=>{
+        if(field==='number')document.querySelector<HTMLInputElement>('#answer')!.value='999';
+        else document.querySelector<HTMLSelectElement>('#answer-unit')!.value='m^3';
+      },field);
+    });
+    await page.evaluate(()=>window.mathTest.start());
+    await expect.poll(()=>h.saved()?.state).toBe('PAUSADO');expect(submissions).toBe(0);
+    expect(h.saved().message).toContain(field==='number'?'respuesta cambió':'unidad cambió');
+  });
+}

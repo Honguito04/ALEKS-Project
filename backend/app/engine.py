@@ -75,6 +75,7 @@ def solve(exercise: Exercise) -> Solution:
     m = exercise.math
     if m is None: raise Unsupported("Se necesita interpretación del enunciado")
     values = []
+    unit = exercise.units
     explanation = "Cálculo exacto y equivalencia simbólica comprobados."
     if m.family in ("arithmetic", "single_choice"):
         values = [s.simplify(expression(m.expression or ""))]
@@ -86,6 +87,29 @@ def solve(exercise: Exercise) -> Solution:
         values = [s.simplify(b * c / a)]  # a / b = c / x
         if values[0] == 0 or s.simplify(a / b - c / values[0]) != 0:
             raise Unsupported("Proporción degenerada")
+    elif m.family == "cylinder_volume":
+        if m.height_is_perpendicular is not True:
+            raise Unsupported("Falta confirmar la altura perpendicular; la longitud inclinada no basta")
+        if m.radius_unit is None or m.radius_unit != m.height_unit:
+            raise Unsupported("Radio y altura deben tener la misma unidad de longitud; no se convierten unidades")
+        unit = m.radius_unit + "^3"
+        if exercise.units != unit:
+            raise Unsupported("El volumen requiere la unidad cúbica correspondiente al radio y la altura")
+        if not m.pi_value:
+            raise Unsupported("Falta el valor de pi indicado por el enunciado")
+        radius, height, pi = [s.simplify(expression(v or "")) for v in (m.radius, m.height, m.pi_value)]
+        if any(v.is_positive is not True for v in (radius, height, pi)):
+            raise Unsupported("Radio, altura perpendicular y valor de pi deben ser positivos")
+        volume = s.simplify(pi * radius**2 * height)
+        # Contraste con área de la base por altura, manteniendo valores exactos.
+        base_area = s.simplify(pi * radius * radius)
+        if s.simplify(volume / height - base_area) != 0:
+            raise Unsupported("No se pudo verificar el volumen")
+        values = [volume]
+        explanation = (
+            f"V = pi × r² × h = {s.sstr(pi)} × ({s.sstr(radius)})² × {s.sstr(height)} "
+            f"= {s.sstr(volume)} {unit}. Se usa la altura perpendicular y se redondea solo al final."
+        )
     else:
         lhs, rhs = expression(m.lhs or "", True), expression(m.rhs or "", True)
         numerator, _ = s.fraction(s.together(lhs - rhs))
@@ -115,7 +139,7 @@ def solve(exercise: Exercise) -> Solution:
     else:
         if m.family == "single_choice": raise Unsupported("Faltan alternativas")
         answer = "; ".join(format_value(v, exercise) for v in values)
-    return Solution(status="verified", answer=answer, values=[s.sstr(v) for v in values], explanation=explanation)
+    return Solution(status="verified", answer=answer, values=[s.sstr(v) for v in values], explanation=explanation, unit=unit)
 
 
 def _worker(payload, connection):

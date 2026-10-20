@@ -126,6 +126,9 @@ export class Controller {
       this.solution=solution;
       await this.transition('VERIFICANDO',solution.explanation);this.check(epoch,signal);
       if(solution.status!=='verified') throw Error('La propuesta no tiene verificación suficiente para enviarla');
+      if(exercise.fields[0].kind==='quantity' && (!exercise.units || solution.unit!==exercise.units)) {
+        throw Error('La unidad de la respuesta no está verificada; no se escribirá ni enviará');
+      }
       await this.guard(epoch,signal,exercise);
       if(run.limits.preview) {await this.transition('PAUSADO','Vista previa completada: respuesta verificada; no se escribió ni envió.');return;}
       await this.transition('ESCRIBIENDO','Introduciendo la respuesta en el campo observado');this.check(epoch,signal);

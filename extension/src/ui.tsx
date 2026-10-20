@@ -72,6 +72,7 @@ function App() {
       <button disabled={!selected || busy} onClick={()=>void attach()}>Leer actividad seleccionada</button>
       <p className="small">Abre el simulador en Chrome: <code>{BACKEND}/simulator/</code></p>
       {view.detection && <div className="inset"><strong>{view.detection.origin}</strong><p className="small">Actividad: {view.detection.activity}</p>
+        {view.detection.editorObservation && <p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) visibles y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>}
         <p>{view.detection.supported ? (view.detection.session?'Sesión del simulador disponible':'Sesión perdida'):view.detection.reason}</p></div>}
     </section>
     <section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>
@@ -84,7 +85,7 @@ function App() {
       <div className="actions"><button className="secondary" disabled={!run} onClick={()=>void command('pause')}>Pausar</button><button className="secondary" disabled={run?.state!=='PAUSADO'} onClick={()=>void command('resume')}>Continuar</button><button className="danger" disabled={!run} onClick={()=>void command('stop')}>Detener</button></div>
     </section>
     <section aria-live="polite"><div className="section-label">05 / EJECUCIÓN</div><h2>{run?.state || 'INACTIVO'}</h2><p>{run?.message || 'Selecciona una actividad para comenzar.'}</p>
-      {view.exercise && <div className="inset"><p>{view.exercise.statement}</p><strong>Respuesta: {view.solution?.answer || 'Calculando…'}</strong><p className="small">{view.solution?.status==='verified'?'Verificada matemáticamente':view.solution?'Propuesta sin verificación suficiente':'Pendiente'}</p></div>}
+      {view.exercise && <div className="inset"><p>{view.exercise.statement}</p><strong>Respuesta: {view.solution?.answer || 'Calculando…'} {view.solution?.unit?.replace('^3','³')}</strong><p className="small">{view.solution?.status==='verified'?'Verificada matemáticamente':view.solution?'Propuesta sin verificación suficiente':'Pendiente'}</p></div>}
       <div className="metrics"><span><b>{operations.filter(o=>o.status==='accepted').length}</b>Aceptadas</span><span><b>{operations.filter(o=>o.status==='rejected').length}</b>Rechazadas</span><span><b>0</b>Omitidas</span><span><b>{operations.filter(o=>o.status==='uncertain').length}</b>Inciertas</span></div>
       <details><summary>Historial de transiciones</summary><ol>{run?.events.slice().reverse().map((e,i)=><li key={i}><b>{e.state}</b> · {e.message}</li>)}</ol></details>
     </section></>}

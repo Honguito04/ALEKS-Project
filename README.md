@@ -1,6 +1,6 @@
 # Asistente Matemático para ALEKS · MVP
 
-Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios originales.
+Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 
 **El recorrido automático se implementa en el simulador. La integración real con ALEKS está pendiente de validación y sus envíos están deshabilitados.** No se han inventado selectores ni probado una cuenta de ALEKS. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
 
@@ -14,7 +14,7 @@ cd ALEKS-Project
 py -3.12 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r backend/requirements.lock
 npm ci
-Copy-Item .env.example .env  # solo si todavía no tienes .env
+if (!(Test-Path .env)) { Copy-Item .env.example .env }
 npm run build
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --no-access-log
 ```
@@ -30,6 +30,8 @@ Mantén esa terminal abierta. En Chrome:
 7. **Pausar**, **Continuar** y **Detener** controlan esa sesión. Una entrega rechazada o incierta exige revisión: no se reenvía automáticamente. **Reiniciar actividad** crea una actividad de prueba nueva.
 
 En **Vista previa** se lee y resuelve un solo ejercicio sin escribir ni enviar. Chrome y la pestaña deben seguir disponibles; cerrar el panel no detiene al controlador, que vive en el content script.
+
+Para probar **volúmenes de cilindros**, usa el enlace «Volúmenes de cilindros con unidades» del laboratorio o abre `http://127.0.0.1:8000/simulator/?activity=cylinder`. Vuelve a leer y autorizar esa actividad. Incluye dos ejercicios originales: el controlador introduce el número y selecciona la unidad cúbica; ambos deben ser aceptados. El selector de esta actividad pertenece al simulador y no representa el editor de ALEKS.
 
 ## Linux / entorno de desarrollo en la nube
 
@@ -75,9 +77,10 @@ Destinos externos: gestores de paquetes durante instalación; `accounts.google.c
 | Lineales | Una variable `x`, grado uno | Texto exacto |
 | Cuadráticas | Numerador de grado dos; raíces reales, dominio entero/racional/real, exclusión de denominadores nulos | Texto; varias raíces con `;` |
 | Selección única | Una alternativa simbólicamente equivalente y única | Radio observado |
+| Volumen de cilindro recto u oblicuo | Radio y altura perpendicular positivos, valor de pi explícito, dimensiones en la misma unidad (mm, cm o m), unidad cúbica verificada | Número y selector de unidad del simulador |
 | Formato decimal | 0–8 decimales; redondeo final con mitades alejadas de cero | Texto decimal |
 
-No son compatibles gráficos interactivos, construcción geométrica, OCR, matrices, múltiples campos, editores matemáticos de ALEKS, soluciones complejas, infinitos conjuntos ni campos de conjunto vacío. Las unidades se conservan como metadatos; no hay conversión dimensional ni interpretación de unidades arbitrarias. La gramática admite números, `x`, `+ - * / ^` y `sqrt(constante)`; no admite multiplicación implícita o funciones arbitrarias.
+No son compatibles gráficos interactivos, construcción geométrica, OCR, matrices, múltiples campos numéricos, editores matemáticos de ALEKS, soluciones complejas, infinitos conjuntos ni campos de conjunto vacío. En volúmenes se exige la unidad cúbica correspondiente a las dimensiones y se selecciona por separado; en otras familias las unidades se conservan como metadatos. No hay conversión entre unidades o interpretación de unidades arbitrarias. La gramática admite números, `x`, `+ - * / ^` y `sqrt(constante)`; no admite multiplicación implícita o funciones arbitrarias.
 
 ## Diseño y seguridad del flujo
 
@@ -115,6 +118,10 @@ Consulta [docs/VALIDACION.md](docs/VALIDACION.md) para los resultados ejecutados
 `https://latam.aleks.com/login` es el único origen de referencia declarado. Su permiso es opcional, separado del simulador. Al concederlo se puede detectar que el adaptador está pendiente; no se presume una sesión autenticada ni se lee un curso. No hay selectores privados ni navegación/entregas activas.
 
 Para ampliar el adaptador se necesita una muestra autorizada y sin datos personales de la pantalla de un ejercicio: DOM/MathML, campos, control normal de envío, feedback de aceptación/rechazo y avance. Una captura por sí sola no demuestra cómo funcionan los controles. Después habrá que validar lectura, escritura reconocida por la interfaz, detección de sesión, verificación humana y un ejercicio limitado con acceso autorizado. No envíes contraseñas, cookies o credenciales en incidencias.
+
+La captura proporcionada de un cilindro permite comprobar la fórmula, el redondeo y la necesidad de una unidad cúbica. Después se recibieron fragmentos reales del input `Answer Editor`, los botones accesibles de unidades y el texto interior «Entregar». `aleks-editor.ts` reconoce esos atributos en una inspección de solo lectura, comprobando visibilidad, unicidad y estado habilitado; no depende de IDs dinámicos. Para probarla en la pestaña permitida usa «Autorizar sitio ALEKS para inspección», selecciona la pestaña y pulsa «Leer actividad seleccionada». La presencia de esos controles no confirma la sesión ni habilita la ejecución.
+
+Siguen faltando el contenedor completo del ejercicio y su actividad, la representación del editor después de introducir número y unidad, el ancestro clicable de «Entregar», el feedback y el avance. No se interpreta `input.value` como respuesta completa ni se supone que pulsar una unidad la registre. Se añadieron soporte matemático, pruebas del fragmento aportado y una actividad original del simulador, sin activar entregas reales.
 
 Próximas mejoras: validación del adaptador real, entradas fraccionarias/múltiples observadas, verificación independiente de interpretación por IA y prueba manual de Google/Chrome con credenciales del propietario. No se publica la extensión ni se despliegan servicios externos automáticamente.
 

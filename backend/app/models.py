@@ -7,7 +7,7 @@ class Strict(BaseModel):
 
 
 class MathSpec(Strict):
-    family: Literal["arithmetic", "percentage", "proportion", "linear", "quadratic", "single_choice"]
+    family: Literal["arithmetic", "percentage", "proportion", "linear", "quadratic", "single_choice", "cylinder_volume"]
     expression: str | None = None
     lhs: str | None = None
     rhs: str | None = None
@@ -16,6 +16,12 @@ class MathSpec(Strict):
     a: str | None = None
     b: str | None = None
     c: str | None = None
+    radius: str | None = None
+    height: str | None = None
+    pi_value: str | None = None
+    radius_unit: Literal["mm", "cm", "m"] | None = None
+    height_unit: Literal["mm", "cm", "m"] | None = None
+    height_is_perpendicular: bool | None = None
 
 
 class Choice(Strict):
@@ -25,7 +31,7 @@ class Choice(Strict):
 
 class AnswerField(Strict):
     id: str = Field(min_length=1, max_length=40)
-    kind: Literal["text", "radio"]
+    kind: Literal["text", "radio", "quantity"]
 
 
 class Exercise(Strict):
@@ -50,6 +56,10 @@ class Exercise(Strict):
         radio = self.fields[0].kind == "radio"
         if radio != bool(self.choices):
             raise ValueError("No coincide el campo con las alternativas")
+        if self.fields[0].kind == "quantity" and (
+            not self.units or self.math is None or self.math.family != "cylinder_volume"
+        ):
+            raise ValueError("El campo con selector de unidad solo admite volúmenes de cilindro verificados")
         return self
 
 
@@ -63,6 +73,7 @@ class Solution(Strict):
     answer: str
     values: list[str]
     explanation: str
+    unit: str = Field(default="", max_length=30)
     provider: Literal["deterministic", "openai"] = "deterministic"
     proposed_by_ai: bool = False
     provider_calls: int = 0
