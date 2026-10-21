@@ -112,9 +112,10 @@ export class PendingAleksAdapter implements Adapter {
     const readback=editorObservation.renderedAnswer.status==='readable' ? `Respuesta visible: ${editorObservation.renderedAnswer.display}. `:'';
     const submit=editorObservation.submitControl.status==='observed' ? 'Botón Entregar identificado. ':'';
     const next=editorObservation.nextControl.status==='observed' ? 'Botón Siguiente identificado; no se ha confirmado el resultado del ejercicio. ':'';
+    const result=editorObservation.resultMarker.status==='positive_marker' ? 'Señal positiva observada: Correcta y Siguiente. Aún no está asociada a una entrega de la extensión. ':'';
     return {origin:ALEKS,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
       editorObservation,
-      reason:description+readback+submit+next+'Inspección de solo lectura: faltan validar la lectura de actividad/enunciado, la interacción con el editor y el resultado de la entrega. La sesión y los envíos reales siguen sin habilitar.'};
+      reason:description+readback+submit+result+(result?'':next)+'Inspección de solo lectura: faltan validar la lectura de actividad/enunciado, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
   }
   private unavailable():never {throw Error('Adaptador ALEKS pendiente de validación con la interfaz autenticada');}
   async read():Promise<Exercise> {return this.unavailable();}

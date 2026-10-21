@@ -30,9 +30,12 @@ export interface EditorReadback {
   status:'readable'|'missing'|'ambiguous'|'unsupported';reason:string;value?:string;unit?:'cm^3';display?:string;
 }
 export interface ControlObservation {status:'observed'|'missing'|'ambiguous'|'disabled';count:number}
+export interface ResultObservation {
+  status:'positive_marker'|'missing'|'ambiguous'|'incomplete';positiveMessageCount:number;
+}
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
-  renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;
+  renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;resultMarker:ResultObservation;
 }
 export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation}
 export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}

@@ -1,4 +1,4 @@
-import type { EditorObservation, EditorReadback, ControlObservation } from './shared';
+import type { EditorObservation, EditorReadback, ControlObservation, ResultObservation } from './shared';
 
 function painted(element:HTMLElement) {
   const view=element.ownerDocument.defaultView;
@@ -51,6 +51,20 @@ function observeButton(document:Document,selector:string,label:string):ControlOb
   return {status:controls.length>1?'ambiguous':controls.length===0?'missing':disabled(controls[0])?'disabled':'observed',count:controls.length};
 }
 
+function observeResult(document:Document,next:ControlObservation,submit:ControlObservation):ResultObservation {
+  // Fragmento confirmado por el usuario tras entregar 226 cm³: div de texto
+  // plano «Correcta», inline-block, color inline rgb(57,108,41), y Siguiente.
+  // El color no se interpreta por sí solo y el texto de un enunciado, wrapper
+  // o mensaje oculto no cuenta. Esto observa una señal, no resuelve su asociación
+  // a la actividad/huella de un envío iniciado por la extensión.
+  const messages=[...document.querySelectorAll<HTMLDivElement>('div')].filter(element=>
+    element.childNodes.length===1 && element.firstChild?.nodeType===3 && element.textContent?.trim()==='Correcta' &&
+    element.style.display==='inline-block' && element.style.color==='rgb(57, 108, 41)' && visible(element));
+  const count=messages.length;
+  return {status:count>1 || next.status==='ambiguous' || (count>0 && submit.status!=='missing') ? 'ambiguous':
+    count===0 ? 'missing':next.status==='observed' ? 'positive_marker':'incomplete',positiveMessageCount:count};
+}
+
 /** Inspección de SOLO LECTURA de los atributos aportados por el usuario.
  * Un input encontrado no demuestra que input.value sea el valor completo del
  * editor. Un botón cm³ encontrado no demuestra que la unidad esté registrada.
@@ -65,9 +79,11 @@ export function inspectAleksEditor(document:Document):EditorObservation {
   else if(inputs.length!==1 || units.length!==1)status='missing';
   else if(disabled(inputs[0]) || inputs[0].readOnly || disabled(units[0]))status='disabled';
   const renderedAnswer:EditorReadback=inputs.length===1 ? readRenderedQuantity(inputs[0]):{status:inputs.length?'ambiguous':'missing',reason:'No hay un único campo visible al que asociar la respuesta.'};
+  const submitControl=observeButton(document,'button#smt_bottomnav_button_input_nextItemAssess.nextItemAssess[type="button"]','Entregar');
+  const nextControl=observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente');
   return {status,inputCount:inputs.length,unitButtonCount:units.length,submitLabelCount:labels.length,renderedAnswer,
-    submitControl:observeButton(document,'button#smt_bottomnav_button_input_nextItemAssess.nextItemAssess[type="button"]','Entregar'),
+    submitControl,
     // Solo se identifica este control aportado; learningCorrect por sí solo no
     // acredita un resultado ni lo vincula a una actividad/huella o envío nuestro.
-    nextControl:observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente')};
+    nextControl,resultMarker:observeResult(document,nextControl,submitControl)};
 }
