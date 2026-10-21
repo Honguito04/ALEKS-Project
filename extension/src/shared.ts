@@ -29,10 +29,10 @@ export type State = 'INACTIVO'|'LEYENDO'|'RESOLVIENDO'|'VERIFICANDO'|'ESCRIBIEND
 export interface EditorReadback {
   status:'readable'|'missing'|'ambiguous'|'unsupported';reason:string;value?:string;unit?:'cm^3';display?:string;
 }
-export interface SubmitObservation {status:'observed'|'missing'|'ambiguous'|'disabled';count:number}
+export interface ControlObservation {status:'observed'|'missing'|'ambiguous'|'disabled';count:number}
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
-  renderedAnswer:EditorReadback;submitControl:SubmitObservation;
+  renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;
 }
 export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation}
 export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}

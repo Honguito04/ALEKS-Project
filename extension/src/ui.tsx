@@ -75,6 +75,7 @@ function App() {
         {view.detection.editorObservation && <p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) visibles y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>}
         {view.detection.editorObservation?.renderedAnswer.status==='readable' && <p>Respuesta visible en el editor: <strong>{view.detection.editorObservation.renderedAnswer.display}</strong>. Aceptación pendiente.</p>}
         {view.detection.editorObservation?.submitControl.status==='observed' && <p className="small">Botón «Entregar» identificado. La inspección no hace clic ni envía respuestas.</p>}
+        {view.detection.editorObservation?.nextControl.status==='observed' && <p className="small">Botón «Siguiente» identificado. Falta asociar el resultado al ejercicio enviado; no se avanza automáticamente.</p>}
         <p>{view.detection.supported ? (view.detection.session?'Sesión del simulador disponible':'Sesión perdida'):view.detection.reason}</p></div>}
     </section>
     <section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>
