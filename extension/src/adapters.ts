@@ -112,7 +112,7 @@ export class PendingAleksAdapter implements Adapter {
       disabled:'El editor o el botón de unidad están deshabilitados. '
     }[editorObservation.status];
     const readback=editorObservation.renderedAnswer.status==='readable' ? `Respuesta visible: ${editorObservation.renderedAnswer.display}. `:'';
-    const submit=editorObservation.submitControl.status==='observed' ? 'Botón Entregar identificado. ':'';
+    const submit=editorObservation.submitControl.status==='observed' ? `Botón ${editorObservation.submitControl.label || 'Entregar'} identificado. `:'';
     const next=editorObservation.nextControl.status==='observed' ? 'Botón Siguiente identificado; no se ha confirmado el resultado del ejercicio. ':'';
     const result=editorObservation.resultMarker.status==='positive_marker' ? 'Señal positiva observada: Correcta y Siguiente. Aún no está asociada a una entrega de la extensión. ':'';
     const prompt=promptObservation.status==='readable' ? 'Enunciado leído sin necesitar un contador de pregunta. Falta interpretar el problema y asociar sus campos. ':'Lectura del enunciado pendiente. ';

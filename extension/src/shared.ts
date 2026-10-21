@@ -39,7 +39,7 @@ export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
   inputDiagnostics:{presentCount:number;paintedCount:number;ariaHiddenCount:number;frameCount:number;visibleRootCount:number;
     blockedBy:{noLayout:number;hiddenAttribute:number;displayNone:number;visibilityHidden:number;opacityZero:number;noView:number}};
-  renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;resultMarker:ResultObservation;
+  renderedAnswer:EditorReadback;submitControl:ControlObservation & {label?:'Entregar'|'Verificar'};nextControl:ControlObservation;resultMarker:ResultObservation;
 }
 export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:string} |
   {kind:'space'} |

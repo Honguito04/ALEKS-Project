@@ -8,7 +8,7 @@ Fecha: 20 de octubre de 2026. Entorno Linux, Python 3.12.14, Node 24.19.0 y Chro
 | TypeScript + `npm run build` | Correctos; `dist/` incluye manifest MV3, panel, opciones, worker modular y content script IIFE |
 | `npm test` | **35 pasadas**: 20 del controlador y 15 de fronteras de mensajes del worker |
 | `.venv/bin/python -m pytest backend/tests -q` | **49 pasadas**, ninguna omitida; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
-| `npm run test:e2e` | **83 pasadas**, ninguna omitida: 10 del simulador, 45 del diagnóstico de editor y 28 del lector de enunciados |
+| `npm run test:e2e` | **92 pasadas**, ninguna omitida: 10 del simulador, 54 del diagnóstico de editor y 28 del lector de enunciados |
 | `pip check` | Sin dependencias incompatibles |
 | Sintaxis Python | `compileall` correcto |
 
@@ -40,7 +40,11 @@ El reporte siguiente identificó dos inputs en el documento, ninguno pintado y n
 
 El HTML posterior del círculo aporta `∠`, `°`, `π`, el arco en `mover` y un `mn` de espaciado. Ocho pruebas del lector comprueban la lectura exacta del fragmento desidentificado, conservación de ángulo/arco/espacio, advertencia de diagrama pendiente, rechazo de tokens vacíos y aridad incorrecta de `mover`, y diagnóstico Unicode acotado de operadores desconocidos (también fuera del plano básico). Se omiten URLs de diccionario e identificadores opacos. La prueba reconstruye por DOM el párrafo final con su renderizador anidado, porque volver a parsear ese HTML como texto repararía el anidado generado por la plataforma y separaría la copia visual de su MathML. No se debilitó el rechazo de matemáticas sin fuente.
 
-Para esta ampliación se ejecutaron compilación, las 35 pruebas unitarias y las 83 de navegador. Las 49 pruebas de backend corresponden a la validación anterior, sin cambios allí.
+El botón «Verificar» aportado para el tema de arcos y sectores añade nueve pruebas: reconocimiento de `checkAnswer` con independencia de la clase con hash y sin clics/envíos, rechazo por etiqueta/ID/clase/tipo diferentes, deshabilitación u ocultación, ambigüedad entre Verificar y Entregar, y descarte de una señal positiva si Verificar sigue visible. Las pruebas reprodujeron la ausencia de reconocimiento antes del cambio. El diagnóstico conserva la variante Entregar y ahora comunica la etiqueta realmente encontrada.
+
+El usuario también proporcionó una tabla vacía de dos filas (longitud de arco y área sombreada), una muestra rellenada con `5π` y `7π`, el nombre de tema y el texto «Siguiente tema». Confirmó que cambió las respuestas antes de verificar. Esas muestras no acreditan aceptación ni equivalencia de los valores de prueba: faltan la tabla final con fracción/unidades, los controles de edición utilizados y el botón completo de avance con el bloque de resultado.
+
+Para esta ampliación se ejecutaron compilación, las 35 pruebas unitarias y las 92 de navegador. Las 49 pruebas de backend corresponden a la validación anterior, sin cambios allí.
 
 La validación de Google usa firmas RSA reales y certificados de prueba locales, y rechaza firma alterada, emisor/audiencia/caducidad/nonce incorrectos. Se prueban estado OAuth, PKCE de vinculación, códigos caducados/de un uso, revocación y separación demo/Google. No se ha probado el intercambio real con Google.
 

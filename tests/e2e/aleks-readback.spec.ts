@@ -21,7 +21,7 @@ test('lee 226 cm³ del árbol visual aria-hidden con el input vacío, sin escrib
     return {observation,detection,value:input.value,changes};
   });
   expect(result.observation.renderedAnswer).toMatchObject({status:'readable',value:'226',unit:'cm^3',display:'226 cm³'});
-  expect(result.observation.submitControl).toEqual({status:'observed',count:1});
+  expect(result.observation.submitControl).toEqual({status:'observed',count:1,label:'Entregar'});
   expect(result.value).toBe('');expect(result.changes).toBe(0);
   expect(result.detection.supported).toBe(false);expect(result.detection.session).toBe(false);
   expect(result.detection.reason).toContain('Respuesta visible: 226 cm³');
