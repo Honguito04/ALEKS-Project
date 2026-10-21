@@ -1,5 +1,5 @@
 import { beforeEach,it,expect,vi } from 'vitest';
-import { BACKEND,type Exercise } from '../../extension/src/shared';
+import { BACKEND,ALEKS_ACTIVITY,allowedTab,type Exercise } from '../../extension/src/shared';
 
 const id='fjjgjakbpjhhegekcjogilmfheaicjge';
 const ext=`chrome-extension://${id}/`;
@@ -22,7 +22,7 @@ beforeEach(async()=>{
   vi.stubGlobal('chrome',{
     runtime:{id,getURL:(p:string)=>ext+p,onMessage:{addListener:(fn:Listener)=>{listener=fn;}},onInstalled:{addListener:vi.fn()}},
     sidePanel:{setPanelBehavior:async()=>{}},storage:{local:store(local),session:store(session)},
-    permissions:{contains:async()=>permitted,remove:async()=>true,onRemoved:{addListener:vi.fn()}},
+    permissions:{contains:async()=>permitted,remove:vi.fn(async()=>true),onRemoved:{addListener:vi.fn()}},
     tabs:{get:async(id:number)=>({id,url,title:'Simulador'}),query:async()=>[{id:7,url}],sendMessage:tabsSend,onRemoved:{addListener:vi.fn()}},
     scripting:{executeScript:async()=>{}}
   });
@@ -57,6 +57,19 @@ it('no permite iniciar en ALEKS ni con otra actividad o sin identidad',async()=>
   url='https://latam.aleks.com/login';expect((await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits})).ok).toBe(false);
   url=BACKEND+'/simulator/';expect((await send({scope:'ui',type:'start',tabId:7,activity:'foreign',limits})).ok).toBe(false);
   delete session.auth;expect((await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits})).ok).toBe(false);
+});
+it('permite inspeccionar el origen confirmado pero bloquea inicio y transporte al solver real',async()=>{
+  url=ALEKS_ACTIVITY+'/exercise-fixture';
+  expect((await send({scope:'ui',type:'attach',tabId:7})).ok).toBe(true);
+  expect((await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits})).ok).toBe(false);
+  expect((await send({scope:'content',type:'solve',exercise,allowAI:false},content())).ok).toBe(false);
+  expect(fetchMock).not.toHaveBeenCalled();
+  for(const untrusted of ['https://latam-awu.aleks.com.evil.example','http://latam-awu.aleks.com','https://latam-awu.aleks.com:8443'])expect(allowedTab(untrusted)).toBe(false);
+  permitted=false;expect((await send({scope:'ui',type:'attach',tabId:7})).ok).toBe(false);
+});
+it('revoca también el permiso del origen de ejercicios confirmado',async()=>{
+  expect((await send({scope:'ui',type:'revoke'})).ok).toBe(true);
+  expect(chrome.permissions.remove).toHaveBeenCalledWith({origins:[`${BACKEND}/*`,'https://latam.aleks.com/*',`${ALEKS_ACTIVITY}/*`]});
 });
 it('solo resuelve ejercicios de la actividad autorizada durante RESOLVIENDO',async()=>{
   local['consent:7']={origin:BACKEND,activity:'activity',limits};local['run:7']={state:'RESOLVIENDO',aiCalls:0};

@@ -6,9 +6,9 @@ Fecha: 20 de octubre de 2026. Entorno Linux, Python 3.12.14, Node 24.19.0 y Chro
 | --- | --- |
 | `bash scripts/setup.sh` | Correcta, incluida reinstalación con lockfiles y conservación de `.env` existente |
 | TypeScript + `npm run build` | Correctos; `dist/` incluye manifest MV3, panel, opciones, worker modular y content script IIFE |
-| `npm test` | **28 pasadas**: 20 del controlador y 8 de fronteras de mensajes del worker |
+| `npm test` | **30 pasadas**: 20 del controlador y 10 de fronteras de mensajes del worker |
 | `.venv/bin/python -m pytest backend/tests -q` | **49 pasadas**, ninguna omitida; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
-| `npm run test:e2e` | **46 pasadas**, ninguna omitida: 10 del simulador y 36 del diagnóstico sobre fragmentos de editor aportados |
+| `npm run test:e2e` | **60 pasadas**, ninguna omitida: 10 del simulador, 36 del diagnóstico de editor y 14 del lector de enunciados |
 | `pip check` | Sin dependencias incompatibles |
 | Sintaxis Python | `compileall` correcto |
 
@@ -26,6 +26,10 @@ Siete pruebas del nuevo botón `learningCorrect` identifican «Siguiente» sin h
 
 Diez pruebas del mensaje «Correcta» reconocen la señal positiva aportada junto a Siguiente, y comprueban que no se acredita una entrega de la extensión ni se produce un clic/avance. Se rechazan mensaje oculto, aria-hidden, texto parcial, estilo diferente, estructura no observada, duplicados, ausencia de Siguiente, Siguiente deshabilitado y Entregar simultáneo. La confirmación de que apareció después de enviar 226 cm³ corresponde a la prueba manual reportada por el usuario; el agente no ejecutó esa entrega en ALEKS.
 
+Las catorce pruebas del enunciado usan el fragmento de dados desidentificado en `#algoPrompt`. Comprueban la lectura exacta de texto y MathML sin duplicados, sin contador/título, clics, escritura o solicitudes de red; conservación estructural de fracciones, exponentes y raíces; exclusión de URLs, IDs y anotaciones; huella estable ante cambios ajenos al enunciado y descarte si este cambia durante el hash. Rechazan enunciados ausentes/duplicados, XML inválido, MathML ausente o no admitido, imágenes, tamaños excesivos y declaraciones de entidades. El diagnóstico permanece separado de un `Exercise` ejecutable y no activa la resolución ni el envío de los dos sucesos.
+
+Dos pruebas unitarias adicionales verifican el origen confirmado `https://latam-awu.aleks.com`: adjuntar el diagnóstico con permiso, rechazar inicio/transporte real y orígenes parecidos con otro sufijo, protocolo o puerto, y retirar su permiso al revocar. Las APIs de permisos están simuladas en estas pruebas; el diálogo nativo de Chrome requiere comprobación manual.
+
 La validación de Google usa firmas RSA reales y certificados de prueba locales, y rechaza firma alterada, emisor/audiencia/caducidad/nonce incorrectos. Se prueban estado OAuth, PKCE de vinculación, códigos caducados/de un uso, revocación y separación demo/Google. No se ha probado el intercambio real con Google.
 
 ## Comprobaciones externas pendientes
@@ -33,7 +37,7 @@ La validación de Google usa firmas RSA reales y certificados de prueba locales,
 - **Carga nativa de la extensión en Chrome**: el Chromium administrado devolvió `Loading of unpacked extensions is disabled by the administrator`. No se modificó esa política. Playwright usa un puente exclusivo de pruebas para ejecutar las clases de producción, por lo que no valida las APIs nativas de extensión ni la autorización del navegador.
 - **Google con cuenta real**: faltan las credenciales OAuth del propietario y la configuración de su cliente. El botón y flujo están implementados; no se simula una identidad Google.
 - **IA en la API externa**: proveedor implementado, sin clave/modelo configurados y sin llamadas facturables ejecutadas. Las interpretaciones de IA quedan sin autorización de envío automático hasta contar con verificación independiente de lectura.
-- **ALEKS**: el usuario reportó aceptación manual de 226 cm³ en el mismo ejercicio y aportó «Correcta», editor y controles completos. Se validó su lectura/detección sobre fixtures locales; faltan prueba en vivo del código, HTML/lectura de enunciado y actividad, escritura reconocida por el editor, asociación automática del resultado al envío y avance comprobado. Cero ejercicios reales leídos automáticamente como ejercicio completo, escritos o enviados por el agente/extensión. El diagnóstico es de solo lectura; el adaptador y el backend impiden envíos reales incluso con una sesión Google.
+- **ALEKS**: el usuario reportó aceptación manual de 226 cm³ y aportó editor, controles, «Correcta» y un enunciado posterior de probabilidad. Confirmó `latam-awu.aleks.com` como dominio de ejercicios y que el contador puede faltar en actividades normales. Se validaron detección y lectura de texto/MathML sobre fixtures locales; faltan prueba en vivo del código, interpretación verificable, identidad de actividad y correspondencia de campos, escritura reconocida por el editor, asociación automática del resultado al envío y avance comprobado. Cero ejercicios reales leídos automáticamente como ejercicio completo, escritos o enviados por el agente/extensión. El diagnóstico es de solo lectura; el adaptador y el backend impiden envíos reales incluso con una sesión Google.
 - **Windows**: instrucciones incluidas; no se ha ejecutado Windows en este entorno.
 - **CI de GitHub**: workflow incluido; los resultados anteriores corresponden a esta máquina y no acreditan un resultado remoto.
 

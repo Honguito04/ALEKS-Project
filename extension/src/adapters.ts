@@ -1,5 +1,6 @@
-import { BACKEND, ALEKS, exerciseSchema, type Adapter, type Exercise, type Detection, type Feedback } from './shared';
+import { BACKEND, exerciseSchema, type Adapter, type Exercise, type Detection, type Feedback } from './shared';
 import { inspectAleksEditor } from './aleks-editor';
+import { readAleksPrompt } from './aleks-prompt';
 
 function assertSignal(signal:AbortSignal) { signal.throwIfAborted(); }
 async function waitFor<T>(read:()=>T|undefined,signal:AbortSignal,timeout=8000):Promise<T> {
@@ -103,6 +104,7 @@ export class SimulatorAdapter implements Adapter {
 export class PendingAleksAdapter implements Adapter {
   async detect():Promise<Detection> {
     const editorObservation=inspectAleksEditor(document);
+    const promptObservation=await readAleksPrompt(document);
     const description={
       observed:'Se identificaron el editor numérico y el botón de centímetros cúbicos. ',
       missing:'No se encuentran todos los controles del fragmento de editor observado. ',
@@ -113,9 +115,10 @@ export class PendingAleksAdapter implements Adapter {
     const submit=editorObservation.submitControl.status==='observed' ? 'Botón Entregar identificado. ':'';
     const next=editorObservation.nextControl.status==='observed' ? 'Botón Siguiente identificado; no se ha confirmado el resultado del ejercicio. ':'';
     const result=editorObservation.resultMarker.status==='positive_marker' ? 'Señal positiva observada: Correcta y Siguiente. Aún no está asociada a una entrega de la extensión. ':'';
-    return {origin:ALEKS,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
-      editorObservation,
-      reason:description+readback+submit+result+(result?'':next)+'Inspección de solo lectura: faltan validar la lectura de actividad/enunciado, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
+    const prompt=promptObservation.status==='readable' ? 'Enunciado leído sin necesitar un contador de pregunta. Falta interpretar el problema y asociar sus campos. ':'Lectura del enunciado pendiente. ';
+    return {origin:location.origin,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
+      editorObservation,promptObservation,
+      reason:description+readback+submit+result+(result?'':next)+prompt+'Inspección de solo lectura: faltan validar la identidad de actividad, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
   }
   private unavailable():never {throw Error('Adaptador ALEKS pendiente de validación con la interfaz autenticada');}
   async read():Promise<Exercise> {return this.unavailable();}

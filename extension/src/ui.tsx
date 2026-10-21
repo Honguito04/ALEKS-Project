@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BACKEND, ALEKS, type Run, type Exercise, type Solution, type Detection } from './shared';
+import { BACKEND, ALEKS_ACTIVITY, type Run, type Exercise, type Solution, type Detection } from './shared';
 import './ui.css';
 
 type Tab = {id:number;title:string;url:string};
@@ -72,6 +72,7 @@ function App() {
       <button disabled={!selected || busy} onClick={()=>void attach()}>Leer actividad seleccionada</button>
       <p className="small">Abre el simulador en Chrome: <code>{BACKEND}/simulator/</code></p>
       {view.detection && <div className="inset"><strong>{view.detection.origin}</strong><p className="small">Actividad: {view.detection.activity}</p>
+        {view.detection.promptObservation?.status==='readable' ? <><p><strong>Enunciado leído</strong></p><p>{view.detection.promptObservation.statement}</p><p className="small">{view.detection.promptObservation.reason} Esta lectura no habilita envíos automáticos.</p></>:view.detection.promptObservation && <p className="small">{view.detection.promptObservation.reason}</p>}
         {view.detection.editorObservation && <p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) visibles y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>}
         {view.detection.editorObservation?.renderedAnswer.status==='readable' && <p>Respuesta visible en el editor: <strong>{view.detection.editorObservation.renderedAnswer.display}</strong>. Aceptación pendiente.</p>}
         {view.detection.editorObservation?.submitControl.status==='observed' && <p className="small">Botón «Entregar» identificado. La inspección no hace clic ni envía respuestas.</p>}
@@ -95,7 +96,8 @@ function App() {
     {options && <section><div className="section-label">CONFIGURACIÓN LOCAL</div><p>Backend fijo del MVP: <code>{BACKEND}</code>.</p><p>ID de esta extensión: <code>{chrome.runtime.id}</code></p><p>Configura este ID en <code>CHROME_EXTENSION_IDS</code> del backend. Google requiere un cliente OAuth web y el retorno <code>{BACKEND}/auth/google/callback</code>. Las claves se guardan exclusivamente en el backend.</p><p>No hay capturas de pantalla ni editores gráficos compatibles en esta versión.</p></section>}
     <section><div className="section-label">DATOS Y PERMISOS</div><div className="stack">
       <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{await rpc('clear');setView({});setNotice('Historial de la aplicación borrado.');})}>Borrar historial de la aplicación</button>
-      <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{const ok=await chrome.permissions.request({origins:[`${ALEKS}/*`]});if(!ok) throw Error('Permiso ALEKS no concedido');await refresh();setNotice('Permiso concedido. La integración real sigue pendiente de validación.');})}>Autorizar sitio ALEKS para inspección</button>
+      <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{const ok=await chrome.permissions.request({origins:[`${ALEKS_ACTIVITY}/*`]});if(!ok) throw Error('Permiso ALEKS no concedido');await refresh();setNotice(`Inspección autorizada en ${ALEKS_ACTIVITY}. Los envíos reales siguen pendientes de validación.`);})}>Autorizar sitio ALEKS para inspección</button>
+      <p className="small">Sitio de ejercicios confirmado: {ALEKS_ACTIVITY}. El permiso se solicita solo para ese origen.</p>
       <button className="danger" disabled={busy} onClick={()=>void attempt(async()=>{await rpc('revoke');setHealth(undefined);setView({});setTabs([]);setNotice('Permisos de los sitios revocados.');})}>Revocar permisos de sitios</button>
     </div></section>
     {error && <div className="error" role="alert">{error}</div>}{notice && <p role="status">{notice}</p>}

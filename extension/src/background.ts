@@ -1,4 +1,4 @@
-import { BACKEND, ALEKS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, type Run } from './shared';
+import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, type Run } from './shared';
 
 type Auth = {token:string;mode:'demo'|'google'};
 type Consent = {origin:string;activity:string;limits:ReturnType<typeof limitsSchema.parse>};
@@ -82,7 +82,7 @@ async function handleUI(m:Record<string,unknown>) {
     }
     case 'revoke': {
       await stopAll();await chrome.storage.local.clear();
-      await chrome.permissions.remove({origins:[`${BACKEND}/*`,`${ALEKS}/*`]});return true;
+      await chrome.permissions.remove({origins:[`${BACKEND}/*`,...ALEKS_ORIGINS.map(origin=>`${origin}/*`)]});return true;
     }
     case 'tabs': return (await chrome.tabs.query({})).filter(t=>t.id && t.url && allowedTab(t.url)).map(t=>({id:t.id,title:t.title,url:t.url}));
     case 'attach': return attach(m.tabId);

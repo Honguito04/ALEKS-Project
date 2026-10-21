@@ -1,6 +1,8 @@
 import { z } from 'zod';
 export const BACKEND = 'http://127.0.0.1:8000';
 export const ALEKS = 'https://latam.aleks.com';
+export const ALEKS_ACTIVITY = 'https://latam-awu.aleks.com';
+export const ALEKS_ORIGINS:string[] = [ALEKS,ALEKS_ACTIVITY];
 export const mathSchema = z.object({
   family:z.enum(['arithmetic','percentage','proportion','linear','quadratic','single_choice','cylinder_volume']),
   expression:z.string().max(240).nullable().optional(), lhs:z.string().max(240).nullable().optional(), rhs:z.string().max(240).nullable().optional(),
@@ -37,7 +39,18 @@ export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
   renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;resultMarker:ResultObservation;
 }
-export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation}
+export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:string} |
+  {kind:'row';items:PromptMath[]} | {kind:'sqrt';items:PromptMath[]} |
+  {kind:'fraction';numerator:PromptMath;denominator:PromptMath} |
+  {kind:'power';base:PromptMath;exponent:PromptMath} |
+  {kind:'root';radicand:PromptMath;index:PromptMath} |
+  {kind:'subscript';base:PromptMath;index:PromptMath};
+export interface PromptObservation {
+  status:'readable'|'missing'|'ambiguous'|'unsupported';reason:string;
+  statement?:string;mathematics?:PromptMath[];fingerprint?:string;multiplePartsDetected?:boolean;
+  autoSubmitSupported:false;
+}
+export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation;promptObservation?:PromptObservation}
 export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}
 export interface Adapter {
   detect():Promise<Detection>;
@@ -64,4 +77,4 @@ export function simulatorURL(raw:string) {
   const u=new URL(raw);
   return u.origin===BACKEND && (u.pathname==='/simulator' || u.pathname.startsWith('/simulator/'));
 }
-export function allowedTab(raw:string) { const u=new URL(raw); return simulatorURL(raw) || u.origin===ALEKS; }
+export function allowedTab(raw:string) { const u=new URL(raw); return simulatorURL(raw) || ALEKS_ORIGINS.includes(u.origin); }
