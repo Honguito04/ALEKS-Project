@@ -1,5 +1,20 @@
 import type { EditorObservation, EditorReadback, ControlObservation, ResultObservation } from './shared';
 
+function inputBlockers(element:HTMLInputElement) {
+  const reasons=new Set<keyof EditorObservation['inputDiagnostics']['blockedBy']>();
+  const view=element.ownerDocument.defaultView;
+  if(!view){reasons.add('noView');return reasons;}
+  if(!element.getClientRects().length)reasons.add('noLayout');
+  if(element.closest('[hidden]'))reasons.add('hiddenAttribute');
+  for(let parent:HTMLElement|null=element;parent;parent=parent.parentElement) {
+    const style=view.getComputedStyle(parent);
+    if(style.display==='none')reasons.add('displayNone');
+    if(style.visibility==='hidden' || style.visibility==='collapse')reasons.add('visibilityHidden');
+    if(style.opacity==='0')reasons.add('opacityZero');
+  }
+  return reasons;
+}
+
 function painted(element:HTMLElement) {
   const view=element.ownerDocument.defaultView;
   if(!view || !element.getClientRects().length || element.closest('[hidden]'))return false;
@@ -73,11 +88,14 @@ function observeResult(document:Document,next:ControlObservation,submit:ControlO
 export function inspectAleksEditor(document:Document):EditorObservation {
   const matches=[...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')];
   const inputs=matches.filter(visible);
+  const blockedBy={noLayout:0,hiddenAttribute:0,displayNone:0,visibilityHidden:0,opacityZero:0,noView:0};
+  for(const input of matches)for(const reason of inputBlockers(input))blockedBy[reason]++;
+  const roots=new Set(matches.map(input=>input.closest<HTMLElement>('.ansed_root')).filter((root):root is HTMLElement=>root!==null));
   // Solo conteos: no se leen valores, IDs, HTML ni URLs de marcos. Un input
   // transitorio oculto no se convierte en un campo listo para escribir.
   const inputDiagnostics={presentCount:matches.length,paintedCount:matches.filter(painted).length,
     ariaHiddenCount:matches.filter(input=>input.closest('[aria-hidden="true"]')).length,
-    frameCount:document.querySelectorAll('iframe,frame').length};
+    frameCount:document.querySelectorAll('iframe,frame').length,visibleRootCount:[...roots].filter(painted).length,blockedBy};
   const units=[...document.querySelectorAll<HTMLButtonElement>('button[aria-label="Centímetros cúbicos"]')].filter(visible);
   const labels=[...document.querySelectorAll<HTMLElement>('div.textContent')].filter(el=>visible(el) && el.textContent?.trim()==='Entregar');
   let status:EditorObservation['status']='observed';

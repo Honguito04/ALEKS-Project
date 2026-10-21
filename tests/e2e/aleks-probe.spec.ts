@@ -56,6 +56,35 @@ test('distingue un input oculto por CSS de uno ausente sin leer su valor',async(
   expect(result).toMatchObject({status:'missing',inputCount:0,inputDiagnostics:{presentCount:1,paintedCount:0,ariaHiddenCount:0,frameCount:0}});
   expect(JSON.stringify(result)).not.toContain('PRIVATE_INPUT_VALUE');
 });
+for(const state of ['display-none','visibility-hidden','opacity-zero','ancestor-opacity','hidden-attribute'] as const) {
+  test(`detalla el motivo ${state} y reconoce el contenedor pintado sin habilitar su input`,async({page})=>{
+    const result=await page.evaluate(async state=>{
+      const input=document.querySelector<HTMLInputElement>('.ansed_input')!;
+      const root=document.createElement('div');root.className='ansed_root';root.style.cssText='width:250px;height:62px';
+      input.replaceWith(root);root.append(input);
+      if(state==='display-none')input.style.display='none';
+      if(state==='visibility-hidden')input.style.visibility='hidden';
+      if(state==='opacity-zero')input.style.opacity='0';
+      if(state==='hidden-attribute')input.hidden=true;
+      if(state==='ancestor-opacity') {
+        const wrapper=document.createElement('div');wrapper.style.opacity='0';input.replaceWith(wrapper);wrapper.append(input);
+      }
+      const before=document.body.innerHTML;let events=0;
+      for(const name of ['input','change','click'])document.addEventListener(name,()=>events++);
+      const detection=await window.pendingAdapter.detect();
+      return {detection,events,unchanged:before===document.body.innerHTML};
+    },state);
+    expect(result).toMatchObject({events:0,unchanged:true,detection:{supported:false,editorObservation:{inputCount:0,
+      inputDiagnostics:{presentCount:1,paintedCount:0,visibleRootCount:1}}}});
+    const blockers=result.detection.editorObservation?.inputDiagnostics.blockedBy;
+    expect(blockers).toBeDefined();
+    expect(blockers?.displayNone).toBe(state==='display-none'||state==='hidden-attribute'?1:0);
+    expect(blockers?.visibilityHidden).toBe(state==='visibility-hidden'?1:0);
+    expect(blockers?.opacityZero).toBe(state==='opacity-zero'||state==='ancestor-opacity'?1:0);
+    expect(blockers?.hiddenAttribute).toBe(state==='hidden-attribute'?1:0);
+    expect(blockers?.noLayout).toBe(state==='display-none'||state==='hidden-attribute'?1:0);
+  });
+}
 test('cuenta marcos sin explorar sus campos, URLs o contenido',async({page})=>{
   const result=await page.evaluate(()=>{
     document.querySelector('.ansed_input')!.remove();

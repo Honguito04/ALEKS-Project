@@ -4,6 +4,10 @@ class Unreadable extends Error {}
 const MAX_TEXT=4000, MAX_MATH=64, MAX_DOM_NODES=2000;
 const normalize=(text:string)=>text.replace(/\s+/gu,' ').replace(/\s+([,.;:!?])/gu,'$1').trim();
 const redactURLs=(text:string)=>text.replace(/https?:\/\/[^\s<>]+/giu,'[enlace]');
+function operatorCodes(value:string) {
+  const points=Array.from(value);
+  return points.slice(0,8).map(char=>`U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4,'0')}`).join(' ')+(points.length>8?' …':'');
+}
 
 /** Convierte XML inerte en un AST cerrado. No inserta HTML ni conserva atributos,
  * URLs, identificadores, handlers o anotaciones alternativas del renderizador. */
@@ -17,11 +21,14 @@ export function parsePromptMath(xml:string):PromptMath {
     if(element.namespaceURI && element.namespaceURI!=='http://www.w3.org/1998/Math/MathML')throw new Unreadable('Espacio de nombres MathML no admitido.');
     const tag=element.localName,children=[...element.children];
     if(['mn','mi','mo','mtext'].includes(tag)) {
-      const value=normalize(element.textContent || '');
+      const raw=element.textContent || '',value=normalize(raw);
+      // ALEKS usa <mn> </mn> como separación en m∠AOB = 160°.
+      // Se conserva como espacio, nunca como un número ni un cero implícito.
+      if(tag==='mn' && !children.length && raw.length>0 && !value)return {kind:'space'};
       if(children.length || !value || value.length>80)throw new Unreadable('Token matemático vacío o no admitido.');
       if(tag==='mn' && !/^[+−-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/u.test(value))throw new Unreadable('No se puede interpretar el número MathML sin ambigüedad.');
       if(tag==='mi' && !/^\p{L}{1,16}$/u.test(value))throw new Unreadable('Identificador matemático no admitido.');
-      if(tag==='mo' && !['+','-','−','×','÷','*','/','=','<','>','≤','≥','≠','±','%','(',')','[',']','{','}',',',';',':','|','⋅','∞','∈','∉','∩','∪'].includes(value))throw new Unreadable('Operador MathML no admitido.');
+      if(tag==='mo' && !['+','-','−','×','÷','*','/','=','<','>','≤','≥','≠','±','%','(',')','[',']','{','}',',',';',':','|','⋅','∞','∈','∉','∩','∪','∠','°','π','︵'].includes(value))throw new Unreadable(`Operador MathML no admitido (${operatorCodes(value)}).`);
       return {kind:tag==='mn'?'number':tag==='mi'?'identifier':tag==='mo'?'operator':'text',value:redactURLs(value)};
     }
     if([...element.childNodes].some(n=>n.nodeType===3 && n.textContent?.trim()))throw new Unreadable('Texto matemático fuera de un token reconocido.');
@@ -35,11 +42,12 @@ export function parsePromptMath(xml:string):PromptMath {
       if(!children.length)throw new Unreadable('Representación matemática vacía.');
       return {kind:tag==='msqrt'?'sqrt':'row',items:children.map(c=>visit(c,depth+1))};
     }
-    if(['mfrac','msup','mroot','msub'].includes(tag) && children.length===2) {
+    if(['mfrac','msup','mroot','msub','mover'].includes(tag) && children.length===2) {
       const left=visit(children[0],depth+1),right=visit(children[1],depth+1);
       if(tag==='mfrac')return {kind:'fraction',numerator:left,denominator:right};
       if(tag==='msup')return {kind:'power',base:left,exponent:right};
       if(tag==='mroot')return {kind:'root',radicand:left,index:right};
+      if(tag==='mover')return {kind:'over',base:left,mark:right};
       return {kind:'subscript',base:left,index:right};
     }
     throw new Unreadable(`Estructura MathML no admitida: ${tag}.`);
@@ -49,11 +57,13 @@ export function parsePromptMath(xml:string):PromptMath {
 
 export function promptMathText(math:PromptMath):string {
   if('value' in math)return math.value;
+  if(math.kind==='space')return ' ';
   if(math.kind==='row')return math.items.map(promptMathText).join(' ');
   if(math.kind==='sqrt')return `sqrt(${math.items.map(promptMathText).join(' ')})`;
   if(math.kind==='fraction')return `(${promptMathText(math.numerator)})/(${promptMathText(math.denominator)})`;
   if(math.kind==='power')return `(${promptMathText(math.base)})^(${promptMathText(math.exponent)})`;
   if(math.kind==='root')return `root(${promptMathText(math.radicand)}; ${promptMathText(math.index)})`;
+  if(math.kind==='over')return math.mark.kind==='operator' && math.mark.value==='︵' ? `arco(${promptMathText(math.base)})`:`over(${promptMathText(math.base)}; ${promptMathText(math.mark)})`;
   return `(${promptMathText(math.base)})_(${promptMathText(math.index)})`;
 }
 
@@ -67,7 +77,7 @@ function hidden(element:Element) {
   return false;
 }
 
-type PromptSnapshot={statement:string;mathematics:PromptMath[];multiplePartsDetected:boolean};
+type PromptSnapshot={statement:string;mathematics:PromptMath[];multiplePartsDetected:boolean;diagramReferenceDetected:boolean};
 function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'} {
   const roots=[...document.querySelectorAll<HTMLElement>('#algoPrompt')].filter(root=>!hidden(root));
   if(roots.length!==1)return {error:roots.length?'ambiguous' as const:'missing' as const};
@@ -104,7 +114,8 @@ function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'
   walk(root,0);
   const statement=normalize(redactURLs(chunks.join('')));
   if(!statement)throw new Unreadable('No hay texto de enunciado legible.');
-  return {statement,mathematics,multiplePartsDetected:[...statement.matchAll(/\bSuceso\s+[A-Z]\s*:/gu)].length>1};
+  return {statement,mathematics,multiplePartsDetected:[...statement.matchAll(/\bSuceso\s+[A-Z]\s*:/gu)].length>1,
+    diagramReferenceDetected:/\bregi[oó]n\s+sombreada\b/iu.test(statement)};
 }
 
 /** Lectura acotada al contenedor observado. El contador/título es opcional y no
@@ -117,7 +128,9 @@ export async function readAleksPrompt(document:Document):Promise<PromptObservati
     const canonical=JSON.stringify(first);
     const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical)))].map(n=>n.toString(16).padStart(2,'0')).join('');
     if(canonical!==JSON.stringify(snapshot(document)))return {status:'ambiguous',reason:'El enunciado cambió durante la lectura.',autoSubmitSupported:false};
-    return {status:'readable',reason:first.multiplePartsDetected?'Se detectan varios sucesos; falta validar sus campos de respuesta.':'Enunciado leído; interpretación y controles pendientes de validar.',...first,fingerprint,autoSubmitSupported:false};
+    const reason=first.diagramReferenceDetected?'Texto leído; la referencia a una región sombreada requiere revisar el diagrama. No se ha interpretado esa región.':
+      first.multiplePartsDetected?'Se detectan varios sucesos; falta validar sus campos de respuesta.':'Enunciado leído; interpretación y controles pendientes de validar.';
+    return {status:'readable',reason,...first,fingerprint,autoSubmitSupported:false};
   } catch(error) {
     return {status:'unsupported',reason:error instanceof Unreadable?error.message:'No se pudo leer el enunciado completo.',autoSubmitSupported:false};
   }

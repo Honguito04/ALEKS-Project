@@ -79,6 +79,53 @@ test('mstyle conserva la agrupación y orden de fracciones, potencias y raíces 
   expect(result.text).toBe('(1)/(2) + (cm)^(3) + sqrt(5)');
   expect(JSON.stringify(result.styled)).not.toMatch(/PRIVATE_STYLE_ID|onclick|fixture|green|mathsize|scriptlevel/);
 });
+test('lee el fragmento real de círculo, arco, ángulo, grados y pi sin interpretar la región sombreada',async({page})=>{
+  const circle=await readFile('tests/fixtures/aleks-circle-prompt-fragment.html','utf8');
+  await page.route('**/circle-fixture',r=>r.fulfill({contentType:'text/html',body:circle}));
+  await page.goto('/circle-fixture');await page.addScriptTag({url:'/__probe.js'});
+  const result=await page.evaluate(async()=>{
+    // Restituye el p > span > div del DOM generado por ALEKS sin que el
+    // parser HTML separe el renderizador de su propietario MathML.
+    const wrapper=document.querySelector('[data-fixture-paragraph]')!,paragraph=document.createElement('p');
+    paragraph.append(...wrapper.childNodes);wrapper.replaceWith(paragraph);
+    const before=document.body.innerHTML;let events=0;
+    for(const name of ['input','change','click'])document.addEventListener(name,()=>events++);
+    const detection=await window.pendingAdapter.detect();
+    return {detection,events,unchanged:before===document.body.innerHTML};
+  });
+  expect(result.detection.promptObservation?.status,result.detection.promptObservation?.reason).toBe('readable');
+  expect(result).toMatchObject({events:0,unchanged:true,detection:{supported:false,session:false,promptObservation:{status:'readable',diagramReferenceDetected:true,autoSubmitSupported:false}}});
+  const prompt=result.detection.promptObservation!;
+  expect(prompt.statement).toBe('El círculo a continuación tiene su centro en O, y su radio es 3 cm. Dado que m ∠ AOB = 160 °, hallar la longitud de arco(AB) y el área de la región sombreada. Dar respuestas exactas en términos de π, e incluir las unidades correctas.');
+  expect(prompt.reason).toContain('No se ha interpretado esa región');
+  expect(prompt.mathematics).toHaveLength(5);
+  expect(prompt.mathematics?.[2]).toEqual({kind:'row',items:[{kind:'identifier',value:'m'},{kind:'operator',value:'∠'},{kind:'identifier',value:'AOB'},{kind:'space'},{kind:'operator',value:'='},{kind:'number',value:'160'},{kind:'operator',value:'°'}]});
+  expect(prompt.mathematics?.[3]).toEqual({kind:'row',items:[{kind:'over',base:{kind:'row',items:[{kind:'identifier',value:'AB'}]},mark:{kind:'operator',value:'︵'}}]});
+});
+for(const xml of ['<math><mn/></math>','<math><mo> </mo></math>','<math><mover><mi>AB</mi></mover></math>','<math><mover><mi>AB</mi><mo>︵</mo><mn>2</mn></mover></math>']) {
+  test(`no inventa tokens o argumentos ausentes: ${xml}`,async({page})=>{
+    const result=await page.evaluate(async xml=>{
+      document.querySelector('[mathml]')!.setAttribute('mathml',xml);
+      return window.aleksPrompt(document);
+    },xml);
+    expect(result.status).toBe('unsupported');expect(result.statement).toBeUndefined();expect(result.mathematics).toBeUndefined();
+  });
+}
+for(const sample of [
+  {xml:'<math><mo>∑</mo></math>',codes:'U+2211'},
+  {xml:'<math><mo>🧮</mo></math>',codes:'U+1F9EE'},
+  {xml:'<math><mo>https://example.invalid/PRIVATE_TOKEN</mo></math>',codes:'U+0068 U+0074 U+0074 U+0070 U+0073 U+003A U+002F U+002F …'}
+]) {
+  test(`identifica el operador desconocido por códigos Unicode acotados: ${sample.codes}`,async({page})=>{
+    const result=await page.evaluate(async xml=>{
+      document.querySelector('[mathml]')!.setAttribute('mathml',xml);
+      return window.aleksPrompt(document);
+    },sample.xml);
+    expect(result.status).toBe('unsupported');expect(result.reason).toContain(sample.codes);
+    expect(result.reason).not.toMatch(/PRIVATE_TOKEN|example\.invalid|https:\/\//);
+    expect(result.statement).toBeUndefined();expect(result.mathematics).toBeUndefined();expect(result.autoSubmitSupported).toBe(false);
+  });
+}
 for(const sample of [
   {name:'vacío',xml:'<math><mstyle/></math>',reason:'vacía'},
   {name:'con texto fuera de tokens',xml:'<math><mstyle>1 + 2</mstyle></math>',reason:'fuera de un token'},

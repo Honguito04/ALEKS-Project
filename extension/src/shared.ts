@@ -37,18 +37,21 @@ export interface ResultObservation {
 }
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
-  inputDiagnostics:{presentCount:number;paintedCount:number;ariaHiddenCount:number;frameCount:number};
+  inputDiagnostics:{presentCount:number;paintedCount:number;ariaHiddenCount:number;frameCount:number;visibleRootCount:number;
+    blockedBy:{noLayout:number;hiddenAttribute:number;displayNone:number;visibilityHidden:number;opacityZero:number;noView:number}};
   renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;resultMarker:ResultObservation;
 }
 export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:string} |
+  {kind:'space'} |
   {kind:'row';items:PromptMath[]} | {kind:'sqrt';items:PromptMath[]} |
   {kind:'fraction';numerator:PromptMath;denominator:PromptMath} |
   {kind:'power';base:PromptMath;exponent:PromptMath} |
   {kind:'root';radicand:PromptMath;index:PromptMath} |
-  {kind:'subscript';base:PromptMath;index:PromptMath};
+  {kind:'subscript';base:PromptMath;index:PromptMath} |
+  {kind:'over';base:PromptMath;mark:PromptMath};
 export interface PromptObservation {
   status:'readable'|'missing'|'ambiguous'|'unsupported';reason:string;
-  statement?:string;mathematics?:PromptMath[];fingerprint?:string;multiplePartsDetected?:boolean;
+  statement?:string;mathematics?:PromptMath[];fingerprint?:string;multiplePartsDetected?:boolean;diagramReferenceDetected?:boolean;
   autoSubmitSupported:false;
 }
 export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation;promptObservation?:PromptObservation}

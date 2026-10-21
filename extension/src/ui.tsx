@@ -45,6 +45,7 @@ function App() {
   });}
   const run=view.run;
   const operations=Object.values(run?.operations || {});
+  const editorDiagnostics=view.detection?.editorObservation?.inputDiagnostics;
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">MVP · El recorrido automático está habilitado en el simulador local. ALEKS está pendiente de validación.</div>
@@ -74,7 +75,10 @@ function App() {
       {view.detection && <div className="inset"><strong>{view.detection.origin}</strong><p className="small">Actividad: {view.detection.activity}</p>
         {view.detection.promptObservation?.status==='readable' ? <><p><strong>Enunciado leído</strong></p><p>{view.detection.promptObservation.statement}</p><p className="small">{view.detection.promptObservation.reason} Esta lectura no habilita envíos automáticos.</p></>:view.detection.promptObservation && <p className="small">{view.detection.promptObservation.reason}</p>}
         {view.detection.editorObservation && <><p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) reconocidos y visibles, y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>
-          <details><summary>Detalle del diagnóstico del editor</summary><p className="small">Coincidencias del editor en la página: {view.detection.editorObservation.inputDiagnostics.presentCount}. Con representación visual: {view.detection.editorObservation.inputDiagnostics.paintedCount}. Marcadas como ocultas para accesibilidad: {view.detection.editorObservation.inputDiagnostics.ariaHiddenCount}. Marcos incrustados: {view.detection.editorObservation.inputDiagnostics.frameCount}. Este detalle no identifica qué respuesta corresponde a cada recuadro ni inspecciona el contenido de los marcos.</p></details></>}
+          {editorDiagnostics && <details><summary>Detalle del diagnóstico del editor</summary><p className="small">Coincidencias del editor en la página: {editorDiagnostics.presentCount}. Con representación visual: {editorDiagnostics.paintedCount}. Marcadas como ocultas para accesibilidad: {editorDiagnostics.ariaHiddenCount}. Marcos incrustados: {editorDiagnostics.frameCount}.
+            {editorDiagnostics.visibleRootCount!==undefined && <> Contenedores visuales del editor: {editorDiagnostics.visibleRootCount}.</>}
+            {editorDiagnostics.blockedBy && <> Motivos de exclusión (pueden coincidir): sin caja de disposición: {editorDiagnostics.blockedBy.noLayout}; atributo hidden: {editorDiagnostics.blockedBy.hiddenAttribute}; display:none: {editorDiagnostics.blockedBy.displayNone}; visibility:hidden/collapse: {editorDiagnostics.blockedBy.visibilityHidden}; opacity:0: {editorDiagnostics.blockedBy.opacityZero}; documento sin vista: {editorDiagnostics.blockedBy.noView}.</>}
+            {' '}Este detalle no identifica qué respuesta corresponde a cada recuadro ni inspecciona el contenido de los marcos.</p></details>}</>}
         {view.detection.editorObservation?.renderedAnswer.status==='readable' && <p>Respuesta visible en el editor: <strong>{view.detection.editorObservation.renderedAnswer.display}</strong>. Aceptación pendiente.</p>}
         {view.detection.editorObservation?.submitControl.status==='observed' && <p className="small">Botón «Entregar» identificado. La inspección no hace clic ni envía respuestas.</p>}
         {view.detection.editorObservation?.resultMarker.status==='positive_marker' ? <p>Mensaje «Correcta» y botón «Siguiente» observados. Falta vincularlos a una entrega de la extensión.</p>:view.detection.editorObservation?.nextControl.status==='observed' && <p className="small">Botón «Siguiente» identificado. Falta asociar el resultado al ejercicio enviado; no se avanza automáticamente.</p>}

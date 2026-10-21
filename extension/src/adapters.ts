@@ -116,9 +116,11 @@ export class PendingAleksAdapter implements Adapter {
     const next=editorObservation.nextControl.status==='observed' ? 'Botón Siguiente identificado; no se ha confirmado el resultado del ejercicio. ':'';
     const result=editorObservation.resultMarker.status==='positive_marker' ? 'Señal positiva observada: Correcta y Siguiente. Aún no está asociada a una entrega de la extensión. ':'';
     const prompt=promptObservation.status==='readable' ? 'Enunciado leído sin necesitar un contador de pregunta. Falta interpretar el problema y asociar sus campos. ':'Lectura del enunciado pendiente. ';
+    const roots=editorObservation.inputDiagnostics.visibleRootCount;
+    const visual=roots>0 && editorObservation.inputCount===0 ? `Se reconocen ${roots} contenedor(es) visual(es) del editor; sus inputs no pasan el filtro de visibilidad. `:'';
     return {origin:location.origin,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
       editorObservation,promptObservation,
-      reason:description+readback+submit+result+(result?'':next)+prompt+'Inspección de solo lectura: faltan validar la identidad de actividad, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
+      reason:description+visual+readback+submit+result+(result?'':next)+prompt+'Inspección de solo lectura: faltan validar la identidad de actividad, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
   }
   private unavailable():never {throw Error('Adaptador ALEKS pendiente de validación con la interfaz autenticada');}
   async read():Promise<Exercise> {return this.unavailable();}
