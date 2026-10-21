@@ -4,6 +4,8 @@ Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymP
 
 **El recorrido automático se implementa en el simulador. La integración real con ALEKS está pendiente de validación y sus envíos están deshabilitados.** No se han inventado selectores ni probado una cuenta de ALEKS. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
 
+¿Es tu primera instalación y no tienes experiencia en programación? Sigue la [guía desde cero para Windows](docs/GUIA_DESDE_CERO.md): incluye descarga, instalación, primera prueba y lectura en ALEKS.
+
 ## Inicio rápido en Windows (PowerShell)
 
 Requisitos: Python **3.12**, Node.js **24**, npm y Chrome **116 o posterior**. El backend debe ejecutarse en el mismo equipo que Chrome. No requiere administrador, componentes nativos de automatización ni cuentas externas para la demostración.
