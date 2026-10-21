@@ -115,7 +115,11 @@ async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.Mess
   if(m.type==='save') {
     const run=runSchema.parse(m.run);
     if(run.origin!==consent.origin || run.activity!==consent.activity) throw Error('Actividad fuera de la autorización');
-    if(JSON.stringify(run.limits)!==JSON.stringify(consent.limits)) throw Error('Los límites no coinciden con la autorización');
+    // El almacenamiento puede devolver las propiedades en otro orden.
+    // La autorización depende de sus valores, no del orden de serialización.
+    const authorized=limitsSchema.parse(consent.limits);
+    if(run.limits.maxExercises!==authorized.maxExercises || run.limits.maxMinutes!==authorized.maxMinutes ||
+      run.limits.maxAICalls!==authorized.maxAICalls || run.limits.preview!==authorized.preview) throw Error('Los límites no coinciden con la autorización');
     await chrome.storage.local.set({[key]:run});return true;
   }
   if(m.type==='solve') {

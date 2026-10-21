@@ -1,5 +1,5 @@
 import { beforeEach,it,expect,vi } from 'vitest';
-import { BACKEND,ALEKS_ACTIVITY,allowedTab,type Exercise } from '../../extension/src/shared';
+import { BACKEND,ALEKS_ACTIVITY,allowedTab,type Exercise,type Run,type Limits } from '../../extension/src/shared';
 
 const id='fjjgjakbpjhhegekcjogilmfheaicjge';
 const ext=`chrome-extension://${id}/`;
@@ -11,6 +11,7 @@ let tabsSend:ReturnType<typeof vi.fn>;
 let fetchMock:ReturnType<typeof vi.fn>;
 const limits={maxExercises:10,maxMinutes:10,maxAICalls:0,preview:false};
 const exercise:Exercise={source:'simulator',activity_id:'activity',fingerprint:'a'.repeat(64),statement:'1+1',math:{family:'arithmetic',expression:'1+1'},fields:[{id:'answer',kind:'text'}],choices:[],domain:'real',units:'',format:'exact',decimal_places:2,evidence:['test'],ambiguities:[]};
+const run=(authorizedLimits:Limits=limits):Run=>({id:'00000000-0000-4000-8000-000000000001',origin:BACKEND,activity:'activity',state:'INACTIVO',limits:authorizedLimits,started:Date.now(),count:0,aiCalls:0,message:'Autorización de sesión registrada',operations:{},events:[]});
 function store(data:Record<string,unknown>) {
   return {get:async(keys:string|string[]|null)=>keys===null ? structuredClone(data):Object.fromEntries((typeof keys==='string'?[keys]:keys).filter(k=>k in data).map(k=>[k,structuredClone(data[k])])),
     set:async(values:Record<string,unknown>)=>{Object.assign(data,structuredClone(values));},remove:async(keys:string|string[])=>{for(const k of typeof keys==='string'?[keys]:keys)delete data[k];},clear:async()=>{for(const k of Object.keys(data))delete data[k];},setAccessLevel:async()=>{}};
@@ -52,6 +53,25 @@ it('registra actividad y límites autorizados antes de arrancar',async()=>{
   const response=await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits});
   expect(response.ok).toBe(true);expect(local['consent:7']).toEqual({origin:BACKEND,activity:'activity',limits});
   expect(tabsSend.mock.calls.at(-1)?.[1].type).toBe('start');
+});
+it('guarda la ejecución aunque el almacenamiento reordene las propiedades de los mismos límites',async()=>{
+  expect((await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits})).ok).toBe(true);
+  const consent=local['consent:7'] as {limits:Limits};
+  consent.limits=Object.fromEntries(Object.entries(consent.limits).sort(([a],[b])=>a.localeCompare(b))) as Limits;
+  expect(JSON.stringify(consent.limits)).not.toBe(JSON.stringify(limits));
+  const current=run();
+  const response=await send({scope:'content',type:'save',run:current},content());
+  expect(response).toEqual({ok:true,data:true});
+  expect((await send({scope:'content',type:'load'},content())).data).toEqual(current);
+});
+it.each([
+  {maxExercises:11}, {maxMinutes:11}, {maxAICalls:1}, {preview:true}
+])('rechaza un cambio real de límites %j y conserva la ejecución anterior',async(change)=>{
+  local['consent:7']={origin:BACKEND,activity:'activity',limits};
+  const current=run();local['run:7']=structuredClone(current);
+  const response=await send({scope:'content',type:'save',run:{...current,limits:{...limits,...change}}},content());
+  expect(response).toEqual({ok:false,error:'Los límites no coinciden con la autorización'});
+  expect(local['run:7']).toEqual(current);
 });
 it('no permite iniciar en ALEKS ni con otra actividad o sin identidad',async()=>{
   url='https://latam.aleks.com/login';expect((await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits})).ok).toBe(false);

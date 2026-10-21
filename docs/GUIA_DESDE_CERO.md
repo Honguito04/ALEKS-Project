@@ -183,7 +183,22 @@ Cuando haya una actualización del proyecto, descarga el ZIP nuevo en otra carpe
 | El panel no conecta al servicio local | Pulsa **Conectar backend y simulador** y concede el permiso. Comprueba también que el servicio siga encendido. |
 | El laboratorio no aparece en la lista | Abre su pestaña en el mismo Chrome y pulsa **Actualizar pestañas**. |
 | **Autorizar e iniciar** está deshabilitado en el simulador | Entra en demostración, selecciona el laboratorio y pulsa **Leer actividad seleccionada**. |
+| «Los límites no coinciden con la autorización» al iniciar | Actualiza la extensión con la corrección indicada debajo de esta tabla. Una versión anterior comparaba también el orden interno de las propiedades, aunque los valores fueran iguales. |
 | La pestaña de ALEKS no aparece | Concede el permiso del paso 8, comprueba el dominio y pulsa **Actualizar pestañas**. |
 | No se encuentra un enunciado visible en ALEKS | Comprueba que estés viendo un ejercicio. Algunas pantallas o estructuras todavía requieren ampliar el lector. |
 
 Si necesitas ayuda con un error, indica el número de paso y copia el mensaje que aparece, omitiendo información de tu cuenta. No necesitas compartir contraseñas, cookies ni enlaces completos de sesión de ALEKS.
+
+**Actualizar la corrección de límites conservando tu instalación**
+
+Descarga el ZIP actualizado desde **Code → Download ZIP** en GitHub y extráelo en una carpeta aparte. Abre la carpeta del proyecto nuevo y copia su carpeta **extension** completa. Pégala dentro de la carpeta original del proyecto que ya habías instalado; acepta reemplazar los archivos existentes. La carpeta original es la que contiene `package.json`, `backend`, `.venv` y `node_modules`. No necesitas copiar `.env` ni reinstalar Python o Node.
+
+Abre **otra ventana de PowerShell desde la carpeta original**, conservando abierta la del servicio, y ejecuta:
+
+```powershell
+npm.cmd run build
+```
+
+Cuando termine, abre `chrome://extensions` y pulsa el botón de recargar, con flecha circular, de la tarjeta del asistente. Actualiza también la pestaña del simulador con **F5** y vuelve a abrir el panel.
+
+Conecta el backend, entra en demostración si es necesario, actualiza la lista de pestañas y lee el laboratorio. Si **Detener** está habilitado, púlsalo. Después pulsa **Reiniciar actividad** en el laboratorio, vuelve a **Leer actividad seleccionada** y pulsa **Autorizar e iniciar** con 10 ejercicios, 10 minutos y 0 llamadas IA. La vista previa debe estar desmarcada para el recorrido completo.

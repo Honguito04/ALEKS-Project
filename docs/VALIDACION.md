@@ -6,7 +6,7 @@ Fecha: 20 de octubre de 2026. Entorno Linux, Python 3.12.14, Node 24.19.0 y Chro
 | --- | --- |
 | `bash scripts/setup.sh` | Correcta, incluida reinstalación con lockfiles y conservación de `.env` existente |
 | TypeScript + `npm run build` | Correctos; `dist/` incluye manifest MV3, panel, opciones, worker modular y content script IIFE |
-| `npm test` | **30 pasadas**: 20 del controlador y 10 de fronteras de mensajes del worker |
+| `npm test` | **35 pasadas**: 20 del controlador y 15 de fronteras de mensajes del worker |
 | `.venv/bin/python -m pytest backend/tests -q` | **49 pasadas**, ninguna omitida; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
 | `npm run test:e2e` | **60 pasadas**, ninguna omitida: 10 del simulador, 36 del diagnóstico de editor y 14 del lector de enunciados |
 | `pip check` | Sin dependencias incompatibles |
@@ -29,6 +29,8 @@ Diez pruebas del mensaje «Correcta» reconocen la señal positiva aportada junt
 Las catorce pruebas del enunciado usan el fragmento de dados desidentificado en `#algoPrompt`. Comprueban la lectura exacta de texto y MathML sin duplicados, sin contador/título, clics, escritura o solicitudes de red; conservación estructural de fracciones, exponentes y raíces; exclusión de URLs, IDs y anotaciones; huella estable ante cambios ajenos al enunciado y descarte si este cambia durante el hash. Rechazan enunciados ausentes/duplicados, XML inválido, MathML ausente o no admitido, imágenes, tamaños excesivos y declaraciones de entidades. El diagnóstico permanece separado de un `Exercise` ejecutable y no activa la resolución ni el envío de los dos sucesos.
 
 Dos pruebas unitarias adicionales verifican el origen confirmado `https://latam-awu.aleks.com`: adjuntar el diagnóstico con permiso, rechazar inicio/transporte real y orígenes parecidos con otro sufijo, protocolo o puerto, y retirar su permiso al revocar. Las APIs de permisos están simuladas en estas pruebas; el diálogo nativo de Chrome requiere comprobación manual.
+
+La corrección de «Los límites no coinciden con la autorización» añade cinco pruebas del worker. La regresión reprodujo ese mismo error antes del cambio al devolver los límites autorizados con sus propiedades en otro orden. Ahora se comparan los cuatro valores validados, en lugar de sus cadenas JSON, y la ejecución se guarda correctamente. Las otras cuatro pruebas comprueban que cambiar ejercicios, minutos, presupuesto de IA o vista previa continúa rechazándose sin sobrescribir la ejecución anterior. Para este cambio se ejecutaron compilación y las 35 pruebas unitarias; los resultados de navegador y backend de esta tabla proceden de la validación anterior, sin cambios en esos componentes. La carga nativa en Chrome sigue pendiente.
 
 La validación de Google usa firmas RSA reales y certificados de prueba locales, y rechaza firma alterada, emisor/audiencia/caducidad/nonce incorrectos. Se prueban estado OAuth, PKCE de vinculación, códigos caducados/de un uso, revocación y separación demo/Google. No se ha probado el intercambio real con Google.
 
