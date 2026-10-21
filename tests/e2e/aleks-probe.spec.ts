@@ -17,7 +17,7 @@ test('reconoce los atributos aportados sin depender del ID dinámico ni modifica
     const input=document.querySelector<HTMLInputElement>('.ansed_input')!;input.id='otro-id-dinamico';
     return {observation:window.aleksProbe(document),value:input.value,changes};
   });
-  expect(result).toEqual({observation:{status:'observed',inputCount:1,unitButtonCount:1,submitLabelCount:1},value:'',changes:0});
+  expect(result).toMatchObject({observation:{status:'observed',inputCount:1,unitButtonCount:1,submitLabelCount:1,renderedAnswer:{status:'missing'},submitControl:{status:'missing',count:0}},value:'',changes:0});
 });
 test('reconocer un editor no habilita lectura de ejercicio, escritura ni entrega real',async({page})=>{
   const result=await page.evaluate(async()=>{

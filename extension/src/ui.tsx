@@ -73,6 +73,8 @@ function App() {
       <p className="small">Abre el simulador en Chrome: <code>{BACKEND}/simulator/</code></p>
       {view.detection && <div className="inset"><strong>{view.detection.origin}</strong><p className="small">Actividad: {view.detection.activity}</p>
         {view.detection.editorObservation && <p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) visibles y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>}
+        {view.detection.editorObservation?.renderedAnswer.status==='readable' && <p>Respuesta visible en el editor: <strong>{view.detection.editorObservation.renderedAnswer.display}</strong>. Aceptación pendiente.</p>}
+        {view.detection.editorObservation?.submitControl.status==='observed' && <p className="small">Botón «Entregar» identificado. La inspección no hace clic ni envía respuestas.</p>}
         <p>{view.detection.supported ? (view.detection.session?'Sesión del simulador disponible':'Sesión perdida'):view.detection.reason}</p></div>}
     </section>
     <section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>

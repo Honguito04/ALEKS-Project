@@ -8,7 +8,7 @@ Fecha: 20 de octubre de 2026. Entorno Linux, Python 3.12.14, Node 24.19.0 y Chro
 | TypeScript + `npm run build` | Correctos; `dist/` incluye manifest MV3, panel, opciones, worker modular y content script IIFE |
 | `npm test` | **28 pasadas**: 20 del controlador y 8 de fronteras de mensajes del worker |
 | `.venv/bin/python -m pytest backend/tests -q` | **49 pasadas**, ninguna omitida; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
-| `npm run test:e2e` | **15 pasadas**, ninguna omitida: 10 del simulador y 5 del diagnóstico sobre fragmentos de editor aportados |
+| `npm run test:e2e` | **29 pasadas**, ninguna omitida: 10 del simulador y 19 del diagnóstico sobre fragmentos de editor aportados |
 | `pip check` | Sin dependencias incompatibles |
 | Sintaxis Python | `compileall` correcto |
 
@@ -20,6 +20,8 @@ La ampliación de cilindros añade cuatro pruebas de navegador: secuencia con **
 
 Las cinco pruebas de fragmentos comprueban atributos observados (`Answer Editor`, `Centímetros cúbicos` y etiqueta «Entregar»), independencia de IDs dinámicos y ausencia de escritura/clics, bloqueo de operaciones reales y detección de controles ocultos, duplicados y deshabilitados. Se ejecutan contra un fixture desidentificado derivado del HTML proporcionado, sin scripts o assets remotos. **No son pruebas sobre la interfaz autenticada en vivo.**
 
+Las catorce pruebas adicionales sobre el nuevo contenedor leen **226 cm³** de los spans visuales con `aria-hidden`, incluso con el buffer del input vacío o distinto, y reconocen el botón completo de Entregar aportado por el usuario. Se comprueba que no ocurren eventos de escritura/clic y que el adaptador sigue bloqueado para operaciones reales. Se rechazan cm², un 3 en la misma línea, tokens extra, glifos recortados/ocultos, editores duplicados y botones con ID/etiqueta distintos, ocultos, duplicados o deshabilitados. Las posiciones son las del fragmento aportado; se evalúa su relación geométrica y no se interactúa mediante coordenadas.
+
 La validación de Google usa firmas RSA reales y certificados de prueba locales, y rechaza firma alterada, emisor/audiencia/caducidad/nonce incorrectos. Se prueban estado OAuth, PKCE de vinculación, códigos caducados/de un uso, revocación y separación demo/Google. No se ha probado el intercambio real con Google.
 
 ## Comprobaciones externas pendientes
@@ -27,7 +29,7 @@ La validación de Google usa firmas RSA reales y certificados de prueba locales,
 - **Carga nativa de la extensión en Chrome**: el Chromium administrado devolvió `Loading of unpacked extensions is disabled by the administrator`. No se modificó esa política. Playwright usa un puente exclusivo de pruebas para ejecutar las clases de producción, por lo que no valida las APIs nativas de extensión ni la autorización del navegador.
 - **Google con cuenta real**: faltan las credenciales OAuth del propietario y la configuración de su cliente. El botón y flujo están implementados; no se simula una identidad Google.
 - **IA en la API externa**: proveedor implementado, sin clave/modelo configurados y sin llamadas facturables ejecutadas. Las interpretaciones de IA quedan sin autorización de envío automático hasta contar con verificación independiente de lectura.
-- **ALEKS**: se dispone de una captura y fragmentos del editor aportados por el usuario; no de acceso en vivo o evidencia suficiente del valor registrado, control clicable de entrega, feedback y avance. Cero ejercicios reales leídos automáticamente, escritos o enviados. El diagnóstico es de solo lectura; el adaptador y el backend impiden envíos reales incluso con una sesión Google.
+- **ALEKS**: se dispone de captura, contenedor de respuesta visual y botón completo de Entregar aportados por el usuario. Se validó su lectura/detección sobre fixtures locales; faltan acceso/prueba en vivo, lectura de enunciado/actividad, escritura reconocida por el editor, feedback y avance. Cero ejercicios reales leídos automáticamente como ejercicio completo, escritos o enviados. El diagnóstico es de solo lectura; el adaptador y el backend impiden envíos reales incluso con una sesión Google.
 - **Windows**: instrucciones incluidas; no se ha ejecutado Windows en este entorno.
 - **CI de GitHub**: workflow incluido; los resultados anteriores corresponden a esta máquina y no acreditan un resultado remoto.
 

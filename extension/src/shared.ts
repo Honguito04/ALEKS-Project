@@ -26,8 +26,13 @@ export type Solution = z.infer<typeof solutionSchema>;
 export const limitsSchema = z.object({maxExercises:z.number().int().min(1).max(100),maxMinutes:z.number().min(.01).max(120),maxAICalls:z.number().int().min(0).max(100),preview:z.boolean()}).strict();
 export type Limits = z.infer<typeof limitsSchema>;
 export type State = 'INACTIVO'|'LEYENDO'|'RESOLVIENDO'|'VERIFICANDO'|'ESCRIBIENDO'|'ENVIANDO'|'COMPROBANDO'|'AVANZANDO'|'PAUSADO'|'COMPLETADO'|'ERROR';
+export interface EditorReadback {
+  status:'readable'|'missing'|'ambiguous'|'unsupported';reason:string;value?:string;unit?:'cm^3';display?:string;
+}
+export interface SubmitObservation {status:'observed'|'missing'|'ambiguous'|'disabled';count:number}
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
+  renderedAnswer:EditorReadback;submitControl:SubmitObservation;
 }
 export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation}
 export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}

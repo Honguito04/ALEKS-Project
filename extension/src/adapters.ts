@@ -109,9 +109,11 @@ export class PendingAleksAdapter implements Adapter {
       ambiguous:'Hay varios editores o botones de unidad; no se puede identificar uno sin ambigüedad. ',
       disabled:'El editor o el botón de unidad están deshabilitados. '
     }[editorObservation.status];
+    const readback=editorObservation.renderedAnswer.status==='readable' ? `Respuesta visible: ${editorObservation.renderedAnswer.display}. `:'';
+    const submit=editorObservation.submitControl.status==='observed' ? 'Botón Entregar identificado. ':'';
     return {origin:ALEKS,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
       editorObservation,
-      reason:description+'Inspección de solo lectura: faltan validar la actividad, la respuesta con unidad registrada, el control de entrega y su resultado. La sesión y los envíos reales siguen sin habilitar.'};
+      reason:description+readback+submit+'Inspección de solo lectura: faltan validar la lectura de actividad/enunciado, la interacción con el editor y el resultado de la entrega. La sesión y los envíos reales siguen sin habilitar.'};
   }
   private unavailable():never {throw Error('Adaptador ALEKS pendiente de validación con la interfaz autenticada');}
   async read():Promise<Exercise> {return this.unavailable();}
