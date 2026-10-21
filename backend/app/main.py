@@ -1,6 +1,7 @@
 import asyncio
 from contextlib import asynccontextmanager
 import time
+from uuid import UUID
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -11,12 +12,14 @@ from .database import db, initialize
 from .engine import Unsupported, bounded_solve
 from .models import SolveRequest, Solution
 from .providers import interpreter
+from .local_assistant import AssistRequest, AssistResult, consult_local, local_status, create_job,job_state,cancel_job,close_jobs
 
 
 @asynccontextmanager
 async def lifespan(app):
     initialize()
-    yield
+    try: yield
+    finally: await close_jobs()
 
 
 app = FastAPI(title="Asistente matemático — MVP", lifespan=lifespan)
@@ -36,7 +39,8 @@ async def boundary(request: Request, call_next):
     if origin and origin not in allowed:
         return JSONResponse({"detail": "Origen no autorizado"}, status_code=403)
     length = request.headers.get("content-length", "0")
-    if not length.isdecimal() or int(length) > 16000:
+    limit = 1_600_000 if request.url.path in ("/assist", "/assist/jobs") else 16000
+    if not length.isdecimal() or int(length) > limit:
         return JSONResponse({"detail": "Petición demasiado grande"}, status_code=413)
     response = await call_next(request)
     response.headers["Cache-Control"] = "no-store"
@@ -53,7 +57,45 @@ app.include_router(router)
 @app.get("/health")
 def health():
     return {"status": "ok", "engine": "sympy", "google_configured": settings.google_ready,
-            "ai_configured": settings.ai_ready, "aleks_validated": False, "demo_enabled": settings.enable_demo}
+            "ai_configured": settings.ai_ready or settings.local_ai_ready, "ai_provider": settings.ai_provider,
+            "aleks_validated": False, "demo_enabled": settings.enable_demo}
+
+
+@app.get("/ai/local/status")
+async def ai_local_status(user=Depends(session)):
+    return await local_status()
+
+
+@app.post("/assist", response_model=AssistResult)
+async def assist(body: AssistRequest, user=Depends(session)):
+    if not settings.local_ai_ready:
+        raise HTTPException(503, "Configura AI_PROVIDER=ollama y AI_MODEL en .env; reinicia el backend")
+    try:
+        return await consult_local(body)
+    except Exception:
+        raise HTTPException(502, "Ollama no respondió con una propuesta válida. Comprueba el servicio, el modelo instalado y su soporte de imágenes/JSON.") from None
+
+
+@app.post("/assist/jobs", status_code=202)
+async def start_assist_job(body: AssistRequest, user=Depends(session)):
+    if not settings.local_ai_ready:
+        raise HTTPException(503, "Configura AI_PROVIDER=ollama y AI_MODEL en .env; reinicia el backend")
+    try: key = create_job(user["token_hash"], body)
+    except ValueError as error: raise HTTPException(429, str(error)) from None
+    return {"id": key}
+
+
+@app.get("/assist/jobs/{job_id}")
+async def get_assist_job(job_id: UUID, user=Depends(session)):
+    result = job_state(user["token_hash"], str(job_id))
+    if result is None: raise HTTPException(404, "Consulta no disponible")
+    return result
+
+
+@app.delete("/assist/jobs/{job_id}")
+async def delete_assist_job(job_id: UUID, user=Depends(session)):
+    cancel_job(user["token_hash"], str(job_id))
+    return {"ok": True}
 
 
 @app.post("/solve", response_model=Solution)

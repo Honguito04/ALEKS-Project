@@ -1,6 +1,7 @@
 import type { EditorObservation, EditorReadback, ControlObservation, ResultObservation } from './shared';
 import { painted,visible,disabled } from './aleks-dom';
 import { inspectCircleTable,inspectEditorMenu } from './aleks-circle';
+import { inspectSingleEditor } from './aleks-single-editor';
 
 function inputBlockers(element:HTMLInputElement) {
   const reasons=new Set<keyof EditorObservation['inputDiagnostics']['blockedBy']>();
@@ -116,7 +117,7 @@ export function inspectAleksEditor(document:Document):EditorObservation {
   const nextControl=observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente');
   const nextTopicControl=observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente tema');
   return {status,inputCount:inputs.length,unitButtonCount:units.length,submitLabelCount:labels.length,inputDiagnostics,renderedAnswer,
-    submitControl,nextTopicControl,circleTable:inspectCircleTable(document),menu:inspectEditorMenu(document),
+    submitControl,nextTopicControl,circleTable:inspectCircleTable(document),menu:inspectEditorMenu(document),singleEditor:inspectSingleEditor(document),
     // Solo se identifica este control aportado; learningCorrect por sí solo no
     // acredita un resultado ni lo vincula a una actividad/huella o envío nuestro.
     nextControl,resultMarker:observeResult(document,nextControl,nextTopicControl,submitControl)};

@@ -1,0 +1,14 @@
+<!doctype html><html lang="es"><head><meta charset="utf-8"><title>Diagnóstico de editor único</title></head><body>
+<!-- Escenario sintético: combina el texto reportado de los nadadores y la
+estructura .ansed_root ya aportada. No acredita el DOM actual de ese ejercicio
+ni emula los eventos de ALEKS. Sin IDs dinámicos, handlers o assets remotos. -->
+<div id="algoPrompt">Hay 4 nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?</div>
+<div class="ansed_root" style="display:block;position:relative;width:40px;height:32px;background:white">
+  <div class="ansed_tree" aria-hidden="true" style="position:absolute;left:0;top:0;width:40px;height:32px"></div>
+  <canvas class="ansed_canvas" width="40" height="32" aria-hidden="true" role="presentation"></canvas>
+  <svg aria-hidden="true" style="position:absolute;left:0;top:0;width:40px;height:32px"></svg>
+  <input aria-label="Answer Editor" class="ansed_input" type="text" autocomplete="off" spellcheck="false" style="position:absolute;left:0;top:0;width:40px;height:32px;opacity:0">
+</div>
+<div class="aleks-editor-menu"><button aria-label="Undo">Deshacer</button></div>
+<button type="button" class="checkAnswer primary" id="smt_bottomnav_button_input_checkAnswer"><div><div class="textContent">Verificar</div></div></button>
+</body></html>

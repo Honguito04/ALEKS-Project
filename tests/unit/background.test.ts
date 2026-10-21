@@ -110,3 +110,103 @@ it('el backend que falla no crea una identidad de demostración ficticia',async(
   delete session.auth;fetchMock.mockResolvedValue(Response.json({detail:'Sin conexión'},{status:503}));
   expect((await send({scope:'ui',type:'demo'})).ok).toBe(false);expect(session.auth).toBeUndefined();
 });
+
+const assistContext={fingerprint:'b'.repeat(64),statement:'4 nadadores, dos premios distintos.',fields:[{key:'answer',label:'Respuesta'}],diagram_required:false,can_fill_integer:true};
+const assistResult={fingerprint:assistContext.fingerprint,model:'local-test',provider:'ollama',provider_calls:1,verified:false,
+  proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'4 × 3',missing_information:[]}};
+function prepareAssist(result=assistResult) {
+  url=ALEKS_ACTIVITY+'/exercise-fixture';
+  tabsSend.mockResolvedValue({ok:true,data:assistContext});
+  fetchMock.mockImplementation(async(destination:string,request:RequestInit)=>{
+    if(destination===BACKEND+'/assist/jobs')return Response.json({id:'00000000-0000-4000-8000-000000000002'});
+    if(request.method==='DELETE')return Response.json({ok:true});
+    return Response.json({status:'completed',result});
+  });
+}
+it('consulta IA local solo desde el panel y conserva la propuesta fuera del almacenamiento',async()=>{
+  prepareAssist();
+  const result=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(result.ok).toBe(true);expect(result.data.result.verified).toBe(false);
+  const [destination,request]=fetchMock.mock.calls[0];
+  expect(destination).toBe(BACKEND+'/assist/jobs');expect(JSON.parse(request.body)).toEqual({context:assistContext});
+  expect(request.credentials).toBe('omit');expect(JSON.stringify(local)).not.toContain('nadadores');
+  expect((await send({scope:'content',type:'assist',tabId:7,includeImage:false},content())).ok).toBe(false);
+});
+it('introduce solo el entero aprobado en esa propuesta y la consume una vez',async()=>{
+  prepareAssist();
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  tabsSend.mockResolvedValue({ok:true,data:{written:true,display:'12',submitted:false}});
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:proposal.id})).ok).toBe(true);
+  expect(tabsSend.mock.calls.at(-1)).toEqual([7,{scope:'adapter',type:'assistFill',fingerprint:assistContext.fingerprint,value:'12'}]);
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:proposal.id})).ok).toBe(false);
+});
+it('descarta propuestas si el contexto cambia durante el modelo',async()=>{
+  prepareAssist();
+  tabsSend.mockResolvedValueOnce({ok:true,data:assistContext}).mockResolvedValueOnce({ok:true,data:{...assistContext,fingerprint:'c'.repeat(64)}});
+  const result=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(result.ok).toBe(false);expect(result.error).toContain('cambió');
+});
+it.each([{value:'alert(1)',unit:''},{value:'1/2',unit:''},{value:'12',unit:'cm'}])('no ejecuta ni introduce una propuesta fuera del entero sin unidad %j',async answer=>{
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',...answer}]}});
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  const calls=tabsSend.mock.calls.length;
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:proposal.id})).ok).toBe(false);
+  expect(tabsSend).toHaveBeenCalledTimes(calls);
+});
+it('solo captura por elección explícita la pestaña activa; la propuesta con imagen es manual',async()=>{
+  prepareAssist();
+  const capture=vi.fn(async()=> 'data:image/jpeg;base64,/9j//9k=');chrome.tabs.captureVisibleTab=capture;
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:true})).data;
+  expect(capture).toHaveBeenCalledTimes(1);expect(proposal.context.can_fill_integer).toBe(false);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body).image).toBe('data:image/jpeg;base64,/9j//9k=');
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:proposal.id})).ok).toBe(false);
+});
+it('no captura otra pestaña ni consulta sin identidad',async()=>{
+  prepareAssist();const capture=vi.fn();chrome.tabs.captureVisibleTab=capture;
+  chrome.tabs.query=vi.fn(async()=>[{id:99,url}] as chrome.tabs.Tab[]);
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:true})).ok).toBe(false);
+  expect(capture).not.toHaveBeenCalled();expect(fetchMock).not.toHaveBeenCalled();
+  delete session.auth;expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
+});
+it('cerrar sesión detiene una escritura asistida aunque no exista una ejecución automática',async()=>{
+  prepareAssist();
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  let notifyStarted:()=>void=()=>{},finish:(value:unknown)=>void=()=>{};
+  const started=new Promise<void>(resolve=>{notifyStarted=resolve;});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistFill')return new Promise(resolve=>{finish=resolve;notifyStarted();});
+    if(message.type==='stop'){finish({ok:false,error:'Cancelado'});return {ok:true,data:true};}
+    throw Error('Operación inesperada');
+  });
+  const writing=send({scope:'ui',type:'assistFill',tabId:7,proposalId:proposal.id});
+  await started;fetchMock.mockResolvedValue(Response.json({ok:true}));
+  expect((await send({scope:'ui',type:'logout'})).ok).toBe(true);
+  expect((await writing).ok).toBe(false);
+  expect(tabsSend).toHaveBeenCalledWith(7,{scope:'adapter',type:'stop'});expect(session.auth).toBeUndefined();
+});
+it('consulta una tarea lenta sin repetir la petición de inferencia',async()=>{
+  prepareAssist();const original=fetchMock.getMockImplementation()!;let polls=0;
+  fetchMock.mockImplementation(async(destination:string,request:RequestInit)=>{
+    if(request.method==='GET' && destination.includes('/assist/jobs/')) {
+      polls++;if(polls===1)return Response.json({status:'pending'});
+    }
+    return original(destination,request);
+  });
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(true);
+  expect(polls).toBe(2);
+  expect(fetchMock.mock.calls.filter(([destination])=>destination===BACKEND+'/assist/jobs')).toHaveLength(1);
+  expect(fetchMock.mock.calls.at(-1)?.[1].method).toBe('DELETE');
+});
+it('permite cancelar una consulta pendiente y no conserva una propuesta tardía',async()=>{
+  prepareAssist();const original=fetchMock.getMockImplementation()!;let notify:()=>void=()=>{};
+  const polled=new Promise<void>(resolve=>{notify=resolve;});
+  fetchMock.mockImplementation(async(destination:string,request:RequestInit)=>{
+    if(request.method==='GET' && destination.includes('/assist/jobs/')){notify();return Response.json({status:'pending'});}
+    return original(destination,request);
+  });
+  const pending=send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  await polled;
+  expect((await send({scope:'ui',type:'cancelAssist',tabId:7})).ok).toBe(true);
+  const result=await pending;expect(result.ok).toBe(false);expect(result.error).toContain('cancelada');
+  expect(tabsSend).toHaveBeenCalledWith(7,{scope:'adapter',type:'stop'});
+});

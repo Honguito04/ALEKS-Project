@@ -106,7 +106,8 @@ export class PendingAleksAdapter implements Adapter {
   async detect():Promise<Detection> {
     const editorObservation=inspectAleksEditor(document);
     const promptObservation=await readAleksPrompt(document);
-    const description=editorObservation.circleTable.status==='observed'?'Tabla de arco y área reconocida en dos editores visuales. ':({
+    const description=editorObservation.circleTable.status==='observed'?'Tabla de arco y área reconocida en dos editores visuales. ':
+      editorObservation.singleEditor.status==='observed' && editorObservation.status!=='observed'?'Un recuadro visual reconocido; no necesita botones de unidades para la inspección. ':({
       observed:'Se identificaron el editor numérico y el botón de centímetros cúbicos. ',
       missing:'No se encuentran todos los controles del fragmento de editor observado. ',
       ambiguous:'Hay varios editores o botones de unidad; no se puede identificar uno sin ambigüedad. ',

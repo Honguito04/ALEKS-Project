@@ -1,0 +1,25 @@
+/** APIs de Chrome simuladas; usa UI, contexto y escritor de producción.
+ * No prueba carga nativa ni ejecuta un modelo real. */
+import './aleks-probe-harness';
+let context:Awaited<ReturnType<typeof window.assistContext>>;
+Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
+  permissions:{contains:async()=>true},
+  runtime:{sendMessage:async(message:Record<string,unknown>)=>{
+    try {
+      let data:unknown;
+      if(message.type==='health')data={status:'ok',ai_configured:true,google_configured:false,ai_provider:'ollama'};
+      else if(message.type==='session')data={mode:'demo'};
+      else if(message.type==='tabs')data=[{id:7,title:'Ejercicio de prueba',url:'https://latam-awu.aleks.com/exercise-fixture'}];
+      else if(message.type==='attach' || message.type==='status')data={detection:{...await window.pendingAdapter.detect(),origin:'https://latam-awu.aleks.com'}};
+      else if(message.type==='localAIStatus')data={configured:true,online:true,model_installed:true,model:'test-model'};
+      else if(message.type==='assist') {
+        context=await window.assistContext(document);
+        data={id:'test-proposal',context,result:{fingerprint:context.fingerprint,provider:'ollama',provider_calls:1,verified:false,model:'test-model',
+          proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Propuesta sintética para probar la UI.',missing_information:[]}}};
+      } else if(message.type==='assistFill')data=await window.fillAssistInteger(document,context.fingerprint,'12',new AbortController().signal);
+      else throw Error('Comando no simulado');
+      return {ok:true,data};
+    }catch(error){return {ok:false,error:(error as Error).message};}
+  }}
+}});
+void import('../../extension/src/ui');

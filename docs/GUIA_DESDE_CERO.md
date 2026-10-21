@@ -2,7 +2,7 @@
 
 Esta guía está pensada para una persona sin experiencia en programación que todavía no instaló la versión anterior. Asume Windows 10 u 11 y Google Chrome. No necesitas instalar versiones anteriores: la descarga actual incluye los cambios.
 
-Actualmente puedes completar automáticamente los ejercicios del simulador y probar la lectura del enunciado en ALEKS. **La extensión todavía no escribe ni entrega respuestas en ALEKS.** El simulador sirve para comprobar que la instalación funciona antes de abrir tu curso.
+Actualmente puedes completar automáticamente los ejercicios del simulador y leer enunciados en ALEKS. El [copiloto local con Ollama](IA_GENERAL.md) añade propuestas generales y escritura asistida de enteros en un recuadro vacío compatible; **no entrega ni avanza automáticamente en ALEKS**. Su instalación es opcional y está explicada en esa guía.
 
 La aplicación debe ejecutarse en la misma computadora donde usas Chrome. Lo preparado en el entorno de desarrollo en la nube no instala programas en tu computadora. Para esta prueba no necesitas claves de IA, una cuenta de desarrollador de Google ni configurar el acceso con Google.
 
@@ -188,11 +188,13 @@ Cuando haya una actualización del proyecto, descarga el ZIP nuevo en otra carpe
 | «Operador MathML no admitido» | La actualización admite los símbolos aportados del círculo, ángulo, grados, arco y pi. Si aparece otro, comparte el mensaje completo con sus códigos `U+…`; identifican el símbolo sin volver a copiar todo el HTML. |
 | La pestaña de ALEKS no aparece | Concede el permiso del paso 8, comprueba el dominio y pulsa **Actualizar pestañas**. |
 | No se encuentra un enunciado visible en ALEKS | Comprueba que estés viendo un ejercicio. Algunas pantallas o estructuras todavía requieren ampliar el lector. |
-| El panel indica cero campos pero ves recuadros de respuesta | En el círculo ya se confirmó que los dos inputs son transparentes. Actualiza la extensión: ahora debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. En otros formatos, el detalle del diagnóstico distingue los inputs de sus contenedores visibles. |
+| El panel indica cero campos pero ves recuadros de respuesta | Actualiza la extensión: en el círculo debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. En un ejercicio con un único editor de la estructura conocida muestra **Un recuadro visual reconocido**, sin exigir botones de cm³. El detalle técnico distingue inputs transparentes y contenedores visibles. |
 
 Si necesitas ayuda con un error, indica el número de paso y copia el mensaje que aparece, omitiendo información de tu cuenta. No necesitas compartir contraseñas, cookies ni enlaces completos de sesión de ALEKS.
 
 **Actualizar la extensión conservando tu instalación**
+
+Para la actualización de **IA local**, sigue [la guía de Ollama](IA_GENERAL.md): también cambia el backend y requiere configurar el modelo. Los pasos siguientes bastan para actualizaciones que solo afectan a la extensión.
 
 Descarga el ZIP actualizado desde **Code → Download ZIP** en GitHub y extráelo en una carpeta aparte. Abre la carpeta del proyecto nuevo y copia su carpeta **extension** completa. Pégala dentro de la carpeta original del proyecto que ya habías instalado; acepta reemplazar los archivos existentes. La carpeta original es la que contiene `package.json`, `backend`, `.venv` y `node_modules`. No necesitas copiar `.env` ni reinstalar Python o Node.
 
@@ -211,5 +213,7 @@ Para comprobar los cambios en ALEKS, actualiza también esa pestaña con **F5**,
 En el tema del círculo, el panel debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. Muestra cada respuesta junto a «Longitud del arco AB» o «Área de la región sombreada», aunque el detalle técnico siga contando cero inputs pintados. Si los recuadros están vacíos, indica «vacío». Si siguen visibles las respuestas finales aportadas, muestra **8π/3 cm** y **4π cm²**. El menú o la tabla pueden aparecer deshabilitados después de verificar; ese estado se muestra en el panel.
 
 Si aparece el bloque **Correcta** junto al botón **Siguiente tema**, la inspección los identifica sin pulsarlo. El nombre público del tema también puede mostrarse; «Actividad: sin-validar» sigue indicando que no hay una sesión de ejecución real habilitada. Ya se recibieron los fragmentos necesarios para esta fase: no necesitas volver a copiarlos. La siguiente validación pendiente es la interacción real del editor y la asociación de una entrega iniciada por la extensión con su resultado.
+
+En un ejercicio de un solo recuadro, como el de los nadadores, la actualización también reconoce el contenedor visual sin exigir unidades. Si escribes un entero manualmente y vuelves a leer, puede mostrar su contenido cuando coincide con la representación admitida. Eso lee lo escrito; no significa que la IA haya resuelto el ejercicio ni que ALEKS lo haya aceptado.
 
 En el ejercicio del círculo, el lector puede mostrar `arco(AB)` al leer la marca situada sobre AB. La advertencia sobre la región sombreada significa que se leyó el texto, pero todavía falta interpretar el dibujo. No acredita una respuesta geométrica.

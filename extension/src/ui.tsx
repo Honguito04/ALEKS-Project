@@ -1,11 +1,11 @@
 import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
-import { BACKEND, ALEKS_ACTIVITY, type Run, type Exercise, type Solution, type Detection } from './shared';
+import { BACKEND, ALEKS_ACTIVITY, ALEKS_ORIGINS,type AssistView,type Run, type Exercise, type Solution, type Detection } from './shared';
 import './ui.css';
 
 type Tab = {id:number;title:string;url:string};
 type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution};
-type Health = {status:string;google_configured:boolean;ai_configured:boolean};
+type Health = {status:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
 async function rpc(type:string,data:Record<string,unknown>={}) {
   const r=await chrome.runtime.sendMessage({scope:'ui',type,...data});
   if(!r?.ok) throw Error(r?.error || 'La extensión no respondió');return r.data;
@@ -15,6 +15,9 @@ function App() {
   const [mode,setMode]=useState<string|null>(null);
   const [tabs,setTabs]=useState<Tab[]>([]),[selected,setSelected]=useState<number>();
   const [view,setView]=useState<View>({}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
+  const [assist,setAssist]=useState<AssistView>(),[includeImage,setImage]=useState(false);
+  const [assistActive,setAssistActive]=useState(false);
+  const [localStatus,setLocalStatus]=useState<{configured:boolean;online:boolean;model_installed:boolean;model:string}>();
   const [maxExercises,setMax]=useState(10),[maxMinutes,setMinutes]=useState(10),[maxAICalls,setCalls]=useState(0),[preview,setPreview]=useState(false);
   const options=location.pathname.endsWith('options.html');
   async function attempt(action:()=>Promise<void>) {
@@ -38,7 +41,7 @@ function App() {
     return ()=>clearInterval(timer);
   },[selected,Boolean(view.detection)]);
   async function login(type:'google'|'demo') {await attempt(async()=>{setMode((await rpc(type)).mode);});}
-  async function attach() {await attempt(async()=>{setView(await rpc('attach',{tabId:selected}));});}
+  async function attach() {setAssist(undefined);await attempt(async()=>{setView(await rpc('attach',{tabId:selected}));});}
   async function command(type:string) {await attempt(async()=>{
     await rpc(type,{tabId:selected,activity:view.detection?.activity,limits:{maxExercises,maxMinutes,maxAICalls,preview}});
     setView(await rpc('status',{tabId:selected}));
@@ -48,6 +51,11 @@ function App() {
   const editorDiagnostics=view.detection?.editorObservation?.inputDiagnostics;
   const circleTable=view.detection?.editorObservation?.circleTable;
   const menu=view.detection?.editorObservation?.menu;
+  const singleEditor=view.detection?.editorObservation?.singleEditor;
+  const showSingle=singleEditor?.status==='observed' && view.detection?.editorObservation?.renderedAnswer.status!=='readable';
+  const aleks=Boolean(view.detection && ALEKS_ORIGINS.includes(view.detection.origin));
+  const canFill=assist?.context.can_fill_integer && assist.result.proposal.status==='proposed' && assist.result.proposal.answers.length===1 &&
+    assist.result.proposal.answers[0].unit==='' && /^(0|[1-9]\d{0,11})$/.test(assist.result.proposal.answers[0].value);
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">MVP · El recorrido automático está habilitado en el simulador local. ALEKS está pendiente de validación.</div>
@@ -58,7 +66,7 @@ function App() {
       <p className="small">Acceso limitado a {BACKEND}. Lee ejercicios y escribe o envía respuestas en la actividad que autorices.</p>
     </section>
     <section><div className="section-label">02 / IDENTIDAD DE LA APLICACIÓN</div>
-      {mode ? <><span className="pill">{mode==='demo'?'DEMOSTRACIÓN · solo simulador':'Identidad Google verificada'}</span><div className="actions">
+      {mode ? <><span className="pill">{mode==='demo'?'SESIÓN DE DEMOSTRACIÓN':'Identidad Google verificada'}</span><div className="actions">
         <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{await rpc('logout');setMode(null);})}>Cerrar sesión</button>
         <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{await rpc('unlink');setMode(null);setNotice('Sesiones de la extensión desvinculadas.');})}>Desvincular extensión</button>
       </div></> : <div className="stack">
@@ -69,7 +77,7 @@ function App() {
     </section>
     {!options && <><section><div className="section-label">03 / PESTAÑA Y ACTIVIDAD</div>
       <button className="secondary" disabled={busy} onClick={()=>void attempt(refresh)}>Actualizar pestañas</button>
-      <label>Pestaña de trabajo<select aria-label="Pestaña de trabajo" value={selected || ''} onChange={e=>{setSelected(Number(e.target.value));setView({});}}>
+      <label>Pestaña de trabajo<select aria-label="Pestaña de trabajo" disabled={busy} value={selected || ''} onChange={e=>{setSelected(Number(e.target.value));setView({});setAssist(undefined);}}>
         <option value="">Selecciona una pestaña</option>{tabs.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
       </select></label>
       <button disabled={!selected || busy} onClick={()=>void attach()}>Leer actividad seleccionada</button>
@@ -80,18 +88,44 @@ function App() {
         {view.detection.editorObservation && <>{circleTable?.status==='observed' ? <><p><strong>Dos recuadros visuales reconocidos por sus etiquetas.</strong></p>
           <p className="small">{circleTable.disabled?'Tabla deshabilitada.':'Tabla sin marca de bloqueo observada.'} La lectura no habilita escritura ni entrega.</p>
           {circleTable.fields.map(field=><p key={field.kind}>{field.label}: <strong>{field.readback.display || (field.readback.status==='empty'?'vacío':'lectura pendiente')}</strong><br/><span className="small">{field.readback.reason}</span></p>)}</>:
-          <p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) reconocidos y visibles, y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>}
+          showSingle ? <><p><strong>Un recuadro visual reconocido.</strong></p><p>Contenido del recuadro: <strong>{singleEditor.readback.display || (singleEditor.readback.status==='empty'?'vacío':'lectura pendiente')}</strong></p>
+            <p className="small">{singleEditor.readback.reason} {singleEditor.disabled?'El editor está deshabilitado.':''}</p></>:
+          <p className="small">Inspección ALEKS: {editorDiagnostics?.presentCount ?? view.detection.editorObservation.inputCount} entrada(s) encontradas y {editorDiagnostics?.visibleRootCount ?? 0} contenedor(es) visual(es) visibles. La presencia de un recuadro no confirma su funcionamiento.</p>}
           {editorDiagnostics && <details><summary>Detalle del diagnóstico del editor</summary><p className="small">Coincidencias del editor en la página: {editorDiagnostics.presentCount}. Con representación visual: {editorDiagnostics.paintedCount}. Marcadas como ocultas para accesibilidad: {editorDiagnostics.ariaHiddenCount}. Marcos incrustados: {editorDiagnostics.frameCount}.
             {editorDiagnostics.visibleRootCount!==undefined && <> Contenedores visuales del editor: {editorDiagnostics.visibleRootCount}.</>}
             {editorDiagnostics.blockedBy && <> Motivos de exclusión (pueden coincidir): sin caja de disposición: {editorDiagnostics.blockedBy.noLayout}; atributo hidden: {editorDiagnostics.blockedBy.hiddenAttribute}; display:none: {editorDiagnostics.blockedBy.displayNone}; visibility:hidden/collapse: {editorDiagnostics.blockedBy.visibilityHidden}; opacity:0: {editorDiagnostics.blockedBy.opacityZero}; documento sin vista: {editorDiagnostics.blockedBy.noView}.</>}
             {' '}{circleTable?.status==='observed'?'La asociación de los recuadros aparece arriba.':'Estos conteos no identifican qué respuesta corresponde a cada recuadro.'} No se inspecciona el contenido de los marcos.</p></details>}</>}
-        {menu?.status==='observed' && <p className="small">Menú: {Object.values(menu.controls).filter(control=>control.count===1).length} de 4 controles de fracción, π y unidades identificados; {Object.values(menu.controls).filter(control=>control.status==='disabled').length} deshabilitados.</p>}
+        {menu?.status==='observed' && Object.values(menu.controls).some(control=>control.count>0) && <p className="small">Menú: {Object.values(menu.controls).filter(control=>control.count===1).length} de 4 controles de fracción, π y unidades identificados; {Object.values(menu.controls).filter(control=>control.status==='disabled').length} deshabilitados.</p>}
         {view.detection.editorObservation?.renderedAnswer.status==='readable' && <p>Respuesta visible en el editor: <strong>{view.detection.editorObservation.renderedAnswer.display}</strong>. Aceptación pendiente.</p>}
         {view.detection.editorObservation?.submitControl.status==='observed' && <p className="small">Botón «{view.detection.editorObservation.submitControl.label || 'Entregar'}» identificado. La inspección no hace clic ni envía respuestas.</p>}
         {view.detection.editorObservation?.resultMarker.status==='positive_marker' ? <p>Mensaje «Correcta» y botón «{view.detection.editorObservation.resultMarker.continuation==='topic'?'Siguiente tema':'Siguiente'}» observados. Falta vincularlos a una entrega de la extensión.</p>:view.detection.editorObservation?.nextControl.status==='observed' && <p className="small">Botón «Siguiente» identificado. Falta asociar el resultado al ejercicio enviado; no se avanza automáticamente.</p>}
         {view.detection.editorObservation?.nextTopicControl?.status==='observed' && <p className="small">«Siguiente tema» cambia de tema. La inspección no lo pulsa ni autoriza una actividad nueva.</p>}
         <p>{view.detection.supported ? (view.detection.session?'Sesión del simulador disponible':'Sesión perdida'):view.detection.reason}</p></div>}
     </section>
+    {aleks && <section><div className="section-label">IA LOCAL / OLLAMA</div>
+      <p>Consulta el ejercicio con tu modelo local. La IA puede equivocarse: revisa la propuesta antes de usarla.</p>
+      <button className="secondary" disabled={busy || !mode} onClick={()=>void attempt(async()=>{setLocalStatus(await rpc('localAIStatus'));})}>Comprobar Ollama</button>
+      {localStatus && <p className="small">{!localStatus.configured?'Configura AI_PROVIDER=ollama y AI_MODEL en .env y reinicia el backend.':!localStatus.online?'Ollama no está disponible. Abre la aplicación Ollama en tu computadora.':!localStatus.model_installed?`Falta instalar el modelo ${localStatus.model} en Ollama.`:`Ollama conectado · ${localStatus.model} instalado.`}</p>}
+      <label className="check"><input type="checkbox" checked={includeImage} disabled={busy} onChange={event=>setImage(event.target.checked)}/>Incluir captura visible de la pestaña seleccionada</label>
+      <p className="small">El texto y, si lo marcas, toda la captura visible se envían a Ollama en tu computadora. La captura puede incluir datos de tu cuenta. No se envían a una API externa.</p>
+      <button disabled={busy || !mode || health?.ai_provider!=='ollama' || (view.detection?.promptObservation?.status!=='readable' && !includeImage)} onClick={()=>void attempt(async()=>{
+        setAssist(undefined);setNotice('Consultando el modelo local…');setAssistActive(true);
+        try{setAssist(await rpc('assist',{tabId:selected,includeImage}));}finally{setNotice('');setAssistActive(false);}
+      })}>Resolver con IA local</button>
+      {assistActive && <button className="danger" onClick={()=>void rpc('cancelAssist',{tabId:selected}).catch(error=>setError(error.message))}>Cancelar operación de IA</button>}
+      {health?.ai_provider!=='ollama' && <p className="small">Activa Ollama en .env para habilitar esta función. Consulta docs/IA_GENERAL.md.</p>}
+      {assist && <div className="inset"><p><strong>{assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':'Falta información'}</strong></p>
+        {assist.result.proposal.answers.map(answer=><p key={answer.field_key}>{assist.context.fields.find(field=>field.key===answer.field_key)?.label || answer.field_key}: <strong>{answer.value} {answer.unit}</strong></p>)}
+        <p>{assist.result.proposal.explanation}</p>{assist.result.proposal.missing_information.map((item,i)=><p key={i}>{item}</p>)}
+        {canFill ? <button disabled={busy} onClick={()=>void attempt(async()=>{
+          const proposal=assist;setAssist(undefined);setAssistActive(true);
+          try {
+            await rpc('assistFill',{tabId:selected,proposalId:proposal.id});
+            setView(await rpc('status',{tabId:selected}));setNotice('Entero reflejado en el recuadro. No se pulsó Verificar; revisa el contenido antes de entregarlo.');
+          }finally{setAssistActive(false);}
+        })}>Introducir entero en el recuadro</button>:assist.result.proposal.status==='proposed' && <p className="small">Introduce esta propuesta manualmente. Este formato, estado del editor o captura todavía no admite escritura asistida.</p>}
+      </div>}
+    </section>}
     <section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>
       <div className="limits"><label>Ejercicios<input type="number" min="1" max="100" value={maxExercises} onChange={e=>setMax(Number(e.target.value))}/></label>
       <label>Minutos<input type="number" min="1" max="120" value={maxMinutes} onChange={e=>setMinutes(Number(e.target.value))}/></label>
@@ -106,7 +140,7 @@ function App() {
       <div className="metrics"><span><b>{operations.filter(o=>o.status==='accepted').length}</b>Aceptadas</span><span><b>{operations.filter(o=>o.status==='rejected').length}</b>Rechazadas</span><span><b>0</b>Omitidas</span><span><b>{operations.filter(o=>o.status==='uncertain').length}</b>Inciertas</span></div>
       <details><summary>Historial de transiciones</summary><ol>{run?.events.slice().reverse().map((e,i)=><li key={i}><b>{e.state}</b> · {e.message}</li>)}</ol></details>
     </section></>}
-    {options && <section><div className="section-label">CONFIGURACIÓN LOCAL</div><p>Backend fijo del MVP: <code>{BACKEND}</code>.</p><p>ID de esta extensión: <code>{chrome.runtime.id}</code></p><p>Configura este ID en <code>CHROME_EXTENSION_IDS</code> del backend. Google requiere un cliente OAuth web y el retorno <code>{BACKEND}/auth/google/callback</code>. Las claves se guardan exclusivamente en el backend.</p><p>No hay capturas de pantalla ni editores gráficos compatibles en esta versión.</p></section>}
+    {options && <section><div className="section-label">CONFIGURACIÓN LOCAL</div><p>Backend fijo del MVP: <code>{BACKEND}</code>.</p><p>ID de esta extensión: <code>{chrome.runtime.id}</code></p><p>Configura este ID en <code>CHROME_EXTENSION_IDS</code> del backend. Google requiere un cliente OAuth web y el retorno <code>{BACKEND}/auth/google/callback</code>. Las claves se guardan exclusivamente en el backend.</p><p>Ollama usa AI_PROVIDER=ollama y AI_MODEL en .env. La captura visible es opcional; no se manipulan gráficos interactivos.</p></section>}
     <section><div className="section-label">DATOS Y PERMISOS</div><div className="stack">
       <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{await rpc('clear');setView({});setNotice('Historial de la aplicación borrado.');})}>Borrar historial de la aplicación</button>
       <button className="secondary" disabled={busy} onClick={()=>void attempt(async()=>{const ok=await chrome.permissions.request({origins:[`${ALEKS_ACTIVITY}/*`]});if(!ok) throw Error('Permiso ALEKS no concedido');await refresh();setNotice(`Inspección autorizada en ${ALEKS_ACTIVITY}. Los envíos reales siguen pendientes de validación.`);})}>Autorizar sitio ALEKS para inspección</button>

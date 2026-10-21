@@ -1,7 +1,11 @@
-import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, type Run } from './shared';
+import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
 
 type Auth = {token:string;mode:'demo'|'google'};
 type Consent = {origin:string;activity:string;limits:ReturnType<typeof limitsSchema.parse>};
+const assistProposals=new Map<number,AssistView>();
+const assistJobs=new Map<number,string>();
+const assistWriters=new Set<number>();
+const assistRemoteJobs=new Map<number,string>();
 chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
 chrome.runtime.onInstalled.addListener(()=>{ void chrome.storage.session.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}); });
 // Retención mínima también después de restaurar Chrome o reactivar el worker.
@@ -11,11 +15,11 @@ void chrome.storage.local.get(null).then(entries=>{
 });
 
 async function auth():Promise<Auth|undefined> {return (await chrome.storage.session.get('auth')).auth as Auth|undefined;}
-async function api(path:string,method='GET',body?:unknown,authenticated=false) {
+async function api(path:string,method='GET',body?:unknown,authenticated=false,timeout=35_000) {
   const session=authenticated ? await auth():undefined;
   if(authenticated && !session) throw Error('Inicia sesión en la aplicación o entra en demostración');
   const response=await fetch(BACKEND+path,{method,headers:{'Content-Type':'application/json',...(session ? {Authorization:`Bearer ${session.token}`}:{})},
-    body:body===undefined ? undefined:JSON.stringify(body),signal:AbortSignal.timeout(35_000),credentials:'omit',redirect:'error'});
+    body:body===undefined ? undefined:JSON.stringify(body),signal:AbortSignal.timeout(timeout),credentials:'omit',redirect:'error'});
   if(!response.ok) {
     const detail=await response.json().catch(()=>({detail:'No se pudo conectar con el backend'}));
     throw Error(typeof detail.detail==='string' ? detail.detail:`Petición rechazada (${response.status})`);
@@ -41,8 +45,13 @@ async function attach(id:unknown) {
   return {...await send(t.id,'status'),tab:{id:t.id,title:t.title || 'Actividad matemática',url:t.url}};
 }
 async function stopAll() {
+  const activeAssist=[...assistWriters];
+  const jobs=[...assistRemoteJobs.values()];assistRemoteJobs.clear();
+  assistProposals.clear();assistJobs.clear();
   const entries=await chrome.storage.local.get(null);
-  await Promise.allSettled(Object.keys(entries).filter(k=>k.startsWith('run:')).map(k=>chrome.tabs.sendMessage(Number(k.slice(4)),{scope:'adapter',type:'stop'})));
+  const ids=new Set([...Object.keys(entries).filter(k=>k.startsWith('run:')).map(k=>Number(k.slice(4))),...activeAssist]);
+  await Promise.allSettled([...ids].map(id=>chrome.tabs.sendMessage(id,{scope:'adapter',type:'stop'})).concat(
+    jobs.map(id=>api(`/assist/jobs/${id}`,'DELETE',undefined,true))));
 }
 const random=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');};
 async function sha(text:string) {return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');}
@@ -87,6 +96,66 @@ async function handleUI(m:Record<string,unknown>) {
     case 'tabs': return (await chrome.tabs.query({})).filter(t=>t.id && t.url && allowedTab(t.url)).map(t=>({id:t.id,title:t.title,url:t.url}));
     case 'attach': return attach(m.tabId);
     case 'status': return send((await tab(m.tabId)).id,'status');
+    case 'localAIStatus': return api('/ai/local/status','GET',undefined,true);
+    case 'assist': {
+      const t=await tab(m.tabId);
+      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof m.includeImage!=='boolean')throw Error('Selecciona una pestaña ALEKS para la consulta local.');
+      if(!await auth())throw Error('Entra en demostración o inicia sesión en la aplicación.');
+      if(assistJobs.has(t.id))throw Error('Ya hay una consulta de IA en curso en esta pestaña.');
+      const job=crypto.randomUUID();assistJobs.set(t.id,job);assistProposals.delete(t.id);let remoteId:string|undefined;
+      try {
+        const context=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:m.includeImage}));
+        let image:string|undefined;
+        if(m.includeImage) {
+          const active=async()=>{
+            const current=await tab(t.id),selected=await chrome.tabs.query({active:true,windowId:t.windowId});
+            if(current.url!==t.url || selected.length!==1 || selected[0].id!==t.id)throw Error('Activa la pestaña ALEKS seleccionada para capturarla.');
+          };
+          await active();image=await chrome.tabs.captureVisibleTab(t.windowId,{format:'jpeg',quality:65});await active();
+          if(image.length>1_500_000)throw Error('La captura es demasiado grande; reduce el tamaño de la ventana.');
+        }
+        // Peticiones cortas: MV3 puede terminar un worker cuyo fetch no recibe
+        // respuesta durante 30 s. No mantenemos un fetch abierto a la inferencia.
+        const started=await api('/assist/jobs','POST',{context,...(image?{image}:{})},true);
+        if(typeof started?.id!=='string' || !/^[a-f0-9-]{36}$/.test(started.id))throw Error('Identificador de consulta inválido.');
+        remoteId=started.id;
+        if(assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
+        assistRemoteJobs.set(t.id,started.id);
+        const deadline=Date.now()+240_000;let response:unknown;
+        while(Date.now()<deadline) {
+          if(assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
+          const state=await api(`/assist/jobs/${started.id}`,'GET',undefined,true);
+          if(state.status==='completed'){response=state.result;break;}
+          if(state.status==='error')throw Error('Ollama no produjo una propuesta válida. Comprueba el servicio, modelo y tiempo disponible.');
+          if(state.status!=='pending')throw Error('Estado de consulta inválido.');
+          await new Promise(resolve=>setTimeout(resolve,1000));
+        }
+        if(response===undefined)throw Error('El modelo tardó más de cuatro minutos. Usa un modelo más pequeño o revisa los recursos disponibles.');
+        const result=assistResultSchema.parse(response);
+        const current=await tab(t.id),fresh=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:m.includeImage}));
+        if(assistJobs.get(t.id)!==job || current.url!==t.url || context.fingerprint!==fresh.fingerprint || result.fingerprint!==context.fingerprint)throw Error('El ejercicio cambió durante la consulta; se descartó la propuesta.');
+        const expected=context.fields.map(field=>field.key).sort().join(',');
+        if(result.proposal.status==='proposed' && result.proposal.answers.map(answer=>answer.field_key).sort().join(',')!==expected)throw Error('Las respuestas de IA no corresponden a los campos actuales.');
+        // La captura contiene solo el área visible; el contexto textual no valida
+        // cambios del diagrama. Por ahora esas propuestas se introducen a mano.
+        const proposal:AssistView={id:crypto.randomUUID(),context:{...context,can_fill_integer:context.can_fill_integer && !m.includeImage},result};
+        assistProposals.set(t.id,proposal);return proposal;
+      } finally {
+        if(assistRemoteJobs.get(t.id)===remoteId)assistRemoteJobs.delete(t.id);
+        if(remoteId)await api(`/assist/jobs/${remoteId}`,'DELETE',undefined,true).catch(()=>{});
+        if(assistJobs.get(t.id)===job)assistJobs.delete(t.id);
+      }
+    }
+    case 'assistFill': {
+      const t=await tab(m.tabId),proposal=assistProposals.get(t.id);
+      assistProposals.delete(t.id);
+      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth() || !proposal || proposal.id!==m.proposalId || !proposal.context.can_fill_integer)throw Error('No hay una propuesta vigente que se pueda introducir.');
+      const answers=proposal.result.proposal.answers;
+      if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !/^(0|[1-9]\d{0,11})$/.test(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero sin unidad.');
+      assistWriters.add(t.id);
+      try{return await send(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answers[0].value});}
+      finally{assistWriters.delete(t.id);}
+    }
     case 'start': {
       const t=await tab(m.tabId);if(!simulatorURL(t.url)) throw Error('ALEKS aún no está validado. Solo se permite el simulador.');
       if(!await auth()) throw Error('Inicia sesión o selecciona demostración');
@@ -98,7 +167,12 @@ async function handleUI(m:Record<string,unknown>) {
       await chrome.storage.local.set({[`consent:${t.id}`]:consent});
       return send(t.id,'start',{limits,authorization:consent});
     }
-    case 'pause': case 'resume': case 'stop': return send((await tab(m.tabId)).id,String(m.type));
+    case 'pause': case 'resume': case 'stop': case 'cancelAssist': {
+      const t=await tab(m.tabId);assistProposals.delete(t.id);assistJobs.delete(t.id);
+      const remote=assistRemoteJobs.get(t.id);assistRemoteJobs.delete(t.id);
+      if(remote)await api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});
+      return send(t.id,m.type==='cancelAssist'?'stop':String(m.type));
+    }
     default: throw Error('Comando desconocido');
   }
 }
@@ -141,4 +215,8 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
   return true;
 });
 chrome.permissions.onRemoved.addListener(()=>{void stopAll();});
-chrome.tabs.onRemoved.addListener(id=>{void chrome.storage.local.remove([`run:${id}`,`consent:${id}`]);});
+chrome.tabs.onRemoved.addListener(id=>{
+  assistProposals.delete(id);assistJobs.delete(id);assistWriters.delete(id);
+  const remote=assistRemoteJobs.get(id);assistRemoteJobs.delete(id);if(remote)void api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});
+  void chrome.storage.local.remove([`run:${id}`,`consent:${id}`]);
+});

@@ -67,6 +67,8 @@ Elige un modelo que admita Responses API y salidas estructuradas. No se presupon
 
 El límite de llamadas se reserva antes de cada solicitud de interpretación, también si falla la red. Los ejercicios estructurados del simulador no usan IA. Una interpretación de texto por IA se calcula con SymPy, pero queda **no verificable para envío automático**: comprobar el cálculo no demuestra que el texto se haya interpretado correctamente. Para ampliar ese flujo se necesita evidencia independiente de lectura/interpretación. No se ejecuta código generado por IA.
 
+Para ALEKS se añade un flujo separado de **copiloto local con Ollama**, sin API de pago: `AI_PROVIDER=ollama`, `AI_MODEL` igual al modelo descargado y `AI_TIMEOUT_SECONDS` para la inferencia local. Permite propuestas generales con captura opcional y una primera escritura asistida de enteros, sin entregar. Su instalación y límites están en [docs/IA_GENERAL.md](docs/IA_GENERAL.md). Usa tareas con sondeo para no mantener un fetch largo en el worker MV3 y puede cancelarse desde el panel.
+
 Destinos externos: gestores de paquetes durante instalación; `accounts.google.com`, `oauth2.googleapis.com` y `www.googleapis.com` para Google; `api.openai.com` si habilitas IA. La comunicación extensión/backend se limita a loopback en desarrollo. En entornos con lista de acceso restringida, agrega solo los destinos necesarios y conserva los ya autorizados.
 
 ## Cobertura implementada
@@ -117,6 +119,8 @@ Consulta [docs/VALIDACION.md](docs/VALIDACION.md) para los resultados ejecutados
 
 ## Integración real con ALEKS y siguientes pasos
 
+El [copiloto local con Ollama](docs/IA_GENERAL.md) añade consultas generales con texto/captura y una primera escritura asistida de enteros en un recuadro vacío. Incluye la instalación paso a paso para Windows. No utiliza una API de pago ni entrega/avanza automáticamente; el modelo real y los eventos del editor necesitan validación en tu computadora.
+
 El usuario confirmó **`https://latam-awu.aleks.com` como sitio de los ejercicios**. «Autorizar sitio ALEKS para inspección» solicita un permiso opcional únicamente para ese origen, separado del simulador. El manifest conserva también `https://latam.aleks.com` como referencia anterior, sin solicitar ambos a la vez. Se compara el origen completo: no se aceptan otros subdominios, HTTP ni puertos diferentes. Al revocar se eliminan los permisos de ambos sitios y del simulador. El permiso permite inspeccionar los fragmentos observados; no acredita una sesión autenticada ni habilita entregas reales.
 
 Para ampliar el adaptador se necesita una muestra autorizada y sin datos personales de la pantalla de un ejercicio: DOM/MathML, campos, control normal de envío, feedback de aceptación/rechazo y avance. Una captura por sí sola no demuestra cómo funcionan los controles. Después habrá que validar lectura, escritura reconocida por la interfaz, detección de sesión, verificación humana y un ejercicio limitado con acceso autorizado. No envíes contraseñas, cookies o credenciales en incidencias.
@@ -134,6 +138,8 @@ El diagnóstico reconoce la combinación de un mensaje visible y único con esos
 En la actividad «Longitud de un arco y el área de un sector circular», el usuario aportó el botón **Verificar** (`checkAnswer`). Se reconoce como otra variante de envío, con su ID, tipo, clase funcional y etiqueta exactos; las clases con hash no intervienen. El panel muestra la etiqueta realmente observada. Dos controles de envío visibles son ambiguos.
 
 Ya se recibieron la tabla vacía, la muestra de `5π` y `7π`, la tabla final con **8π/3 cm** y **4π cm²**, el menú de fracción/pi/unidades, el título público, el botón completo **Siguiente tema** y `#result_feedback_alert` con **Correcta**. No hace falta recopilar más HTML para esta fase de lectura. `aleks-circle.ts` asocia los dos editores por las etiquetas de sus filas, sin depender de IDs o del orden, y lee sus árboles visuales aunque los inputs tengan `opacity:0`. Reconoce la fracción apilada y el exponente de cm² solo en los formatos aportados, comprobando su disposición relativa. Las muestras sin unidades siguen mostrándose sin unidades. La tabla final y los botones del menú aportado están deshabilitados, y el panel lo indica.
+
+Para ejercicios con un solo recuadro, `aleks-single-editor.ts` reconoce un único contenedor visual asociado al input conocido sin exigir cm³, pi u otros botones de unidades. Informa si está vacío, deshabilitado o contiene un entero simple representado por spans en una misma línea. Esto evita el diagnóstico incorrecto de controles faltantes en ejercicios sin unidades, como el reporte de nadadores. No interpreta automáticamente ese problema ni modifica la pestaña. El panel omite el conteo del menú de fracciones/unidades cuando no hay ninguno de esos controles.
 
 **Siguiente tema** tiene una observación propia, distinta de **Siguiente**, aunque comparten ID y clase funcional. Con el contenedor completo de resultado, un mensaje único Correcta y ese botón habilitado se muestra una señal positiva observada; no se cambia de tema ni se declara terminada una actividad. El nombre de tema se muestra como título observado y no sustituye la identidad de actividad. Los valores finales y su aceptación fueron introducidos y reportados por el usuario, no por la extensión.
 

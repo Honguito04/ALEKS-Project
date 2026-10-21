@@ -1,4 +1,5 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import Field
 
 
 class Settings(BaseSettings):
@@ -11,6 +12,7 @@ class Settings(BaseSettings):
     google_client_secret: str = ""
     ai_provider: str = "none"
     ai_model: str = ""
+    ai_timeout_seconds: int = Field(default=120, ge=10, le=600)
     openai_api_key: str = ""
     enable_demo: bool = True
 
@@ -25,6 +27,10 @@ class Settings(BaseSettings):
     @property
     def ai_ready(self):
         return self.ai_provider == "openai" and bool(self.ai_model and self.openai_api_key)
+
+    @property
+    def local_ai_ready(self):
+        return self.ai_provider == "ollama" and bool(self.ai_model)
 
 
 settings = Settings()

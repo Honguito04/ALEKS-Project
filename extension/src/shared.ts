@@ -46,12 +46,29 @@ export interface EditorMenuObservation {
   status:'observed'|'missing'|'ambiguous';
   controls:{fraction:ControlObservation;pi:ControlObservation;cm:ControlObservation;cmSquared:ControlObservation};
 }
+export interface SingleEditorObservation {
+  status:'observed'|'missing'|'ambiguous'|'unsupported';reason:string;rootCount:number;disabled?:boolean;autoSubmitSupported:false;
+  readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string};
+}
+export const assistContextSchema=z.object({
+  fingerprint:z.string().regex(/^[a-f0-9]{64}$/),statement:z.string().min(1).max(8000),
+  fields:z.array(z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().min(1).max(200)}).strict()).min(1).max(12),
+  diagram_required:z.boolean(),can_fill_integer:z.boolean()
+}).strict();
+export type AssistContext=z.infer<typeof assistContextSchema>;
+export const assistResultSchema=z.object({
+  fingerprint:z.string().regex(/^[a-f0-9]{64}$/),model:z.string().max(200),provider:z.literal('ollama'),provider_calls:z.number().int().min(0).max(1),verified:z.literal(false),
+  proposal:z.object({status:z.enum(['proposed','needs_context']),answers:z.array(z.object({field_key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),value:z.string().min(1).max(500),unit:z.string().max(40)}).strict()).max(12),
+    explanation:z.string().min(1).max(4000),missing_information:z.array(z.string().max(300)).max(10)}).strict()
+}).strict();
+export type AssistResult=z.infer<typeof assistResultSchema>;
+export interface AssistView {id:string;context:AssistContext;result:AssistResult}
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
   inputDiagnostics:{presentCount:number;paintedCount:number;ariaHiddenCount:number;frameCount:number;visibleRootCount:number;
     blockedBy:{noLayout:number;hiddenAttribute:number;displayNone:number;visibilityHidden:number;opacityZero:number;noView:number}};
   renderedAnswer:EditorReadback;submitControl:ControlObservation & {label?:'Entregar'|'Verificar'};nextControl:ControlObservation;nextTopicControl:ControlObservation;resultMarker:ResultObservation;
-  circleTable:CircleTableObservation;menu:EditorMenuObservation;
+  circleTable:CircleTableObservation;menu:EditorMenuObservation;singleEditor:SingleEditorObservation;
 }
 export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:string} |
   {kind:'space'} |
