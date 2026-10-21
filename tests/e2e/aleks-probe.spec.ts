@@ -28,6 +28,43 @@ test('reconocer un editor no habilita lectura de ejercicio, escritura ni entrega
   expect(result.d.supported).toBe(false);expect(result.d.session).toBe(false);expect(result.d.editorObservation?.status).toBe('observed');
   expect([result.read,result.write,result.submit,result.next]).toEqual(['blocked','blocked','blocked','blocked']);
 });
+test('cuenta dos recuadros como los reportados sin deducir su correspondencia ni escribir',async({page})=>{
+  const result=await page.evaluate(async()=>{
+    const input=document.querySelector<HTMLInputElement>('.ansed_input')!;
+    input.id='ansed_input_tabed_fixture_object_1';input.style.cssText='width:17px;height:32px';
+    const second=input.cloneNode(true) as HTMLInputElement;second.id='ansed_input_tabed_fixture_object_2';input.after(second);
+    let events=0;for(const name of ['input','change','click'])document.addEventListener(name,()=>events++);
+    const detection=await window.pendingAdapter.detect();
+    return {detection,events,values:[input.value,second.value]};
+  });
+  expect(result).toMatchObject({events:0,values:['',''],detection:{supported:false,editorObservation:{status:'ambiguous',inputCount:2,
+    inputDiagnostics:{presentCount:2,paintedCount:2,ariaHiddenCount:0,frameCount:0},renderedAnswer:{status:'ambiguous'}}}});
+});
+test('distingue un input pintado pero excluido por aria-hidden sin autorizar su uso',async({page})=>{
+  const result=await page.evaluate(()=>{
+    const input=document.querySelector<HTMLInputElement>('.ansed_input')!,wrapper=document.createElement('div');
+    wrapper.setAttribute('aria-hidden','true');input.replaceWith(wrapper);wrapper.append(input);
+    return window.aleksProbe(document);
+  });
+  expect(result).toMatchObject({status:'missing',inputCount:0,inputDiagnostics:{presentCount:1,paintedCount:1,ariaHiddenCount:1,frameCount:0},renderedAnswer:{status:'missing'}});
+});
+test('distingue un input oculto por CSS de uno ausente sin leer su valor',async({page})=>{
+  const result=await page.evaluate(()=>{
+    const input=document.querySelector<HTMLInputElement>('.ansed_input')!;input.style.display='none';input.value='PRIVATE_INPUT_VALUE';
+    return window.aleksProbe(document);
+  });
+  expect(result).toMatchObject({status:'missing',inputCount:0,inputDiagnostics:{presentCount:1,paintedCount:0,ariaHiddenCount:0,frameCount:0}});
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_INPUT_VALUE');
+});
+test('cuenta marcos sin explorar sus campos, URLs o contenido',async({page})=>{
+  const result=await page.evaluate(()=>{
+    document.querySelector('.ansed_input')!.remove();
+    const frame=document.createElement('iframe');frame.srcdoc='<input aria-label="Answer Editor" class="ansed_input" type="text" value="PRIVATE_FRAME_VALUE">';document.body.append(frame);
+    return window.aleksProbe(document);
+  });
+  expect(result).toMatchObject({status:'missing',inputCount:0,inputDiagnostics:{presentCount:0,paintedCount:0,ariaHiddenCount:0,frameCount:1}});
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_FRAME_VALUE');
+});
 for(const state of ['hidden','duplicate','disabled'] as const) {
   test(`el diagnóstico rechaza controles ${state}`,async({page})=>{
     const result=await page.evaluate(state=>{

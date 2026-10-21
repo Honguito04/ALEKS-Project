@@ -71,7 +71,13 @@ function observeResult(document:Document,next:ControlObservation,submit:ControlO
  * La respuesta visible y la presencia del botón no demuestran un envío aceptado.
  */
 export function inspectAleksEditor(document:Document):EditorObservation {
-  const inputs=[...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')].filter(visible);
+  const matches=[...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')];
+  const inputs=matches.filter(visible);
+  // Solo conteos: no se leen valores, IDs, HTML ni URLs de marcos. Un input
+  // transitorio oculto no se convierte en un campo listo para escribir.
+  const inputDiagnostics={presentCount:matches.length,paintedCount:matches.filter(painted).length,
+    ariaHiddenCount:matches.filter(input=>input.closest('[aria-hidden="true"]')).length,
+    frameCount:document.querySelectorAll('iframe,frame').length};
   const units=[...document.querySelectorAll<HTMLButtonElement>('button[aria-label="Centímetros cúbicos"]')].filter(visible);
   const labels=[...document.querySelectorAll<HTMLElement>('div.textContent')].filter(el=>visible(el) && el.textContent?.trim()==='Entregar');
   let status:EditorObservation['status']='observed';
@@ -81,7 +87,7 @@ export function inspectAleksEditor(document:Document):EditorObservation {
   const renderedAnswer:EditorReadback=inputs.length===1 ? readRenderedQuantity(inputs[0]):{status:inputs.length?'ambiguous':'missing',reason:'No hay un único campo visible al que asociar la respuesta.'};
   const submitControl=observeButton(document,'button#smt_bottomnav_button_input_nextItemAssess.nextItemAssess[type="button"]','Entregar');
   const nextControl=observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente');
-  return {status,inputCount:inputs.length,unitButtonCount:units.length,submitLabelCount:labels.length,renderedAnswer,
+  return {status,inputCount:inputs.length,unitButtonCount:units.length,submitLabelCount:labels.length,inputDiagnostics,renderedAnswer,
     submitControl,
     // Solo se identifica este control aportado; learningCorrect por sí solo no
     // acredita un resultado ni lo vincula a una actividad/huella o envío nuestro.

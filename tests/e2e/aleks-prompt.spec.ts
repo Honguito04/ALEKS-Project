@@ -56,6 +56,45 @@ test('conserva fracciones, exponentes y raíces como estructura sin ejecutar atr
   expect(JSON.stringify(result.math)).not.toMatch(/onclick|fixture|PRIVATE_ANNOTATION/);
   expect(result.math).toMatchObject({kind:'row',items:[{kind:'row',items:[{kind:'fraction',numerator:{value:'1'},denominator:{value:'2'}},{value:'+'},{kind:'power',base:{value:'x'},exponent:{value:'2'}},{value:'+'},{kind:'sqrt'},{value:'+'},{kind:'root'}]}]});
 });
+test('lee mstyle dentro del enunciado sin duplicados, cambios del DOM o habilitar envíos',async({page})=>{
+  const result=await page.evaluate(async()=>{
+    document.querySelector('[mathml]')!.setAttribute('mathml','<math><mstyle displaystyle="true" scriptlevel="0"><mn>1</mn></mstyle></math>');
+    const before=document.body.innerHTML;let events=0;
+    for(const name of ['input','change','click'])document.addEventListener(name,()=>events++);
+    const detection=await window.pendingAdapter.detect();
+    return {detection,events,unchanged:before===document.body.innerHTML};
+  });
+  expect(result).toMatchObject({events:0,unchanged:true,detection:{supported:false,session:false,promptObservation:{status:'readable',autoSubmitSupported:false}}});
+  expect(result.detection.promptObservation?.statement).toContain('números del 1 al 6');
+  expect(result.detection.promptObservation?.mathematics).toHaveLength(5);
+});
+test('mstyle conserva la agrupación y orden de fracciones, potencias y raíces e ignora sus atributos',async({page})=>{
+  const result=await page.evaluate(()=>{
+    const body='<mfrac><mrow><mn>1</mn></mrow><mn>2</mn></mfrac><mo>+</mo><msup><mi>cm</mi><mn>3</mn></msup><mo>+</mo><msqrt><mn>5</mn></msqrt>';
+    const base=window.promptMath(`<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow>${body}</mrow></math>`);
+    const styled=window.promptMath(`<math xmlns="http://www.w3.org/1998/Math/MathML"><mstyle displaystyle="true" scriptlevel="0" mathcolor="green" id="PRIVATE_STYLE_ID" onclick="fixture()">${body.replace('<mrow>','<mstyle mathsize="18px">').replace('</mrow>','</mstyle>')}</mstyle></math>`);
+    return {base,styled,text:window.promptMathText(styled)};
+  });
+  expect(result.styled).toEqual(result.base);
+  expect(result.text).toBe('(1)/(2) + (cm)^(3) + sqrt(5)');
+  expect(JSON.stringify(result.styled)).not.toMatch(/PRIVATE_STYLE_ID|onclick|fixture|green|mathsize|scriptlevel/);
+});
+for(const sample of [
+  {name:'vacío',xml:'<math><mstyle/></math>',reason:'vacía'},
+  {name:'con texto fuera de tokens',xml:'<math><mstyle>1 + 2</mstyle></math>',reason:'fuera de un token'},
+  {name:'con un hijo no admitido',xml:'<math><mstyle><mn>1</mn><mphantom><mn>2</mn></mphantom></mstyle></math>',reason:'mphantom'},
+  {name:'anidado en exceso',xml:`<math>${'<mstyle>'.repeat(13)}<mn>1</mn>${'</mstyle>'.repeat(13)}</math>`,reason:'complejidad'}
+]) {
+  test(`rechaza mstyle ${sample.name} sin devolver una expresión parcial`,async({page})=>{
+    const result=await page.evaluate(async xml=>{
+      document.querySelector('[mathml]')!.setAttribute('mathml',xml);
+      return window.aleksPrompt(document);
+    },sample.xml);
+    expect(result.status).toBe('unsupported');expect(result.reason).toContain(sample.reason);
+    expect(result.statement).toBeUndefined();expect(result.mathematics).toBeUndefined();
+    expect(result.fingerprint).toBeUndefined();expect(result.autoSubmitSupported).toBe(false);
+  });
+}
 for(const state of ['missing','duplicate','hidden-copy','malformed-math','missing-math','unsupported-math','image','oversized','doctype'] as const) {
   test(`trata el enunciado ${state} sin devolver una lectura parcial`,async({page})=>{
     const result=await page.evaluate(async state=>{

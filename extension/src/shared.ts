@@ -37,6 +37,7 @@ export interface ResultObservation {
 }
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
+  inputDiagnostics:{presentCount:number;paintedCount:number;ariaHiddenCount:number;frameCount:number};
   renderedAnswer:EditorReadback;submitControl:ControlObservation;nextControl:ControlObservation;resultMarker:ResultObservation;
 }
 export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:string} |

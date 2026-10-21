@@ -29,7 +29,9 @@ export function parsePromptMath(xml:string):PromptMath {
       if(!children.length || children.slice(1).some(c=>!['annotation','annotation-xml'].includes(c.localName)))throw new Unreadable('Alternativas MathML ambiguas.');
       return visit(children[0],depth+1);
     }
-    if(['math','mrow','msqrt'].includes(tag)) {
+    // mstyle agrupa como mrow. Se conserva cada hijo en orden; sus atributos
+    // de presentación no se trasladan al AST ni se ejecutan.
+    if(['math','mrow','mstyle','msqrt'].includes(tag)) {
       if(!children.length)throw new Unreadable('Representación matemática vacía.');
       return {kind:tag==='msqrt'?'sqrt':'row',items:children.map(c=>visit(c,depth+1))};
     }
