@@ -1,4 +1,6 @@
 import type { EditorObservation, EditorReadback, ControlObservation, ResultObservation } from './shared';
+import { painted,visible,disabled } from './aleks-dom';
+import { inspectCircleTable,inspectEditorMenu } from './aleks-circle';
 
 function inputBlockers(element:HTMLInputElement) {
   const reasons=new Set<keyof EditorObservation['inputDiagnostics']['blockedBy']>();
@@ -14,18 +16,6 @@ function inputBlockers(element:HTMLInputElement) {
   }
   return reasons;
 }
-
-function painted(element:HTMLElement) {
-  const view=element.ownerDocument.defaultView;
-  if(!view || !element.getClientRects().length || element.closest('[hidden]'))return false;
-  for(let parent:HTMLElement|null=element;parent;parent=parent.parentElement) {
-    const style=view.getComputedStyle(parent);
-    if(style.display==='none' || style.visibility==='hidden' || style.visibility==='collapse' || style.opacity==='0')return false;
-  }
-  return true;
-}
-const visible=(element:HTMLElement)=>painted(element) && !element.closest('[aria-hidden="true"]');
-const disabled=(element:HTMLElement)=>element.matches(':disabled') || Boolean(element.closest('[aria-disabled="true"]'));
 
 /** Lectura muy limitada de la representación visual aportada: entero, cm, 3 elevado.
  * ansed_tree está aria-hidden porque duplica la representación accesible; ese
@@ -80,9 +70,10 @@ function observeSubmit(document:Document):EditorObservation['submitControl'] {
   return matches.length===1 ? {...observation,label:matches[0].label}:observation;
 }
 
-function observeResult(document:Document,next:ControlObservation,submit:ControlObservation):ResultObservation {
-  // Fragmento confirmado por el usuario tras entregar 226 cm³: div de texto
-  // plano «Correcta», inline-block, color inline rgb(57,108,41), y Siguiente.
+function observeResult(document:Document,next:ControlObservation,nextTopic:ControlObservation,submit:ControlObservation):ResultObservation {
+  // Fragmento confirmado tras entregar 226 cm³: texto plano «Correcta» y
+  // Siguiente. En el tema del círculo se aportó además el alert completo y
+  // Siguiente tema: se exige ese contenedor para esta segunda variante.
   // El color no se interpreta por sí solo y el texto de un enunciado, wrapper
   // o mensaje oculto no cuenta. Esto observa una señal, no resuelve su asociación
   // a la actividad/huella de un envío iniciado por la extensión.
@@ -90,8 +81,12 @@ function observeResult(document:Document,next:ControlObservation,submit:ControlO
     element.childNodes.length===1 && element.firstChild?.nodeType===3 && element.textContent?.trim()==='Correcta' &&
     element.style.display==='inline-block' && element.style.color==='rgb(57, 108, 41)' && visible(element));
   const count=messages.length;
-  return {status:count>1 || next.status==='ambiguous' || (count>0 && submit.status!=='missing') ? 'ambiguous':
-    count===0 ? 'missing':next.status==='observed' ? 'positive_marker':'incomplete',positiveMessageCount:count};
+  const alerts=[...document.querySelectorAll<HTMLDivElement>('#result_feedback_alert[aria-live="polite"]')].filter(visible);
+  const topicMarker=nextTopic.status==='observed' && alerts.length===1 && count===1 && alerts[0].contains(messages[0]) && alerts[0].style.borderColor==='rgb(57, 108, 41)';
+  const ambiguous=count>1 || next.status==='ambiguous' || nextTopic.status==='ambiguous' || next.count+nextTopic.count>1 ||
+    (count>0 && submit.status!=='missing') || (nextTopic.count>0 && alerts.length>1);
+  const status=ambiguous?'ambiguous':count===0?'missing':next.status==='observed' || topicMarker?'positive_marker':'incomplete';
+  return {status,positiveMessageCount:count,...(status==='positive_marker' && topicMarker?{continuation:'topic' as const}:{})};
 }
 
 /** Inspección de SOLO LECTURA de los atributos aportados por el usuario.
@@ -119,9 +114,10 @@ export function inspectAleksEditor(document:Document):EditorObservation {
   const renderedAnswer:EditorReadback=inputs.length===1 ? readRenderedQuantity(inputs[0]):{status:inputs.length?'ambiguous':'missing',reason:'No hay un único campo visible al que asociar la respuesta.'};
   const submitControl=observeSubmit(document);
   const nextControl=observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente');
+  const nextTopicControl=observeButton(document,'button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]','Siguiente tema');
   return {status,inputCount:inputs.length,unitButtonCount:units.length,submitLabelCount:labels.length,inputDiagnostics,renderedAnswer,
-    submitControl,
+    submitControl,nextTopicControl,circleTable:inspectCircleTable(document),menu:inspectEditorMenu(document),
     // Solo se identifica este control aportado; learningCorrect por sí solo no
     // acredita un resultado ni lo vincula a una actividad/huella o envío nuestro.
-    nextControl,resultMarker:observeResult(document,nextControl,submitControl)};
+    nextControl,resultMarker:observeResult(document,nextControl,nextTopicControl,submitControl)};
 }

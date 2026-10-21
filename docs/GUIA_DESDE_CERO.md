@@ -188,7 +188,7 @@ Cuando haya una actualización del proyecto, descarga el ZIP nuevo en otra carpe
 | «Operador MathML no admitido» | La actualización admite los símbolos aportados del círculo, ángulo, grados, arco y pi. Si aparece otro, comparte el mensaje completo con sus códigos `U+…`; identifican el símbolo sin volver a copiar todo el HTML. |
 | La pestaña de ALEKS no aparece | Concede el permiso del paso 8, comprueba el dominio y pulsa **Actualizar pestañas**. |
 | No se encuentra un enunciado visible en ALEKS | Comprueba que estés viendo un ejercicio. Algunas pantallas o estructuras todavía requieren ampliar el lector. |
-| El panel indica cero campos pero ves recuadros de respuesta | Abre **Detalle del diagnóstico del editor** y comparte sus conteos, incluidos **Contenedores visuales del editor** y **Motivos de exclusión**. Distinguen el input y su representación visual, así como el motivo de ocultación; no significan que ALEKS carezca de recuadros. |
+| El panel indica cero campos pero ves recuadros de respuesta | En el círculo ya se confirmó que los dos inputs son transparentes. Actualiza la extensión: ahora debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. En otros formatos, el detalle del diagnóstico distingue los inputs de sus contenedores visibles. |
 
 Si necesitas ayuda con un error, indica el número de paso y copia el mensaje que aparece, omitiendo información de tu cuenta. No necesitas compartir contraseñas, cookies ni enlaces completos de sesión de ALEKS.
 
@@ -206,6 +206,10 @@ Cuando termine, abre `chrome://extensions` y pulsa el botón de recargar, con fl
 
 Conecta el backend, entra en demostración si es necesario, actualiza la lista de pestañas y lee el laboratorio. Si **Detener** está habilitado, púlsalo. Después pulsa **Reiniciar actividad** en el laboratorio, vuelve a **Leer actividad seleccionada** y pulsa **Autorizar e iniciar** con 10 ejercicios, 10 minutos y 0 llamadas IA. La vista previa debe estar desmarcada para el recorrido completo.
 
-Para comprobar la corrección de `mstyle` en ALEKS, actualiza también esa pestaña, selecciona su entrada en el panel y pulsa **Leer actividad seleccionada**. La actualización del lector no habilita escritura o entrega automática. Si sigue indicando cero campos, hace falta revisar el HTML del editor actual.
+Para comprobar los cambios en ALEKS, actualiza también esa pestaña con **F5**, selecciona su entrada en el panel y pulsa **Leer actividad seleccionada**. No necesitas repetir la prueba del simulador para comprobar esta lectura.
+
+En el tema del círculo, el panel debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. Muestra cada respuesta junto a «Longitud del arco AB» o «Área de la región sombreada», aunque el detalle técnico siga contando cero inputs pintados. Si los recuadros están vacíos, indica «vacío». Si siguen visibles las respuestas finales aportadas, muestra **8π/3 cm** y **4π cm²**. El menú o la tabla pueden aparecer deshabilitados después de verificar; ese estado se muestra en el panel.
+
+Si aparece el bloque **Correcta** junto al botón **Siguiente tema**, la inspección los identifica sin pulsarlo. El nombre público del tema también puede mostrarse; «Actividad: sin-validar» sigue indicando que no hay una sesión de ejecución real habilitada. Ya se recibieron los fragmentos necesarios para esta fase: no necesitas volver a copiarlos. La siguiente validación pendiente es la interacción real del editor y la asociación de una entrega iniciada por la extensión con su resultado.
 
 En el ejercicio del círculo, el lector puede mostrar `arco(AB)` al leer la marca situada sobre AB. La advertencia sobre la región sombreada significa que se leyó el texto, pero todavía falta interpretar el dibujo. No acredita una respuesta geométrica.

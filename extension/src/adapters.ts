@@ -1,6 +1,7 @@
 import { BACKEND, exerciseSchema, type Adapter, type Exercise, type Detection, type Feedback } from './shared';
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
+import { observedCircleTopic } from './aleks-circle';
 
 function assertSignal(signal:AbortSignal) { signal.throwIfAborted(); }
 async function waitFor<T>(read:()=>T|undefined,signal:AbortSignal,timeout=8000):Promise<T> {
@@ -105,22 +106,23 @@ export class PendingAleksAdapter implements Adapter {
   async detect():Promise<Detection> {
     const editorObservation=inspectAleksEditor(document);
     const promptObservation=await readAleksPrompt(document);
-    const description={
+    const description=editorObservation.circleTable.status==='observed'?'Tabla de arco y área reconocida en dos editores visuales. ':({
       observed:'Se identificaron el editor numérico y el botón de centímetros cúbicos. ',
       missing:'No se encuentran todos los controles del fragmento de editor observado. ',
       ambiguous:'Hay varios editores o botones de unidad; no se puede identificar uno sin ambigüedad. ',
       disabled:'El editor o el botón de unidad están deshabilitados. '
-    }[editorObservation.status];
+    }[editorObservation.status]);
     const readback=editorObservation.renderedAnswer.status==='readable' ? `Respuesta visible: ${editorObservation.renderedAnswer.display}. `:'';
     const submit=editorObservation.submitControl.status==='observed' ? `Botón ${editorObservation.submitControl.label || 'Entregar'} identificado. `:'';
     const next=editorObservation.nextControl.status==='observed' ? 'Botón Siguiente identificado; no se ha confirmado el resultado del ejercicio. ':'';
-    const result=editorObservation.resultMarker.status==='positive_marker' ? 'Señal positiva observada: Correcta y Siguiente. Aún no está asociada a una entrega de la extensión. ':'';
-    const prompt=promptObservation.status==='readable' ? 'Enunciado leído sin necesitar un contador de pregunta. Falta interpretar el problema y asociar sus campos. ':'Lectura del enunciado pendiente. ';
+    const topic=editorObservation.nextTopicControl.status==='observed'?'Botón Siguiente tema identificado; no se cambia de tema automáticamente. ':'';
+    const result=editorObservation.resultMarker.status==='positive_marker' ? `Señal positiva observada: Correcta y ${editorObservation.resultMarker.continuation==='topic'?'Siguiente tema':'Siguiente'}. Aún no está asociada a una entrega de la extensión. `:'';
+    const prompt=promptObservation.status==='readable' ? `Enunciado leído sin necesitar un contador de pregunta. ${editorObservation.circleTable.status==='observed'?'Los dos recuadros están asociados a sus etiquetas; falta interpretar el problema y su diagrama.':'Falta interpretar el problema y asociar sus campos.'} `:'Lectura del enunciado pendiente. ';
     const roots=editorObservation.inputDiagnostics.visibleRootCount;
     const visual=roots>0 && editorObservation.inputCount===0 ? `Se reconocen ${roots} contenedor(es) visual(es) del editor; sus inputs no pasan el filtro de visibilidad. `:'';
     return {origin:location.origin,activity:'sin-validar',session:false,complete:false,human:false,supported:false,
-      editorObservation,promptObservation,
-      reason:description+visual+readback+submit+result+(result?'':next)+prompt+'Inspección de solo lectura: faltan validar la identidad de actividad, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
+      editorObservation,promptObservation,observedTopic:observedCircleTopic(document),
+      reason:description+visual+readback+submit+result+(result?'':next)+topic+prompt+'Inspección de solo lectura: faltan validar la identidad de actividad, la interacción con el editor y la asociación de cada resultado a su entrega. La sesión y los envíos reales siguen sin habilitar.'};
   }
   private unavailable():never {throw Error('Adaptador ALEKS pendiente de validación con la interfaz autenticada');}
   async read():Promise<Exercise> {return this.unavailable();}

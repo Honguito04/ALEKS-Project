@@ -46,6 +46,8 @@ function App() {
   const run=view.run;
   const operations=Object.values(run?.operations || {});
   const editorDiagnostics=view.detection?.editorObservation?.inputDiagnostics;
+  const circleTable=view.detection?.editorObservation?.circleTable;
+  const menu=view.detection?.editorObservation?.menu;
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">MVP · El recorrido automático está habilitado en el simulador local. ALEKS está pendiente de validación.</div>
@@ -73,15 +75,21 @@ function App() {
       <button disabled={!selected || busy} onClick={()=>void attach()}>Leer actividad seleccionada</button>
       <p className="small">Abre el simulador en Chrome: <code>{BACKEND}/simulator/</code></p>
       {view.detection && <div className="inset"><strong>{view.detection.origin}</strong><p className="small">Actividad: {view.detection.activity}</p>
+        {view.detection.observedTopic && <p>Tema observado: {view.detection.observedTopic}</p>}
         {view.detection.promptObservation?.status==='readable' ? <><p><strong>Enunciado leído</strong></p><p>{view.detection.promptObservation.statement}</p><p className="small">{view.detection.promptObservation.reason} Esta lectura no habilita envíos automáticos.</p></>:view.detection.promptObservation && <p className="small">{view.detection.promptObservation.reason}</p>}
-        {view.detection.editorObservation && <><p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) reconocidos y visibles, y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>
+        {view.detection.editorObservation && <>{circleTable?.status==='observed' ? <><p><strong>Dos recuadros visuales reconocidos por sus etiquetas.</strong></p>
+          <p className="small">{circleTable.disabled?'Tabla deshabilitada.':'Tabla sin marca de bloqueo observada.'} La lectura no habilita escritura ni entrega.</p>
+          {circleTable.fields.map(field=><p key={field.kind}>{field.label}: <strong>{field.readback.display || (field.readback.status==='empty'?'vacío':'lectura pendiente')}</strong><br/><span className="small">{field.readback.reason}</span></p>)}</>:
+          <p className="small">Inspección ALEKS: {view.detection.editorObservation.inputCount} campo(s) reconocidos y visibles, y {view.detection.editorObservation.unitButtonCount} botón(es) de cm³. La presencia de un control no confirma su funcionamiento.</p>}
           {editorDiagnostics && <details><summary>Detalle del diagnóstico del editor</summary><p className="small">Coincidencias del editor en la página: {editorDiagnostics.presentCount}. Con representación visual: {editorDiagnostics.paintedCount}. Marcadas como ocultas para accesibilidad: {editorDiagnostics.ariaHiddenCount}. Marcos incrustados: {editorDiagnostics.frameCount}.
             {editorDiagnostics.visibleRootCount!==undefined && <> Contenedores visuales del editor: {editorDiagnostics.visibleRootCount}.</>}
             {editorDiagnostics.blockedBy && <> Motivos de exclusión (pueden coincidir): sin caja de disposición: {editorDiagnostics.blockedBy.noLayout}; atributo hidden: {editorDiagnostics.blockedBy.hiddenAttribute}; display:none: {editorDiagnostics.blockedBy.displayNone}; visibility:hidden/collapse: {editorDiagnostics.blockedBy.visibilityHidden}; opacity:0: {editorDiagnostics.blockedBy.opacityZero}; documento sin vista: {editorDiagnostics.blockedBy.noView}.</>}
-            {' '}Este detalle no identifica qué respuesta corresponde a cada recuadro ni inspecciona el contenido de los marcos.</p></details>}</>}
+            {' '}{circleTable?.status==='observed'?'La asociación de los recuadros aparece arriba.':'Estos conteos no identifican qué respuesta corresponde a cada recuadro.'} No se inspecciona el contenido de los marcos.</p></details>}</>}
+        {menu?.status==='observed' && <p className="small">Menú: {Object.values(menu.controls).filter(control=>control.count===1).length} de 4 controles de fracción, π y unidades identificados; {Object.values(menu.controls).filter(control=>control.status==='disabled').length} deshabilitados.</p>}
         {view.detection.editorObservation?.renderedAnswer.status==='readable' && <p>Respuesta visible en el editor: <strong>{view.detection.editorObservation.renderedAnswer.display}</strong>. Aceptación pendiente.</p>}
         {view.detection.editorObservation?.submitControl.status==='observed' && <p className="small">Botón «{view.detection.editorObservation.submitControl.label || 'Entregar'}» identificado. La inspección no hace clic ni envía respuestas.</p>}
-        {view.detection.editorObservation?.resultMarker.status==='positive_marker' ? <p>Mensaje «Correcta» y botón «Siguiente» observados. Falta vincularlos a una entrega de la extensión.</p>:view.detection.editorObservation?.nextControl.status==='observed' && <p className="small">Botón «Siguiente» identificado. Falta asociar el resultado al ejercicio enviado; no se avanza automáticamente.</p>}
+        {view.detection.editorObservation?.resultMarker.status==='positive_marker' ? <p>Mensaje «Correcta» y botón «{view.detection.editorObservation.resultMarker.continuation==='topic'?'Siguiente tema':'Siguiente'}» observados. Falta vincularlos a una entrega de la extensión.</p>:view.detection.editorObservation?.nextControl.status==='observed' && <p className="small">Botón «Siguiente» identificado. Falta asociar el resultado al ejercicio enviado; no se avanza automáticamente.</p>}
+        {view.detection.editorObservation?.nextTopicControl?.status==='observed' && <p className="small">«Siguiente tema» cambia de tema. La inspección no lo pulsa ni autoriza una actividad nueva.</p>}
         <p>{view.detection.supported ? (view.detection.session?'Sesión del simulador disponible':'Sesión perdida'):view.detection.reason}</p></div>}
     </section>
     <section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>

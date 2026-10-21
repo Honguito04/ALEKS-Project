@@ -33,13 +33,25 @@ export interface EditorReadback {
 }
 export interface ControlObservation {status:'observed'|'missing'|'ambiguous'|'disabled';count:number}
 export interface ResultObservation {
-  status:'positive_marker'|'missing'|'ambiguous'|'incomplete';positiveMessageCount:number;
+  status:'positive_marker'|'missing'|'ambiguous'|'incomplete';positiveMessageCount:number;continuation?:'topic';
+}
+export interface PiReadback {
+  status:'empty'|'readable'|'unsupported';reason:string;display?:string;coefficient?:string;denominator?:string;unit?:'cm'|'cm^2';
+}
+export interface CircleTableObservation {
+  status:'observed'|'missing'|'ambiguous'|'unsupported';reason:string;disabled?:boolean;autoSubmitSupported:false;
+  fields:{kind:'arc_length'|'shaded_area';label:string;readback:PiReadback}[];
+}
+export interface EditorMenuObservation {
+  status:'observed'|'missing'|'ambiguous';
+  controls:{fraction:ControlObservation;pi:ControlObservation;cm:ControlObservation;cmSquared:ControlObservation};
 }
 export interface EditorObservation {
   status:'observed'|'missing'|'ambiguous'|'disabled';inputCount:number;unitButtonCount:number;submitLabelCount:number;
   inputDiagnostics:{presentCount:number;paintedCount:number;ariaHiddenCount:number;frameCount:number;visibleRootCount:number;
     blockedBy:{noLayout:number;hiddenAttribute:number;displayNone:number;visibilityHidden:number;opacityZero:number;noView:number}};
-  renderedAnswer:EditorReadback;submitControl:ControlObservation & {label?:'Entregar'|'Verificar'};nextControl:ControlObservation;resultMarker:ResultObservation;
+  renderedAnswer:EditorReadback;submitControl:ControlObservation & {label?:'Entregar'|'Verificar'};nextControl:ControlObservation;nextTopicControl:ControlObservation;resultMarker:ResultObservation;
+  circleTable:CircleTableObservation;menu:EditorMenuObservation;
 }
 export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:string} |
   {kind:'space'} |
@@ -54,7 +66,7 @@ export interface PromptObservation {
   statement?:string;mathematics?:PromptMath[];fingerprint?:string;multiplePartsDetected?:boolean;diagramReferenceDetected?:boolean;
   autoSubmitSupported:false;
 }
-export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation;promptObservation?:PromptObservation}
+export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation;promptObservation?:PromptObservation;observedTopic?:string}
 export interface Feedback {status:'accepted'|'rejected'|'unknown'; fingerprint:string}
 export interface Adapter {
   detect():Promise<Detection>;
