@@ -112,7 +112,7 @@ it('el backend que falla no crea una identidad de demostración ficticia',async(
 });
 
 const assistContext={fingerprint:'b'.repeat(64),statement:'4 nadadores, dos premios distintos.',fields:[{key:'answer',label:'Respuesta'}],diagram_required:false,can_fill_integer:true};
-const assistResult={fingerprint:assistContext.fingerprint,model:'local-test',provider:'ollama',provider_calls:1,verified:false,
+const assistResult={fingerprint:assistContext.fingerprint,model:'local-test',provider:'ollama',provider_calls:1,verified:false,verification:'none',
   proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'4 × 3',missing_information:[]}};
 function prepareAssist(result=assistResult) {
   url=ALEKS_ACTIVITY+'/exercise-fixture';
@@ -209,4 +209,15 @@ it('permite cancelar una consulta pendiente y no conserva una propuesta tardía'
   expect((await send({scope:'ui',type:'cancelAssist',tabId:7})).ok).toBe(true);
   const result=await pending;expect(result.ok).toBe(false);expect(result.error).toContain('cancelada');
   expect(tabsSend).toHaveBeenCalledWith(7,{scope:'adapter',type:'stop'});
+});
+it('acepta un resultado del comprobador exacto y conserva su procedencia',async()=>{
+  prepareAssist({...assistResult,model:'',provider:'deterministic',provider_calls:0,verified:true,verification:'ordered_prizes'});
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(response.ok).toBe(true);expect(response.data.result).toMatchObject({verified:true,provider:'deterministic',verification:'ordered_prizes'});
+});
+it('rechaza una supuesta verificación del modelo sin comprobador y un falso contexto faltante',async()=>{
+  prepareAssist({...assistResult,verified:true});
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,status:'needs_context',answers:[]}});
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
 });

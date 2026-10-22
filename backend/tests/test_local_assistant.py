@@ -4,12 +4,14 @@ import httpx
 import pytest
 from app.config import settings
 from app.local_assistant import AssistProposal
+from app.local_assistant import AssistResult
 
 
 CONTEXT = {"fingerprint": "a" * 64, "statement": "Hay 4 nadadores y premios para primer y segundo lugar. ¿Cuántas maneras hay?",
            "fields": [{"key": "answer", "label": "Respuesta"}], "diagram_required": False, "can_fill_integer": True}
 PROPOSAL = {"status": "proposed", "answers": [{"field_key": "answer", "value": "12", "unit": ""}],
             "explanation": "4 posibilidades para primero y 3 para segundo: 4 × 3 = 12.", "missing_information": []}
+SWIMMERS = "Hay 4 nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?"
 
 
 @pytest.fixture
@@ -153,3 +155,53 @@ def test_job_failures_are_reported_without_model_output(client, demo_headers, ol
         result = client.get(path, headers=demo_headers)
         if result.json()["status"] != "pending": break
     assert result.json()["status"] == "error" and "PRIVATE_MODEL_FAILURE" not in result.text
+
+
+@pytest.mark.parametrize("route", ["/assist", "/assist/jobs"])
+def test_swimmers_regression_uses_exact_count_instead_of_wrong_model_combination(client, demo_headers, ollama, route):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({"status": "needs_context", "answers": [],
+        "explanation": "El orden no importa: 4C2 = 6 maneras.", "missing_information": []})
+    result = client.post(route, json={"context": {**CONTEXT, "statement": SWIMMERS}}, headers=demo_headers)
+    if route.endswith("jobs"):
+        path = route + "/" + result.json()["id"]
+        for _ in range(20):
+            result = client.get(path, headers=demo_headers)
+            if result.json()["status"] != "pending": break
+        result = result.json()["result"]
+    else:
+        assert result.status_code == 200
+        result = result.json()
+    assert result["verified"] is True and result["verification"] == "ordered_prizes"
+    assert result["provider"] == "deterministic" and result["provider_calls"] == 0
+    assert result["proposal"]["status"] == "proposed"
+    assert result["proposal"]["answers"] == [{"field_key": "answer", "value": "12", "unit": ""}]
+    assert "4 × 3 = 12" in result["proposal"]["explanation"] and calls == []
+
+
+def test_model_claim_of_missing_information_without_details_is_not_presented_as_context_failure(client, demo_headers, ollama):
+    _, response = ollama
+    response["message"]["content"] = json.dumps({"status": "needs_context", "answers": [],
+        "explanation": "Cálculo que da una conclusión errónea de 6 maneras.", "missing_information": []})
+    result = client.post("/assist", json={"context": CONTEXT}, headers=demo_headers)
+    assert result.status_code == 200
+    assert result.json()["proposal"]["status"] == "unable_to_solve"
+    assert result.json()["proposal"]["answers"] == [] and result.json()["verified"] is False
+    assert "6 maneras" not in result.json()["proposal"]["explanation"]
+
+
+def test_specific_missing_information_is_preserved(client, demo_headers, ollama):
+    _, response = ollama
+    response["message"]["content"] = json.dumps({"status": "needs_context", "answers": [],
+        "explanation": "No se indica la altura.", "missing_information": ["Altura del cilindro"]})
+    result = client.post("/assist", json={"context": CONTEXT}, headers=demo_headers)
+    assert result.json()["proposal"]["status"] == "needs_context"
+    assert result.json()["proposal"]["missing_information"] == ["Altura del cilindro"]
+
+
+def test_verified_output_cannot_come_from_a_model_proposal():
+    with pytest.raises(ValueError):
+        AssistResult(fingerprint="a" * 64, proposal=AssistProposal.model_validate(PROPOSAL), model="test", provider_calls=1,
+                     verified=True, verification="ordered_prizes")
+    with pytest.raises(ValueError):
+        AssistProposal.model_validate({**PROPOSAL, "missing_information": ["Falta un dato"]})

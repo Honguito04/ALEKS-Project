@@ -114,7 +114,7 @@ function App() {
       })}>Resolver con IA local</button>
       {assistActive && <button className="danger" onClick={()=>void rpc('cancelAssist',{tabId:selected}).catch(error=>setError(error.message))}>Cancelar operación de IA</button>}
       {health?.ai_provider!=='ollama' && <p className="small">Activa Ollama en .env para habilitar esta función. Consulta docs/IA_GENERAL.md.</p>}
-      {assist && <div className="inset"><p><strong>{assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':'Falta información'}</strong></p>
+      {assist && <div className="inset"><p><strong>{assist.result.verified?'Resultado comprobado · premios por puestos':assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':assist.result.proposal.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}</strong></p>
         {assist.result.proposal.answers.map(answer=><p key={answer.field_key}>{assist.context.fields.find(field=>field.key===answer.field_key)?.label || answer.field_key}: <strong>{answer.value} {answer.unit}</strong></p>)}
         <p>{assist.result.proposal.explanation}</p>{assist.result.proposal.missing_information.map((item,i)=><p key={i}>{item}</p>)}
         {canFill ? <button disabled={busy} onClick={()=>void attempt(async()=>{

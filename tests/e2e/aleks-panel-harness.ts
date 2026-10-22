@@ -1,6 +1,7 @@
 /** APIs de Chrome simuladas; usa UI, contexto y escritor de producción.
  * No prueba carga nativa ni ejecuta un modelo real. */
 import './aleks-probe-harness';
+declare global {interface Window {testAssistResult?:Record<string,unknown>}}
 let context:Awaited<ReturnType<typeof window.assistContext>>;
 Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
   permissions:{contains:async()=>true},
@@ -15,7 +16,7 @@ Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
       else if(message.type==='assist') {
         context=await window.assistContext(document);
         data={id:'test-proposal',context,result:{fingerprint:context.fingerprint,provider:'ollama',provider_calls:1,verified:false,model:'test-model',
-          proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Propuesta sintética para probar la UI.',missing_information:[]}}};
+          proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Propuesta sintética para probar la UI.',missing_information:[]},...window.testAssistResult}};
       } else if(message.type==='assistFill')data=await window.fillAssistInteger(document,context.fingerprint,'12',new AbortController().signal);
       else throw Error('Comando no simulado');
       return {ok:true,data};

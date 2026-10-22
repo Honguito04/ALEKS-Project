@@ -69,6 +69,8 @@ El límite de llamadas se reserva antes de cada solicitud de interpretación, ta
 
 Para ALEKS se añade un flujo separado de **copiloto local con Ollama**, sin API de pago: `AI_PROVIDER=ollama`, `AI_MODEL` igual al modelo descargado y `AI_TIMEOUT_SECONDS` para la inferencia local. Permite propuestas generales con captura opcional y una primera escritura asistida de enteros, sin entregar. Su instalación y límites están en [docs/IA_GENERAL.md](docs/IA_GENERAL.md). Usa tareas con sondeo para no mantener un fetch largo en el worker MV3 y puede cancelarse desde el panel.
 
+El copiloto comprueba por cálculo exacto el formato reconocido de premios por puestos distintos: cuatro participantes y dos puestos dan **12**, porque el orden importa. Ese resultado se identifica como comprobado y no requiere una consulta al modelo. Otras estructuras siguen siendo propuestas sin verificar. El panel distingue datos faltantes concretos de un modelo que no logró producir una solución utilizable.
+
 Destinos externos: gestores de paquetes durante instalación; `accounts.google.com`, `oauth2.googleapis.com` y `www.googleapis.com` para Google; `api.openai.com` si habilitas IA. La comunicación extensión/backend se limita a loopback en desarrollo. En entornos con lista de acceso restringida, agrega solo los destinos necesarios y conserva los ya autorizados.
 
 ## Cobertura implementada

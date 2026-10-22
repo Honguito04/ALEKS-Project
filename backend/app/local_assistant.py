@@ -11,6 +11,7 @@ import httpx
 from pydantic import Field, model_validator, field_validator
 from .config import settings
 from .models import Strict
+from .counting import ordered_prizes
 
 OLLAMA = "http://127.0.0.1:11434"
 
@@ -116,7 +117,7 @@ class AssistAnswer(Strict):
 
 
 class AssistProposal(Strict):
-    status: Literal["proposed", "needs_context"]
+    status: Literal["proposed", "needs_context", "unable_to_solve"]
     answers: list[AssistAnswer] = Field(max_length=12)
     explanation: str = Field(min_length=1, max_length=4000)
     missing_information: list[str] = Field(max_length=10)
@@ -127,8 +128,15 @@ class AssistProposal(Strict):
             raise ValueError("Propuesta sin respuestas o información faltante con respuestas")
         if len({answer.field_key for answer in self.answers}) != len(self.answers):
             raise ValueError("Respuestas repetidas")
-        if any(len(item) > 300 for item in self.missing_information):
+        if any(not item.strip() or len(item) > 300 for item in self.missing_information):
             raise ValueError("Detalle demasiado largo")
+        if self.status != "needs_context" and self.missing_information:
+            raise ValueError("Datos faltantes incompatibles con el estado")
+        if self.status == "needs_context" and not self.missing_information:
+            # No presentar una solución escondida en explanation como un dato
+            # faltante: no hay respuestas estructuradas utilizables en este caso.
+            self.status = "unable_to_solve"
+            self.explanation = "El modelo no produjo respuestas estructuradas utilizables ni identificó qué dato falta. No se ha obtenido una solución; revisa el ejercicio o prueba otro modelo."
         return self
 
 
@@ -136,9 +144,19 @@ class AssistResult(Strict):
     fingerprint: str
     proposal: AssistProposal
     model: str
-    provider: Literal["ollama"] = "ollama"
-    provider_calls: int
-    verified: Literal[False] = False
+    provider: Literal["ollama", "deterministic"] = "ollama"
+    provider_calls: int = Field(ge=0, le=1)
+    verified: bool = False
+    verification: Literal["none", "ordered_prizes"] = "none"
+
+    @model_validator(mode="after")
+    def verification_source(self):
+        exact = self.provider == "deterministic"
+        if self.verified != exact or (self.verification == "ordered_prizes") != exact:
+            raise ValueError("Verificación sin comprobador independiente")
+        if exact and (self.provider_calls != 0 or self.proposal.status != "proposed"):
+            raise ValueError("Resultado exacto incoherente")
+        return self
 
 
 async def local_status():
@@ -164,6 +182,15 @@ async def consult_local(body: AssistRequest) -> AssistResult:
         return AssistResult(fingerprint=body.context.fingerprint, model=settings.ai_model, provider_calls=0,
             proposal=AssistProposal(status="needs_context", answers=[], explanation="El enunciado requiere un diagrama. Incluye la captura visible del ejercicio.",
                                     missing_information=["Diagrama o región sombreada"]))
+    # La comprobación usa el texto del ejercicio, nunca la explicación de la IA.
+    # Solo este formato completo y un campo de respuesta pueden acreditarla.
+    if not body.context.diagram_required and len(body.context.fields) == 1 and body.context.fields[0].key == "answer":
+        exact = ordered_prizes(body.context.statement)
+        if exact is not None:
+            return AssistResult(fingerprint=body.context.fingerprint, model="", provider="deterministic", provider_calls=0,
+                verified=True, verification="ordered_prizes", proposal=AssistProposal(status="proposed",
+                    answers=[AssistAnswer(field_key="answer", value=exact.answer, unit="")],
+                    explanation=exact.explanation, missing_information=[]))
     status = await local_status()
     if not status["online"] or not status["model_installed"]:
         raise ValueError("Hace falta un modelo instalado localmente; no se admiten modelos cloud")
@@ -173,8 +200,12 @@ async def consult_local(body: AssistRequest) -> AssistResult:
         "Resuelve el problema, explica el cálculo y conserva formato, unidades, redondeo y restricciones. "
         "Usa únicamente los field_key proporcionados, una respuesta por campo. Separa value de unit. "
         "No devuelvas JavaScript, HTML, selectores ni instrucciones de navegador. No inventes datos de imágenes "
-        "ausentes o ilegibles. Si falta información o no puedes resolverlo, usa needs_context y answers vacío. "
-        "Para proposed incluye todos los campos solicitados. La propuesta no está verificada independientemente."
+        "ausentes o ilegibles. Antes de contar decide si el orden importa y si se permite repetir. Los puestos "
+        "primero, segundo, etc. son diferentes: repartirlos no equivale a elegir un grupo sin orden. "
+        "Usa needs_context solo si falta un dato específico: detállalo en missing_information y deja answers vacío. "
+        "Si tienes los datos pero no consigues una solución, usa unable_to_solve con ambas listas vacías. "
+        "Para proposed incluye todos los campos solicitados y missing_information vacío. "
+        "La propuesta no está verificada independientemente."
     )
     message = {"role": "user", "content": body.context.model_dump_json(exclude={"fingerprint", "can_fill_integer"})}
     if body.image:
