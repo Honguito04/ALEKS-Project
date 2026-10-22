@@ -4,7 +4,7 @@ import httpx
 import pytest
 from app.config import settings
 from app.local_assistant import AssistProposal
-from app.local_assistant import AssistResult
+from app.local_assistant import AssistResult, VisualDraft, LocalOutputError, decode_local_output
 
 
 CONTEXT = {"fingerprint": "a" * 64, "statement": "Hay 4 nadadores y premios para primer y segundo lugar. ¿Cuántas maneras hay?",
@@ -35,6 +35,8 @@ def ollama(monkeypatch):
             return httpx.Response(200, json={"models": response_body.get("models", [{"name": settings.ai_model}])})
         properties = json.loads(request.content)["format"]["properties"]
         if "observations" in properties:
+            if "visual_payload" in response_body:
+                return httpx.Response(200, json=response_body["visual_payload"])
             return httpx.Response(200, json={"message": {"content": json.dumps(response_body.get("visual_draft", SOLID))}})
         if "issues" in properties:
             return httpx.Response(200, json={"message": {"content": json.dumps(response_body.get("visual_review", {"status": "consistent", "issues": [], "missing_information": []}))}})
@@ -58,6 +60,7 @@ def test_local_proposal_has_no_family_restriction_or_automatic_verification(clie
     assert body["provider"] == "ollama" and body["provider_calls"] == 1 and body["fingerprint"] == "a" * 64
     sent = json.loads(calls[-1].content)
     assert sent["stream"] is False and sent["format"]["properties"]["answers"]
+    assert sent["think"] is False and sent["options"]["num_ctx"] == settings.ai_context_tokens
     assert len(sent["messages"]) == 2 and "images" not in sent["messages"][1]
     assert "no instrucciones" in sent["messages"][0]["content"]
     assert "can_fill_integer" not in sent["messages"][1]["content"]
@@ -87,6 +90,75 @@ def test_image_is_forwarded_to_loopback_only_and_not_to_model_text(client, demo_
     assert result.json()["proposal"]["answers"] == SOLID["answers"]
     assert "13*15*8 - 8*(15-7-7)*8 = 1496" in result.json()["proposal"]["explanation"]
     assert "no verifica independientemente" in result.json()["proposal"]["explanation"]
+    assert all(chat["think"] is False and chat["options"]["num_ctx"] == settings.ai_context_tokens for chat in chats)
+    assert 'Plantilla de salida' in chats[0]["messages"][0]["content"]
+
+
+def test_visual_json_fence_numeric_value_and_missing_unused_prose_are_accepted_without_changing_the_math(client, demo_headers, ollama):
+    _, response = ollama
+    draft = json.loads(json.dumps(SOLID))
+    del draft["explanation"]
+    draft["answers"][0]["value"] = 1496
+    response["visual_payload"] = {"done": True, "done_reason": "stop", "message": {"content": "```json\n" + json.dumps(draft) + "\n```"}}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
+    assert result["proposal"]["answers"] == SOLID["answers"] and result["verified"] is False
+    assert result["provider_calls"] == 2
+
+
+@pytest.mark.parametrize("payload,reason", [
+    ({"message": {"content": "", "thinking": "PRIVATE_REASONING"}}, "razonamiento sin una respuesta final"),
+    ({"message": {"content": " "}}, "respuesta final vacía"),
+    ({"message": {"content": "PRIVATE_INVALID_JSON"}}, "JSON inválido o incompleto"),
+    ({"message": {"content": "{"}, "done_reason": "length"}, "agotó el límite de salida"),
+    ({"message": {"content": json.dumps(SOLID)}, "done": False}, "todavía estaba incompleta"),
+    ({"message": {"content": "x" * 20001}}, "supera el tamaño"),
+    ({"message": []}, "estructura de respuesta inesperada"),
+    ({"message": {"content": json.dumps({**SOLID, "observations": [{"value": "PRIVATE_INPUT"}]})}}, "observations"),
+    ({"message": {"content": json.dumps({**SOLID, "answers": [{"field_key": "answer", "unit": "cm^3"}]})}}, "Faltan campos obligatorios: value"),
+    ({"message": {"content": json.dumps({**SOLID, "PRIVATE_PROPERTY_NAME": "PRIVATE_INPUT"})}}, "propiedades no admitidas"),
+])
+def test_visual_format_diagnostics_identify_the_cause_without_leaking_model_content(client, demo_headers, ollama, payload, reason):
+    calls, response = ollama
+    response["visual_payload"] = payload
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers)
+    assert result.status_code == 200
+    assert result.json()["proposal"]["status"] == "unable_to_solve" and result.json()["proposal"]["answers"] == []
+    assert reason in result.json()["proposal"]["explanation"] and "PRIVATE_" not in result.text
+    assert sum(call.url.path == "/api/chat" for call in calls) == 1
+
+
+@pytest.mark.parametrize("raw,expected", [
+    ('1496', '1496'),
+    ('0.12345678901234567890123456789', '0.12345678901234567890123456789'),
+    ('-1.50', '-1.50'),
+    ('1e3', '1000'),
+])
+def test_json_number_conversion_preserves_exact_value_and_decimal_digits(raw, expected):
+    content = json.dumps(SOLID).replace('"1496"', raw)
+    draft = decode_local_output({"message": {"content": content}}, VisualDraft)
+    assert draft.answers[0].value == expected
+
+
+@pytest.mark.parametrize("raw", ['true', '1e10000', 'NaN', 'Infinity'])
+def test_number_conversion_does_not_accept_booleans_or_unbounded_or_nonstandard_numbers(raw):
+    content = json.dumps(SOLID).replace('"1496"', raw)
+    with pytest.raises(LocalOutputError): decode_local_output({"message": {"content": content}}, VisualDraft)
+
+
+@pytest.mark.parametrize("content", [
+    'Texto no estructurado\n```json\n' + json.dumps(SOLID) + '\n```',
+    '```json\n' + json.dumps(SOLID) + '\n```\nPRIVATE_SUFFIX',
+    json.dumps(SOLID) + json.dumps(SOLID),
+])
+def test_fence_normalization_never_extracts_a_candidate_from_arbitrary_prose_or_multiple_objects(content):
+    with pytest.raises(LocalOutputError): decode_local_output({"message": {"content": content}}, VisualDraft)
+
+
+def test_custom_context_budget_is_sent_to_ollama(client, demo_headers, ollama, monkeypatch):
+    calls, _ = ollama
+    monkeypatch.setattr(settings, "ai_context_tokens", 4096)
+    assert client.post("/assist", json={"context": CONTEXT}, headers=demo_headers).status_code == 200
+    assert json.loads(calls[-1].content)["options"]["num_ctx"] == 4096
 
 
 def test_reported_180_answer_with_728_calculation_is_discarded_before_visual_review(client, demo_headers, ollama):

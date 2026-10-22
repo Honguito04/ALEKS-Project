@@ -1,14 +1,16 @@
 """Copiloto local: salida estructurada sin código ni herramientas de navegador."""
 import base64
 import json
+import re
 import asyncio
 import time
 import uuid
 from dataclasses import dataclass
+from decimal import Decimal
 from typing import Literal
 
 import httpx
-from pydantic import Field, model_validator, field_validator
+from pydantic import Field, ValidationError, model_validator, field_validator
 from .config import settings
 from .models import Strict
 from .counting import ordered_prizes
@@ -116,6 +118,17 @@ class AssistAnswer(Strict):
     value: str = Field(min_length=1, max_length=500)
     unit: str = Field(max_length=40)
 
+    @field_validator("value", mode="before")
+    @classmethod
+    def numeric_json_as_text(cls, value):
+        # Solo cambia representación, sin extraer ni calcular una respuesta.
+        # Decimal conserva exactamente el número JSON, sin redondeo binario.
+        if type(value) is int:
+            return str(value)
+        if isinstance(value, Decimal) and value.is_finite() and -100 <= value.adjusted() <= 100:
+            return format(value, "f")
+        return value
+
 
 class AssistProposal(Strict):
     status: Literal["proposed", "needs_context", "unable_to_solve"]
@@ -163,9 +176,9 @@ class AssistResult(Strict):
 class VisualDraft(AssistProposal):
     # La prosa libre se usa solo como descripción candidata para la revisión.
     # La explicación pública se construye después a partir de las cuentas.
-    explanation: str = Field(min_length=1, max_length=600)
-    observations: list[str] = Field(max_length=12)
-    calculations: list[VisualCalculation] = Field(max_length=12)
+    explanation: str = Field(default="Interpretación visual propuesta por el modelo.", min_length=1, max_length=4000)
+    observations: list[str] = Field(default_factory=list, max_length=12)
+    calculations: list[VisualCalculation] = Field(default_factory=list, max_length=12)
 
     @field_validator("observations")
     @classmethod
@@ -193,16 +206,68 @@ class VisualReview(Strict):
         return self
 
 
+class LocalOutputError(ValueError):
+    """Solo motivos de diagnóstico controlados; nunca incluye la salida del modelo."""
+
+
+def schema_failure(error):
+    fields = {"status", "answers", "field_key", "value", "unit", "explanation", "missing_information",
+              "observations", "calculations", "expression", "decimal_places", "issues"}
+    errors = error.errors(include_input=False, include_context=False, include_url=False)
+    if any(item["type"] == "extra_forbidden" for item in errors):
+        return "El JSON contiene propiedades no admitidas."
+    missing = sorted({item["loc"][-1] for item in errors if item["type"] == "missing" and item["loc"] and item["loc"][-1] in fields})
+    if missing:
+        return "Faltan campos obligatorios: " + ", ".join(missing[:4]) + "."
+    invalid = sorted({part for item in errors for part in item["loc"] if part in fields})
+    if invalid:
+        return "Formato o tamaño no admitido en: " + ", ".join(invalid[:4]) + "."
+    return "Los estados, respuestas y datos faltantes del JSON son incompatibles."
+
+
+def decode_local_output(payload, schema):
+    if not isinstance(payload, dict) or not isinstance(payload.get("message"), dict):
+        raise LocalOutputError("Ollama devolvió una estructura de respuesta inesperada.")
+    if payload.get("done_reason") == "length":
+        raise LocalOutputError("Ollama agotó el límite de salida antes de finalizar la respuesta.")
+    if payload.get("done") is False:
+        raise LocalOutputError("Ollama indicó que la respuesta todavía estaba incompleta.")
+    content = payload["message"].get("content")
+    if not isinstance(content, str) or not content.strip():
+        reason = "Ollama devolvió razonamiento sin una respuesta final." if payload["message"].get("thinking") else "Ollama devolvió una respuesta final vacía."
+        raise LocalOutputError(reason)
+    if len(content) > 20000:
+        raise LocalOutputError("La respuesta del modelo supera el tamaño admitido.")
+    content = content.strip()
+    # Solo un bloque JSON completo: no buscar respuestas dentro de la prosa ni
+    # quitar contenido sobrante. Todo sigue pasando por el mismo esquema cerrado.
+    fence = re.fullmatch(r"```(?:json)?\s*\n([\s\S]*?)\n```", content, flags=re.IGNORECASE)
+    if fence:
+        content = fence[1]
+    def invalid_constant(_):
+        raise ValueError("Constante JSON no admitida")
+    try:
+        decoded = json.loads(content, parse_float=Decimal, parse_constant=invalid_constant)
+    except ValueError:
+        raise LocalOutputError("El modelo devolvió JSON inválido o incompleto.") from None
+    try:
+        return schema.model_validate(decoded)
+    except ValidationError as error:
+        raise LocalOutputError(schema_failure(error)) from None
+
+
 async def local_chat(client, messages, schema):
     response = await client.post(OLLAMA + "/api/chat", json={
-        "model": settings.ai_model, "stream": False, "messages": messages,
-        "format": schema.model_json_schema(), "options": {"temperature": 0, "num_predict": 2500},
+        "model": settings.ai_model, "stream": False, "think": False, "messages": messages,
+        "format": schema.model_json_schema(),
+        "options": {"temperature": 0, "num_predict": 2500, "num_ctx": settings.ai_context_tokens},
     })
     response.raise_for_status()
-    content = response.json()["message"]["content"]
-    if not isinstance(content, str) or len(content) > 20000:
-        raise ValueError("Salida demasiado grande")
-    return schema.model_validate(json.loads(content))
+    try:
+        payload = response.json()
+    except ValueError:
+        raise LocalOutputError("El servicio Ollama no devolvió JSON válido.") from None
+    return decode_local_output(payload, schema)
 
 
 def visual_failure(body, reason, calls=1):
@@ -226,7 +291,7 @@ async def _consult_visual(body, instructions, client):
     visual_instructions = (
         " Para imágenes, enumera en observations las etiquetas y medidas legibles, indicando a qué borde o región "
         "corresponde cada una. Distingue las dimensiones totales, las parciales y las derivadas. No inventes profundidades. "
-        "Describe brevemente la interpretación en explanation; no escribas allí cálculos ni otra respuesta final. "
+        "Si incluyes explanation, usa como máximo dos frases breves; la aplicación genera la explicación numérica. "
         "En lenguaje de ejercicios, 'el sólido de abajo' significa el sólido mostrado debajo del enunciado completo, "
         "no solo su parte inferior. Distingue huecos, superficies y piezas: no sumes prismas solapados. "
         "Para proposed, incluye una cuenta en calculations por cada field_key y la respuesta numérica en answers. "
@@ -237,8 +302,15 @@ async def _consult_visual(body, instructions, client):
         "qué representa, usa needs_context sin respuestas ni cuentas y di qué dato concreto falta. "
         "Si no puedes representar o resolver el cálculo, usa unable_to_solve con ambas listas vacías."
     )
+    template = {"status": "proposed", "observations": ["Etiqueta legible, ubicación y medida con unidad"],
+                "answers": [{"field_key": field.key, "value": "RESULTADO_NUMERICO", "unit": "UNIDAD_REQUERIDA"} for field in body.context.fields],
+                "calculations": [{"field_key": field.key, "expression": "FORMULA_CON_MEDIDAS_DE_LA_IMAGEN", "decimal_places": None} for field in body.context.fields],
+                "missing_information": []}
+    visual_instructions += "\nPlantilla de salida; sustituye los marcadores con datos del ejercicio, no los copies. Devuelve solo JSON:\n" + json.dumps(template, ensure_ascii=False)
     try:
         draft = await local_chat(client, [{"role": "system", "content": instructions + visual_instructions}, message], VisualDraft)
+    except LocalOutputError as error:
+        return visual_failure(body, "Propuesta visual descartada por formato: " + str(error) + " No se evaluó como una solución matemática válida.")
     except (ValueError, KeyError, TypeError):
         return visual_failure(body, "Propuesta visual descartada: el modelo no entregó datos y cuentas coherentes en el formato requerido. No hay una respuesta utilizable.")
     if draft.status != "proposed":
@@ -269,6 +341,8 @@ async def _consult_visual(body, instructions, client):
                                                        "candidate": draft.model_dump()}, ensure_ascii=False)}
     try:
         review = await local_chat(client, [{"role": "system", "content": review_instructions}, review_message], VisualReview)
+    except LocalOutputError as error:
+        return visual_failure(body, "No se pudo completar la revisión visual por formato: " + str(error) + " Se descartó la propuesta sin publicar una respuesta.", 2)
     except (ValueError, KeyError, TypeError, httpx.HTTPError):
         return visual_failure(body, "No se pudo completar la revisión visual. Se descartó la propuesta, aunque su cuenta pudiera coincidir; revisa el dibujo o usa un modelo local más capaz.", 2)
     if review.status == "needs_context":

@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     ai_provider: str = "none"
     ai_model: str = ""
     ai_timeout_seconds: int = Field(default=120, ge=10, le=600)
+    ai_context_tokens: int = Field(default=8192, ge=2048, le=16384)
     openai_api_key: str = ""
     enable_demo: bool = True
 

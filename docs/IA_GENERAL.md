@@ -16,6 +16,8 @@ Los demás resultados del modelo siguen sin verificación independiente. **Falta
 
 Este control **no verifica independientemente la geometría, las medidas o las unidades**. El mismo modelo puede equivocarse en las dos pasadas. `gemma3:4b` ya produjo un error en este dibujo y puede necesitar un reemplazo más capaz según la RAM/GPU disponibles. La actualización mejora la detección de contradicciones; no garantiza resolver todos los diagramas. Una salida que no puede representarse en la gramática numérica admitida se descarta, en lugar de presentar una respuesta no comprobada.
 
+La corrección posterior del formato para Qwen conserva ese flujo. Se envía una plantilla JSON con los campos actuales, `think:false` para pedir una respuesta final directa y contexto explícito de 8192 tokens. La descripción libre es opcional; una propuesta sigue necesitando medidas identificadas y una fórmula por campo para superar los controles. Solo se normalizan representaciones equivalentes: un único bloque JSON completo y números JSON convertidos a texto con precisión decimal exacta. No se extraen respuestas de prosa, no se añaden fórmulas ausentes y no se relajan los controles matemáticos o la revisión.
+
 Regresión aportada: en el prisma con hueco, las medidas visibles permiten proponer `13*15*8 - 8*(15-7-7)*8 = 1496 cm³`. La altura del hueco es `15-7-7 = 1 cm`. También coincide la descomposición `13*7*8 + 13*7*8 + (13-8)*(15-7-7)*8`. El modelo había devuelto 180 en la respuesta y 728 al final de la explicación, además de interpretar «de abajo» como solo la parte inferior. «De abajo» se refiere al sólido completo dibujado bajo el enunciado. El agente leyó esa imagen en la conversación y comprobó las cuentas; las pruebas del proveedor usan respuestas simuladas y no demuestran que Gemma obtenga 1496 por sí mismo.
 
 La escritura asistida admite **un entero no negativo de hasta doce dígitos, sin unidad, en un único recuadro vacío compatible y habilitado**. La presencia de botones de fracción, π o unidades no impide introducir un entero. Tampoco necesita reconocer Verificar, porque no lo utiliza para escribir. Es una tentativa mediante eventos públicos `beforeinput`, `input` y `change`. Solo comunica éxito si vuelve a leer ese entero en el árbol visual. Si ALEKS ignora los eventos, informa el fallo y no pulsa Verificar. No modifica recuadros ocupados ni repite automáticamente la tentativa. Fracciones, unidades y varios recuadros requieren introducción manual por ahora.
@@ -84,6 +86,20 @@ Se amplía el soporte por **tipos de control**, no por cada problema de natació
 9. Revisa el resultado. Si aparece **Introducir entero en el recuadro**, ese botón intenta escribirlo y leerlo de vuelta. Si no aparece, lee el motivo debajo de **Escritura asistida no disponible**. Por ejemplo, si el recuadro ya tiene una respuesta, vacíalo manualmente y vuelve a consultar. La extensión no pulsa **Verificar** ni avanza de tema.
 
 Si aparece «Ollama no respondió con una propuesta válida», revisa el modelo instalado y que admita imágenes/JSON; también puede haber agotado el tiempo o los recursos disponibles. Si la escritura no se refleja en el árbol visual, no se declara éxito ni se reintenta. El siguiente ajuste depende del comportamiento real del editor, no de inventar otro selector.
+
+Si Qwen está conectado pero aparece **«el modelo no entregó datos y cuentas coherentes en el formato requerido»**, el mensaje antiguo no permitía distinguir el motivo. El backend actualizado diferencia respuesta vacía, razonamiento sin respuesta final, salida cortada, JSON inválido, campos ausentes y campos con tipo/tamaño incompatible. Es un diagnóstico de formato; no demuestra que la solución matemática fuera incorrecta. El detalle omite el contenido bruto del modelo, valores del ejercicio y nombres de propiedades desconocidas.
+
+Para aplicar **esta corrección del formato**, descarga el ZIP actualizado y copia solo **backend** al proyecto original con el servidor detenido. Conserva tu `.env` y las dependencias. En PowerShell, desde la carpeta del proyecto, arranca así para mantener la elección de Qwen en esa ventana:
+
+```powershell
+$env:AI_PROVIDER = "ollama"
+$env:AI_MODEL = "qwen3-vl:4b"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+Deja el servidor abierto, pulsa **Comprobar Ollama** y repite la consulta con la imagen. No hace falta recompilar la extensión ni descargar el modelo otra vez. La tarjeta de Chrome puede seguir indicando 0.1.2 porque la corrección solo modifica el backend. Si persiste el rechazo, usa el nuevo detalle concreto para continuar el diagnóstico; no se publica una respuesta incompleta como solución.
+
+`AI_CONTEXT_TOKENS` es opcional y vale 8192 por defecto (admite 2048–16384). Reserva contexto para enunciado, imagen, formato y salida. Si el modelo no cabe en los recursos disponibles, puede probarse `AI_CONTEXT_TOKENS=4096` en `.env`, reiniciando el backend. Reducirlo deja menos espacio para el ejercicio. La ventana real y el rendimiento en la RTX 3050 siguen requiriendo prueba en el equipo del usuario.
 
 Si ya instalaste Ollama y necesitas esta corrección de cálculo, no descargues de nuevo el modelo. Actualiza **backend** y **extension**, compila, reinicia el backend y recarga la extensión como en los pasos 3 a 7. En el problema de nadadores debe aparecer **12** como resultado comprobado; la capacidad general del modelo continúa necesitando revisión.
 
