@@ -5,6 +5,7 @@ const id='fjjgjakbpjhhegekcjogilmfheaicjge';
 const ext=`chrome-extension://${id}/`;
 type Listener=(message:Record<string,unknown>,sender:chrome.runtime.MessageSender,reply:(response:unknown)=>void)=>unknown;
 let listener:Listener;
+let actionClick:(tab:chrome.tabs.Tab)=>void;
 let local:Record<string,unknown>,session:Record<string,unknown>;
 let url:string,permitted:boolean;
 let tabsSend:ReturnType<typeof vi.fn>;
@@ -22,7 +23,8 @@ beforeEach(async()=>{
   fetchMock=vi.fn(async()=>Response.json({status:'ok',mode:'demo'}));vi.stubGlobal('fetch',fetchMock);
   vi.stubGlobal('chrome',{
     runtime:{id,getURL:(p:string)=>ext+p,onMessage:{addListener:(fn:Listener)=>{listener=fn;}},onInstalled:{addListener:vi.fn()}},
-    sidePanel:{setPanelBehavior:async()=>{}},storage:{local:store(local),session:store(session)},
+    sidePanel:{setPanelBehavior:vi.fn(async()=>{}),open:vi.fn(async()=>{})},
+    action:{onClicked:{addListener:(fn:typeof actionClick)=>{actionClick=fn;}}},storage:{local:store(local),session:store(session)},
     permissions:{contains:async()=>permitted,remove:vi.fn(async()=>true),onRemoved:{addListener:vi.fn()}},
     tabs:{get:async(id:number)=>({id,url,title:'Simulador'}),query:async()=>[{id:7,url}],sendMessage:tabsSend,onRemoved:{addListener:vi.fn()}},
     scripting:{executeScript:async()=>{}}
@@ -34,6 +36,20 @@ const content=():chrome.runtime.MessageSender=>({id,url,tab:{id:7,url,index:0,ac
 async function send(message:Record<string,unknown>,sender:chrome.runtime.MessageSender=ui):Promise<any> {
   return new Promise(resolve=>{if(listener(message,sender,resolve)!==true)resolve(undefined);});
 }
+it('el clic del icono abre el panel en esa pestaña conservando el gesto y sin capturar o consultar por su cuenta',()=>{
+  // Regresión: el modo automático de Chromium no concede activeTab. Las APIs
+  // están simuladas; aquí se comprueba la ruta de apertura, no el permiso nativo.
+  expect(chrome.sidePanel.setPanelBehavior).toHaveBeenCalledWith({openPanelOnActionClick:false});
+  chrome.tabs.captureVisibleTab=vi.fn();
+  actionClick({id:7,windowId:1} as chrome.tabs.Tab);
+  expect(chrome.sidePanel.open).toHaveBeenCalledWith({tabId:7}); // inmediato, sin esperar un await
+  expect(fetchMock).not.toHaveBeenCalled();expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
+  expect(tabsSend).not.toHaveBeenCalled();expect(chrome.permissions.remove).not.toHaveBeenCalled();
+});
+it('no intenta abrir el panel para una pestaña sin identificador válido',()=>{
+  actionClick({windowId:1} as chrome.tabs.Tab);actionClick({id:-1,windowId:1} as chrome.tabs.Tab);
+  expect(chrome.sidePanel.open).not.toHaveBeenCalled();
+});
 it('rechaza mensajes de otra extensión, sitios web y marcos secundarios',async()=>{
   expect(await send({scope:'ui',type:'health'},{id:'foreign',url:ext+'panel.html'})).toBeUndefined();
   expect(await send({scope:'ui',type:'demo'},content())).toBeUndefined();

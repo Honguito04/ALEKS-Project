@@ -7,7 +7,13 @@ const assistProposals=new Map<number,AssistView>();
 const assistJobs=new Map<number,string>();
 const assistWriters=new Set<number>();
 const assistRemoteJobs=new Map<number,string>();
-chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:true}).catch(()=>{});
+// El modo automático de panel omite activeTab en Chromium. El clic de action
+// concede el permiso antes de este evento. Abrir de forma directa conserva su
+// gesto de usuario; no esperar operaciones asíncronas antes de sidePanel.open.
+chrome.sidePanel.setPanelBehavior({openPanelOnActionClick:false}).catch(()=>{});
+chrome.action.onClicked.addListener(tab=>{
+  if(typeof tab.id==='number' && tab.id>=0)void chrome.sidePanel.open({tabId:tab.id}).catch(()=>{});
+});
 chrome.runtime.onInstalled.addListener(()=>{ void chrome.storage.session.setAccessLevel({accessLevel:'TRUSTED_CONTEXTS'}); });
 // Retención mínima también después de restaurar Chrome o reactivar el worker.
 void chrome.storage.local.get(null).then(entries=>{

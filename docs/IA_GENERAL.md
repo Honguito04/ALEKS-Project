@@ -92,6 +92,8 @@ Si **ya aparece 12 como resultado comprobado**, la corrección del bloqueo de es
 
 El permiso `activeTab` ya está declarado en la extensión, pero Chrome debe concederlo para esa pestaña a partir de una acción del usuario. La extensión no puede concedérselo a sí misma. Esta actualización muestra una explicación en español y no continúa con una consulta sin la captura que falló. El error no deshabilita permanentemente los controles. Si hay una consulta en curso, pulsa **Cancelar operación de IA** antes de cambiar la imagen.
 
+**Corrección de apertura del panel, versión 0.1.1:** la configuración anterior usaba `openPanelOnActionClick:true`. Chromium omite la concesión de `activeTab` en ese recorrido, incluso al pulsar el icono. Ahora se desactiva ese modo y se abre el panel directamente desde `chrome.action.onClicked`, sin esperar operaciones asíncronas. Actualiza la carpeta **extension**, ejecuta `npm.cmd run build` y recarga su tarjeta en `chrome://extensions`. Debe mostrar **0.1.1**; si sigue mostrando 0.1.0, Chrome aún usa los archivos anteriores. No necesitas reinstalar Ollama ni reiniciar el backend para esta corrección.
+
 1. Activa la pestaña ALEKS con el ejercicio. En la barra superior de Chrome pulsa el icono del asistente; si está dentro de la pieza de rompecabezas **Extensiones**, abre ese menú y pulsa su nombre.
 2. Vuelve al panel, selecciona esa misma pestaña y pulsa **Leer actividad seleccionada**. Marca **Incluir captura visible de la pestaña seleccionada**. Comprueba que el dibujo y sus medidas estén visibles antes de resolver.
 3. Si Chrome continúa bloqueando la captura, usa la alternativa por archivo: pulsa **Windows + Mayús + S**, selecciona el enunciado y dibujo completos, abre la notificación de la captura y guárdala como PNG.
