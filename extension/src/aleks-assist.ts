@@ -1,4 +1,4 @@
-import { assistContextSchema,type AssistContext } from './shared';
+import { assistContextSchema,type AssistContext,type FillBlocker } from './shared';
 import { readAleksPrompt } from './aleks-prompt';
 import { inspectAleksEditor } from './aleks-editor';
 import { visible } from './aleks-dom';
@@ -16,17 +16,27 @@ export async function assistContext(document:Document,allowImage=false):Promise<
     roots.size>1?[...roots].sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top || a.getBoundingClientRect().left-b.getBoundingClientRect().left)
       .map((_,i)=>({key:`field_${i+1}`,label:`Recuadro ${i+1} en orden visual de arriba abajo e izquierda a derecha; asociación sin validar`})):
       [{key:'answer',label:'Respuesta del ejercicio'}];
-  const can_fill_integer=readable && single.status==='observed' && !single.disabled && single.readback.status==='empty' &&
-    editor.submitControl.status==='observed' && editor.resultMarker.status!=='positive_marker' && !prompt.diagramReferenceDetected &&
-    !Object.values(editor.menu.controls).some(control=>control.count>0);
+  const fill_blockers:FillBlocker[]=[];
+  if(!readable)fill_blockers.push('unreadable_prompt');
+  if(single.status!=='observed')fill_blockers.push(single.status==='ambiguous'?'multiple_editors':single.status==='missing'?'editor_missing':'editor_structure');
+  else {
+    if(single.disabled)fill_blockers.push('editor_disabled');
+    if(single.readback.status==='readable')fill_blockers.push('editor_not_empty');
+    if(single.readback.status==='unsupported')fill_blockers.push('unsupported_readback');
+  }
+  if(editor.resultMarker.positiveMessageCount>0 || editor.nextControl.count>0 || editor.nextTopicControl.count>0)fill_blockers.push('result_present');
+  if(prompt.diagramReferenceDetected)fill_blockers.push('diagram_required');
+  const can_fill_integer=fill_blockers.length===0;
   // Cuando la lectura estructurada falla, el texto/MathML se usa solo en el
   // hash local. La IA recibe la captura elegida, sin HTML o enlaces de sesión.
   const fallback=readable?undefined:[prompts[0].textContent?.slice(0,8000),[...prompts[0].querySelectorAll('[mathml]')].slice(0,100).map(node=>node.getAttribute('mathml')?.slice(0,1000))];
-  const source=JSON.stringify([prompt.fingerprint,fallback,fields,can_fill_integer,editor.inputDiagnostics.presentCount,
-    single.rootCount,single.readback,editor.circleTable,editor.submitControl,editor.resultMarker]);
+  // Verificar y el menú pueden aparecer al enfocar. No son utilizados para
+  // introducir el número y no forman parte de esta huella de escritura.
+  const source=JSON.stringify([prompt.fingerprint,fallback,fields,fill_blockers,editor.inputDiagnostics.presentCount,
+    single.status,single.rootCount,single.disabled,single.readback,editor.circleTable]);
   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)))].map(value=>value.toString(16).padStart(2,'0')).join('');
   return assistContextSchema.parse({fingerprint,statement:readable?prompt.statement:'No fue posible leer el enunciado como texto estructurado. Interpreta únicamente el ejercicio visible en la captura adjunta; si faltan datos, indícalo.',
-    fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer});
+    fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,fill_blockers});
 }
 
 /** Una sola tentativa, iniciada desde el panel, en un recuadro vacío.

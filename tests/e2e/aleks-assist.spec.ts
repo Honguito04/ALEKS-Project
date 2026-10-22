@@ -38,6 +38,73 @@ test('escritura solo se confirma si un editor sintético refleja el entero; nunc
   });
   expect(result).toMatchObject({written:{written:true,display:'12',submitted:false},clicks:0,readback:{value:'12'}});
 });
+for(const verify of [true,false]) {
+  test(`un menú matemático no impide escribir un entero; Verificar presente: ${verify}`,async({page})=>{
+    const result=await page.evaluate(async verify=>{
+      document.querySelector('.aleks-editor-menu')!.innerHTML='<button aria-label="Fraction">Fracción</button><button aria-label="π">π</button><button aria-label="Centímetros">cm</button>';
+      if(!verify)document.querySelector('#smt_bottomnav_button_input_checkAnswer')!.remove();
+      return window.assistContext(document);
+    },verify);
+    expect(result).toMatchObject({can_fill_integer:true,fill_blockers:[]});
+  });
+}
+test('un menú y Verificar que aparecen al enfocar no invalidan la tentativa de escritura',async({page})=>{
+  const result=await page.evaluate(async()=>{
+    const submit=document.querySelector<HTMLElement>('#smt_bottomnav_button_input_checkAnswer')!;submit.hidden=true;
+    document.querySelector('.aleks-editor-menu')!.replaceChildren();
+    const input=document.querySelector<HTMLInputElement>('input')!;
+    input.addEventListener('focus',()=>{
+      submit.hidden=false;
+      document.querySelector('.aleks-editor-menu')!.innerHTML='<button aria-label="π">π</button>';
+    });
+    // Reflejo sintético de eventos, no aceptación comprobada por ALEKS.
+    input.addEventListener('input',()=>{
+      const glyph=document.createElement('span');glyph.className='AnsedObject';glyph.textContent=input.value;
+      glyph.style.cssText='position:absolute;font:18px serif;left:2px;top:3px;height:24px';
+      document.querySelector('.ansed_tree')!.replaceChildren(glyph);input.value='';
+    });
+    const context=await window.assistContext(document);
+    return window.fillAssistInteger(document,context.fingerprint,'12',new AbortController().signal);
+  });
+  expect(result).toEqual({written:true,display:'12',submitted:false});
+});
+for(const [state,blocker] of [['occupied','editor_not_empty'],['readOnly','editor_disabled'],['unsupported','unsupported_readback'],
+  ['multiple','multiple_editors'],['correct','result_present'],['next','result_present']] as const) {
+  test(`diagnostica ${state} y conserva el bloqueo de escritura`,async({page})=>{
+    const result=await page.evaluate(async state=>{
+      if(state==='occupied' || state==='unsupported')document.querySelector('.ansed_tree')!.innerHTML=`<span class="AnsedObject" style="position:absolute;left:2px;top:3px;height:24px">${state==='occupied'?'7':'π'}</span>`;
+      if(state==='readOnly')document.querySelector<HTMLInputElement>('input')!.readOnly=true;
+      if(state==='multiple')document.body.append(document.querySelector('.ansed_root')!.cloneNode(true));
+      if(state==='correct')document.body.insertAdjacentHTML('beforeend','<div style="display:inline-block;color:rgb(57,108,41)">Correcta</div>');
+      if(state==='next')document.body.insertAdjacentHTML('beforeend','<button type="button" id="smt_bottomnav_button_input_learningCorrect" class="learningCorrect"><div class="textContent">Siguiente tema</div></button>');
+      const context=await window.assistContext(document);
+      let events=0;document.addEventListener('input',()=>events++);
+      let failed=false;try{await window.fillAssistInteger(document,context.fingerprint,'12',new AbortController().signal);}catch{failed=true;}
+      return {context,failed,events};
+    },state);
+    expect(result.context).toMatchObject({can_fill_integer:false,fill_blockers:[blocker]});
+    expect(result.failed).toBe(true);expect(result.events).toBe(0);
+  });
+}
+for(const statement of ['Hallar la longitud indicada en la figura.','Usa el gráfico para determinar la respuesta.','El círculo a continuación tiene su centro en O.']) {
+  test(`exige imagen sin inventar los valores: ${statement}`,async({page})=>{
+    const context=await page.evaluate(async statement=>{document.querySelector('#algoPrompt')!.textContent=statement;return window.assistContext(document);},statement);
+    expect(context).toMatchObject({diagram_required:true,can_fill_integer:false,fill_blockers:['diagram_required']});
+  });
+}
+test('detecta el contenedor de figura externo al prompt sin leer URLs ni afectar a los canvas del editor',async({page})=>{
+  const result=await page.evaluate(async()=>{
+    const before=await window.assistContext(document);
+    const figure=document.createElement('div');figure.className='figed_top_container';figure.setAttribute('data-private','PRIVATE_IMAGE_DATA');document.body.append(figure);
+    const withFigure=await window.assistContext(document);figure.hidden=true;
+    const hiddenFigure=await window.assistContext(document);
+    return {before,withFigure,hiddenFigure};
+  });
+  expect(result.before.diagram_required).toBe(false);expect(result.withFigure.diagram_required).toBe(true);
+  expect(result.withFigure.fingerprint).not.toBe(result.before.fingerprint);
+  expect(result.hiddenFigure.fingerprint).toBe(result.before.fingerprint);
+  expect(JSON.stringify(result)).not.toContain('PRIVATE_IMAGE_DATA');
+});
 test('input.value sin representación visual no acredita escritura; restaura el buffer sin entregar',async({page})=>{
   const result=await page.evaluate(async()=>{
     const input=document.querySelector<HTMLInputElement>('input')!;input.value='OLD_BUFFER';let clicks=0;document.addEventListener('click',()=>clicks++);

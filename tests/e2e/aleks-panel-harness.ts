@@ -1,6 +1,8 @@
 /** APIs de Chrome simuladas; usa UI, contexto y escritor de producción.
  * No prueba carga nativa ni ejecuta un modelo real. */
 import './aleks-probe-harness';
+import { captureFillPolicy,requireAssistImage } from '../../extension/src/assist-readiness';
+import { assistResultSchema } from '../../extension/src/shared';
 declare global {interface Window {testAssistResult?:Record<string,unknown>}}
 let context:Awaited<ReturnType<typeof window.assistContext>>;
 Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
@@ -14,9 +16,12 @@ Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
       else if(message.type==='attach' || message.type==='status')data={detection:{...await window.pendingAdapter.detect(),origin:'https://latam-awu.aleks.com'}};
       else if(message.type==='localAIStatus')data={configured:true,online:true,model_installed:true,model:'test-model'};
       else if(message.type==='assist') {
-        context=await window.assistContext(document);
-        data={id:'test-proposal',context,result:{fingerprint:context.fingerprint,provider:'ollama',provider_calls:1,verified:false,model:'test-model',
-          proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Propuesta sintética para probar la UI.',missing_information:[]},...window.testAssistResult}};
+        const hasImage=message.includeImage===true || typeof message.image==='string';
+        context=requireAssistImage(await window.assistContext(document,hasImage),message.needsImage===true);
+        if(context.diagram_required && !hasImage)throw Error('No se debe consultar sin la imagen necesaria');
+        const result=assistResultSchema.parse({fingerprint:context.fingerprint,provider:'ollama',provider_calls:1,verified:false,model:'test-model',verification:'none',
+          proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Propuesta sintética para probar la UI.',missing_information:[]},...window.testAssistResult});
+        data={id:'test-proposal',context:captureFillPolicy(context,result,hasImage),result};
       } else if(message.type==='assistFill')data=await window.fillAssistInteger(document,context.fingerprint,'12',new AbortController().signal);
       else throw Error('Comando no simulado');
       return {ok:true,data};

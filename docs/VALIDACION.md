@@ -1,14 +1,16 @@
 # Validación ejecutada
 
-Fecha: 21 de octubre de 2026. Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado.
+Actualización: 22 de octubre de 2026 (UTC). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
 | Comprobación | Resultado observado |
 | --- | --- |
 | `bash scripts/setup.sh` | Correcta, incluida reinstalación con lockfiles y conservación de `.env` existente |
 | TypeScript + `npm run build` | Correctos; `dist/` incluye manifest MV3, panel, opciones, worker modular y content script IIFE |
-| `npm test` | **48 pasadas**: 20 del controlador y 28 de fronteras de mensajes del worker/copiloto |
-| `.venv/bin/python -m pytest backend/tests -q` | **83 pasadas**, ninguna omitida; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
-| `npm run test:e2e` | **150 pasadas**, ninguna omitida: 10 del simulador, 98 del diagnóstico de editor, 28 del lector de enunciados y 14 del contexto/escritura/panel del copiloto |
+| `npm test` | **57 pasadas**: 20 del controlador y 37 de fronteras de mensajes del worker/copiloto |
+| `.venv/bin/python -m pytest backend/tests -q` | **83 pasadas** en la revisión anterior, backend sin cambios en esta corrección; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
+| `npm run test:e2e` | **150 pasadas** en la revisión anterior: 10 del simulador, 98 del diagnóstico de editor, 28 del lector de enunciados y 14 del contexto/escritura/panel del copiloto |
+| `npm run test:e2e -- tests/e2e/aleks-assist.spec.ts tests/e2e/aleks-panel.spec.ts` | **27 pasadas** en la corrección de elegibilidad: 20 de contexto/escritura y 7 del panel; incluyen los 14 casos anteriores y 13 regresiones nuevas |
+| Copiloto, panel y lector de enunciados tras añadir adjuntos | **62 casos comprobados**: 24 de contexto/escritura, 10 del panel y 28 del lector. Pasaron 61 en la primera ejecución; se actualizó una aserción del mensaje de dibujo y el caso restante pasó al reejecutarlo |
 | `pip check` | Sin dependencias incompatibles |
 | Sintaxis Python | `compileall` correcto |
 
@@ -57,6 +59,10 @@ El siguiente reporte del usuario confirmó Ollama conectado y `gemma3:4b` instal
 Dos pruebas nuevas del worker aceptan únicamente la procedencia y coherencia de la comprobación matemática, y rechazan verificación inventada por el modelo o información faltante vacía. Dos pruebas del panel diferencian resultado comprobado con escritura asistida disponible e incapacidad del modelo sin botón de escritura. No habilitan el inicio autónomo.
 
 Para esta corrección se ejecutaron compilación, las 48 pruebas unitarias, las 83 de backend y la pasada completa de 150 casos de navegador. Ollama no está instalado en esta máquina y el agente no ejecutó pesos reales. La respuesta errónea corresponde a la prueba del usuario; la regresión automática usa ese texto en un transporte simulado y el nuevo comprobador exacto. La calidad general del modelo y compatibilidad de eventos en ALEKS siguen pendientes de validación.
+
+Después, el usuario confirmó que el cálculo ya mostraba **12**, pero se exigía introducción manual incluso sin marcar la captura. La revisión encontró requisitos innecesarios de reconocimiento de Verificar y ausencia de controles matemáticos. Se retiraron para la escritura de enteros y se añadieron motivos concretos de bloqueo. Las trece regresiones nuevas de navegador cubren menús presentes, Verificar ausente, su aparición al enfocar sin invalidar la huella, bloqueo por ocupación/readOnly/estructura/varios editores/resultado/avance, explicación en el panel y política de captura diferenciada. Dos pruebas nuevas del worker comprueban la excepción del cálculo exacto con captura y que un cálculo correcto no omita el bloqueo del editor ni envíe diagnósticos extra al backend. En esta corrección se ejecutaron compilación, las **50 pruebas unitarias** y las **27 del navegador afectadas**, todas correctas. El backend no cambió. El editor y las APIs Chrome siguen siendo sintéticos en estas pruebas; no acreditan escritura o entrega en ALEKS real.
+
+El reporte posterior de `Either the '<all_urls>' or 'activeTab' permission is required` añadió siete casos del worker: error de permiso sin llamada al backend y recuperación con archivo, dependencia de dibujo detectada o declarada sin imagen, transporte de la indicación manual y rechazo de URLs remotas, imágenes excesivas o fuentes simultáneas. Cuatro regresiones del contexto identifican referencias visuales y el contenedor de figura externo/oculto, sin confundir los canvas del editor. Tres casos del panel prueban el bloqueo por imagen necesaria, conversión real PNG→JPEG en Chromium con vista previa y retirada al cambiar de enunciado, y recuperación de controles tras un archivo ilegible. La compilación y **57 pruebas unitarias** pasaron; los **62 casos de navegador afectados** quedaron comprobados como indica la tabla. No se modificó el backend ni se añadió `<all_urls>`. El transporte de imagen al proveedor y el permiso de captura se simulan; la conversión local de archivos usa las APIs reales del navegador. Estas pruebas no demuestran que Gemma lea correctamente medidas en una imagen ni que Chrome conceda el permiso en la instalación del usuario.
 
 La validación de Google usa firmas RSA reales y certificados de prueba locales, y rechaza firma alterada, emisor/audiencia/caducidad/nonce incorrectos. Se prueban estado OAuth, PKCE de vinculación, códigos caducados/de un uso, revocación y separación demo/Google. No se ha probado el intercambio real con Google.
 

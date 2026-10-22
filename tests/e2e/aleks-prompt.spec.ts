@@ -97,7 +97,7 @@ test('lee el fragmento real de círculo, arco, ángulo, grados y pi sin interpre
   expect(result).toMatchObject({events:0,unchanged:true,detection:{supported:false,session:false,promptObservation:{status:'readable',diagramReferenceDetected:true,autoSubmitSupported:false}}});
   const prompt=result.detection.promptObservation!;
   expect(prompt.statement).toBe('El círculo a continuación tiene su centro en O, y su radio es 3 cm. Dado que m ∠ AOB = 160 °, hallar la longitud de arco(AB) y el área de la región sombreada. Dar respuestas exactas en términos de π, e incluir las unidades correctas.');
-  expect(prompt.reason).toContain('No se ha interpretado esa región');
+  expect(prompt.reason).toContain('no se han interpretado medidas ni regiones');
   expect(prompt.mathematics).toHaveLength(5);
   expect(prompt.mathematics?.[2]).toEqual({kind:'row',items:[{kind:'identifier',value:'m'},{kind:'operator',value:'∠'},{kind:'identifier',value:'AOB'},{kind:'space'},{kind:'operator',value:'='},{kind:'number',value:'160'},{kind:'operator',value:'°'}]});
   expect(prompt.mathematics?.[3]).toEqual({kind:'row',items:[{kind:'over',base:{kind:'row',items:[{kind:'identifier',value:'AB'}]},mark:{kind:'operator',value:'︵'}}]});

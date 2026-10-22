@@ -114,8 +114,12 @@ function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'
   walk(root,0);
   const statement=normalize(redactURLs(chunks.join('')));
   if(!statement)throw new Unreadable('No hay texto de enunciado legible.');
+  // El contenedor de figuras se observó fuera de #algoPrompt. Solo se registra
+  // su presencia: no se deducen medidas ni se leen URLs/canvas del dibujo.
+  const figurePresent=[...document.querySelectorAll('.figed_top_container')].some(node=>!hidden(node));
   return {statement,mathematics,multiplePartsDetected:[...statement.matchAll(/\bSuceso\s+[A-Z]\s*:/gu)].length>1,
-    diagramReferenceDetected:/\bregi[oó]n\s+sombreada\b/iu.test(statement)};
+    diagramReferenceDetected:figurePresent || /\b(?:regi[oó]n\s+sombreada|figura|imagen|diagrama|gr[aá]fic[oa]|dibujo)\b/iu.test(statement) ||
+      /\b(?:c[ií]rculo|tri[aá]ngulo|rect[aá]ngulo|pol[ií]gono)\s+(?:que\s+se\s+muestra|a\s+continuaci[oó]n)\b/iu.test(statement)};
 }
 
 /** Lectura acotada al contenedor observado. El contador/título es opcional y no
@@ -128,7 +132,7 @@ export async function readAleksPrompt(document:Document):Promise<PromptObservati
     const canonical=JSON.stringify(first);
     const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical)))].map(n=>n.toString(16).padStart(2,'0')).join('');
     if(canonical!==JSON.stringify(snapshot(document)))return {status:'ambiguous',reason:'El enunciado cambió durante la lectura.',autoSubmitSupported:false};
-    const reason=first.diagramReferenceDetected?'Texto leído; la referencia a una región sombreada requiere revisar el diagrama. No se ha interpretado esa región.':
+    const reason=first.diagramReferenceDetected?'Texto leído; se detecta un dibujo o una referencia visual. Incluye su imagen para consultar; no se han interpretado medidas ni regiones.':
       first.multiplePartsDetected?'Se detectan varios sucesos; falta validar sus campos de respuesta.':'Enunciado leído; interpretación y controles pendientes de validar.';
     return {status:'readable',reason,...first,fingerprint,autoSubmitSupported:false};
   } catch(error) {

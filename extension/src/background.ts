@@ -1,4 +1,5 @@
 import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
+import { captureFillPolicy,requireAssistImage,proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
 
 type Auth = {token:string;mode:'demo'|'google'};
 type Consent = {origin:string;activity:string;limits:ReturnType<typeof limitsSchema.parse>};
@@ -100,23 +101,36 @@ async function handleUI(m:Record<string,unknown>) {
     case 'assist': {
       const t=await tab(m.tabId);
       if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof m.includeImage!=='boolean')throw Error('Selecciona una pestaña ALEKS para la consulta local.');
+      if(m.needsImage!==undefined && typeof m.needsImage!=='boolean')throw Error('Indicación de dibujo inválida.');
+      if(m.image!==undefined && (m.includeImage || typeof m.image!=='string' || m.image.length>1_333_359 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(m.image)))throw Error('Adjunta una única captura JPEG válida y acotada.');
+      const hasImage=m.includeImage || m.image!==undefined;
       if(!await auth())throw Error('Entra en demostración o inicia sesión en la aplicación.');
       if(assistJobs.has(t.id))throw Error('Ya hay una consulta de IA en curso en esta pestaña.');
       const job=crypto.randomUUID();assistJobs.set(t.id,job);assistProposals.delete(t.id);let remoteId:string|undefined;
       try {
-        const context=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:m.includeImage}));
-        let image:string|undefined;
+        const observed=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:hasImage}));
+        const context=requireAssistImage(observed,m.needsImage===true);
+        if(context.diagram_required && !hasImage)throw Error('El ejercicio necesita el dibujo. Incluye la captura visible o adjunta una imagen antes de consultar; no se llamó al modelo.');
+        let image=m.image as string|undefined;
         if(m.includeImage) {
           const active=async()=>{
             const current=await tab(t.id),selected=await chrome.tabs.query({active:true,windowId:t.windowId});
             if(current.url!==t.url || selected.length!==1 || selected[0].id!==t.id)throw Error('Activa la pestaña ALEKS seleccionada para capturarla.');
           };
-          await active();image=await chrome.tabs.captureVisibleTab(t.windowId,{format:'jpeg',quality:65});await active();
-          if(image.length>1_500_000)throw Error('La captura es demasiado grande; reduce el tamaño de la ventana.');
+          await active();
+          try{image=await chrome.tabs.captureVisibleTab(t.windowId,{format:'jpeg',quality:65});}
+          catch(error){
+            if(/activeTab|<all_urls>/i.test(error instanceof Error?error.message:String(error)))throw Error('Chrome no concedió permiso para capturar esta pestaña. Activa la pestaña ALEKS y pulsa el icono del asistente en la barra de Chrome; después vuelve a consultar. También puedes usar «Adjuntar imagen del ejercicio». No se llamó al modelo.');
+            throw Error('Chrome no pudo capturar la pestaña. Puedes usar «Adjuntar imagen del ejercicio» y volver a consultar. No se llamó al modelo.');
+          }
+          await active();
+          if(image.length>1_333_359)throw Error('La captura es demasiado grande; reduce el tamaño de la ventana o adjunta un recorte del ejercicio.');
         }
         // Peticiones cortas: MV3 puede terminar un worker cuyo fetch no recibe
         // respuesta durante 30 s. No mantenemos un fetch abierto a la inferencia.
-        const started=await api('/assist/jobs','POST',{context,...(image?{image}:{})},true);
+        // Los motivos de escritura son diagnóstico local, no datos del modelo.
+        const {fill_blockers,...modelContext}=context;
+        const started=await api('/assist/jobs','POST',{context:modelContext,...(image?{image}:{})},true);
         if(typeof started?.id!=='string' || !/^[a-f0-9-]{36}$/.test(started.id))throw Error('Identificador de consulta inválido.');
         remoteId=started.id;
         if(assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
@@ -132,13 +146,13 @@ async function handleUI(m:Record<string,unknown>) {
         }
         if(response===undefined)throw Error('El modelo tardó más de cuatro minutos. Usa un modelo más pequeño o revisa los recursos disponibles.');
         const result=assistResultSchema.parse(response);
-        const current=await tab(t.id),fresh=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:m.includeImage}));
+        const current=await tab(t.id),fresh=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:hasImage}));
         if(assistJobs.get(t.id)!==job || current.url!==t.url || context.fingerprint!==fresh.fingerprint || result.fingerprint!==context.fingerprint)throw Error('El ejercicio cambió durante la consulta; se descartó la propuesta.');
         const expected=context.fields.map(field=>field.key).sort().join(',');
         if(result.proposal.status==='proposed' && result.proposal.answers.map(answer=>answer.field_key).sort().join(',')!==expected)throw Error('Las respuestas de IA no corresponden a los campos actuales.');
-        // La captura contiene solo el área visible; el contexto textual no valida
-        // cambios del diagrama. Por ahora esas propuestas se introducen a mano.
-        const proposal:AssistView={id:crypto.randomUUID(),context:{...context,can_fill_integer:context.can_fill_integer && !m.includeImage},result};
+        // El comprobador de premios usa solo texto. Las propuestas que dependen
+        // de la captura conservan la introducción manual.
+        const proposal:AssistView={id:crypto.randomUUID(),context:captureFillPolicy(context,result,hasImage),result};
         assistProposals.set(t.id,proposal);return proposal;
       } finally {
         if(assistRemoteJobs.get(t.id)===remoteId)assistRemoteJobs.delete(t.id);
@@ -149,7 +163,9 @@ async function handleUI(m:Record<string,unknown>) {
     case 'assistFill': {
       const t=await tab(m.tabId),proposal=assistProposals.get(t.id);
       assistProposals.delete(t.id);
-      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth() || !proposal || proposal.id!==m.proposalId || !proposal.context.can_fill_integer)throw Error('No hay una propuesta vigente que se pueda introducir.');
+      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth() || !proposal || proposal.id!==m.proposalId)throw Error('No hay una propuesta vigente que se pueda introducir.');
+      const blockers=proposalFillBlockers(proposal);
+      if(blockers.length)throw Error(blockers.map(blocker=>fillBlockerMessages[blocker]).join(' '));
       const answers=proposal.result.proposal.answers;
       if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !/^(0|[1-9]\d{0,11})$/.test(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero sin unidad.');
       assistWriters.add(t.id);

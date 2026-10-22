@@ -158,8 +158,27 @@ it('solo captura por elección explícita la pestaña activa; la propuesta con i
   const capture=vi.fn(async()=> 'data:image/jpeg;base64,/9j//9k=');chrome.tabs.captureVisibleTab=capture;
   const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:true})).data;
   expect(capture).toHaveBeenCalledTimes(1);expect(proposal.context.can_fill_integer).toBe(false);
+  expect(proposal.context.fill_blockers).toEqual(['image_based_proposal']);
   expect(JSON.parse(fetchMock.mock.calls[0][1].body).image).toBe('data:image/jpeg;base64,/9j//9k=');
   expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:proposal.id})).ok).toBe(false);
+});
+it('la comprobación exacta basada en texto no se bloquea por adjuntar una captura',async()=>{
+  prepareAssist({...assistResult,model:'',provider:'deterministic',provider_calls:0,verified:true,verification:'ordered_prizes'});
+  chrome.tabs.captureVisibleTab=vi.fn(async()=> 'data:image/jpeg;base64,/9j//9k=');
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:true});
+  expect(response.ok).toBe(true);expect(response.data.context).toMatchObject({can_fill_integer:true,fill_blockers:[]});
+  tabsSend.mockResolvedValue({ok:true,data:{written:true,display:'12',submitted:false}});
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id})).ok).toBe(true);
+});
+it('explica el bloqueo del editor sin enviar diagnósticos locales al modelo ni escribir aunque el cálculo sea exacto',async()=>{
+  prepareAssist({...assistResult,model:'',provider:'deterministic',provider_calls:0,verified:true,verification:'ordered_prizes'});
+  tabsSend.mockResolvedValue({ok:true,data:{...assistContext,can_fill_integer:false,fill_blockers:['editor_disabled']}});
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(response.ok).toBe(true);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({context:{...assistContext,can_fill_integer:false}});
+  const calls=tabsSend.mock.calls.length;
+  expect(await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id})).toEqual({ok:false,error:'El recuadro está deshabilitado o es de solo lectura.'});
+  expect(tabsSend).toHaveBeenCalledTimes(calls);
 });
 it('no captura otra pestaña ni consulta sin identidad',async()=>{
   prepareAssist();const capture=vi.fn();chrome.tabs.captureVisibleTab=capture;
@@ -167,6 +186,42 @@ it('no captura otra pestaña ni consulta sin identidad',async()=>{
   expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:true})).ok).toBe(false);
   expect(capture).not.toHaveBeenCalled();expect(fetchMock).not.toHaveBeenCalled();
   delete session.auth;expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
+});
+it('explica el permiso activeTab ausente, no llama al modelo y permite volver a consultar adjuntando una imagen',async()=>{
+  prepareAssist();
+  const capture=vi.fn(async()=>{throw Error("Either the '<all_urls>' or 'activeTab' permission is required.");});
+  chrome.tabs.captureVisibleTab=capture;
+  const rejected=await send({scope:'ui',type:'assist',tabId:7,includeImage:true});
+  expect(rejected.ok).toBe(false);expect(rejected.error).toContain('pulsa el icono del asistente');
+  expect(rejected.error).toContain('Adjuntar imagen del ejercicio');expect(fetchMock).not.toHaveBeenCalled();
+  const image='data:image/jpeg;base64,/9j//9k=';
+  const retried=await send({scope:'ui',type:'assist',tabId:7,includeImage:false,image});
+  expect(retried.ok).toBe(true);expect(capture).toHaveBeenCalledTimes(1);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({context:assistContext,image});
+  expect(tabsSend).toHaveBeenCalledWith(7,{scope:'adapter',type:'assistContext',allowImage:true});
+  expect(retried.data.context).toMatchObject({can_fill_integer:false,fill_blockers:['image_based_proposal']});
+});
+it.each([false,true])('no consulta sin dibujo requerido por detección o por el usuario; indicado manualmente: %s',async manual=>{
+  prepareAssist();
+  if(!manual)tabsSend.mockResolvedValue({ok:true,data:{...assistContext,diagram_required:true,can_fill_integer:false,fill_blockers:['diagram_required']}});
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false,needsImage:manual});
+  expect(response.ok).toBe(false);expect(response.error).toContain('necesita el dibujo');expect(fetchMock).not.toHaveBeenCalled();
+});
+it('la indicación manual de dibujo llega al backend con imagen y conserva el bloqueo de escritura',async()=>{
+  prepareAssist();const image='data:image/jpeg;base64,/9j//9k=';
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false,needsImage:true,image});
+  expect(response.ok).toBe(true);
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body)).toEqual({context:{...assistContext,diagram_required:true,can_fill_integer:false},image});
+  expect(response.data.context.fill_blockers).toContain('diagram_required');
+});
+it.each([
+  {image:'https://private.invalid/image'},
+  {image:'data:image/jpeg;base64,'+'a'.repeat(1_333_360)},
+  {image:'data:image/jpeg;base64,/9j//9k=',includeImage:true}
+])('rechaza imagen remota, excesiva o fuentes simultáneas sin capturar ni llamar al backend',async change=>{
+  prepareAssist();chrome.tabs.captureVisibleTab=vi.fn();
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false,...change})).ok).toBe(false);
+  expect(fetchMock).not.toHaveBeenCalled();expect(chrome.tabs.captureVisibleTab).not.toHaveBeenCalled();
 });
 it('cerrar sesión detiene una escritura asistida aunque no exista una ejecución automática',async()=>{
   prepareAssist();

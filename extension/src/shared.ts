@@ -50,10 +50,13 @@ export interface SingleEditorObservation {
   status:'observed'|'missing'|'ambiguous'|'unsupported';reason:string;rootCount:number;disabled?:boolean;autoSubmitSupported:false;
   readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string};
 }
+export const fillBlockerSchema=z.enum(['unreadable_prompt','editor_missing','multiple_editors','editor_structure','editor_disabled',
+  'editor_not_empty','unsupported_readback','result_present','diagram_required','image_based_proposal','answer_format','no_answer','unknown']);
+export type FillBlocker=z.infer<typeof fillBlockerSchema>;
 export const assistContextSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),statement:z.string().min(1).max(8000),
   fields:z.array(z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().min(1).max(200)}).strict()).min(1).max(12),
-  diagram_required:z.boolean(),can_fill_integer:z.boolean()
+  diagram_required:z.boolean(),can_fill_integer:z.boolean(),fill_blockers:z.array(fillBlockerSchema).max(13).default([])
 }).strict();
 export type AssistContext=z.infer<typeof assistContextSchema>;
 export const assistResultSchema=z.object({

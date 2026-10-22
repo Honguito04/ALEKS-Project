@@ -2,6 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BACKEND, ALEKS_ACTIVITY, ALEKS_ORIGINS,type AssistView,type Run, type Exercise, type Solution, type Detection } from './shared';
 import './ui.css';
+import { proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
+import { prepareAssistImage } from './assist-image';
 
 type Tab = {id:number;title:string;url:string};
 type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution};
@@ -16,6 +18,7 @@ function App() {
   const [tabs,setTabs]=useState<Tab[]>([]),[selected,setSelected]=useState<number>();
   const [view,setView]=useState<View>({}),[error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
   const [assist,setAssist]=useState<AssistView>(),[includeImage,setImage]=useState(false);
+  const [imageFile,setImageFile]=useState<string>(),[needsImage,setNeedsImage]=useState(false);
   const [assistActive,setAssistActive]=useState(false);
   const [localStatus,setLocalStatus]=useState<{configured:boolean;online:boolean;model_installed:boolean;model:string}>();
   const [maxExercises,setMax]=useState(10),[maxMinutes,setMinutes]=useState(10),[maxAICalls,setCalls]=useState(0),[preview,setPreview]=useState(false);
@@ -35,6 +38,7 @@ function App() {
     await attempt(refresh);
   }
   useEffect(()=>{void chrome.permissions.contains({origins:[`${BACKEND}/*`]}).then(p=>{if(p) void attempt(refresh);});},[]);
+  useEffect(()=>{setImageFile(undefined);setNeedsImage(false);setAssist(undefined);},[selected,view.detection?.promptObservation?.fingerprint]);
   useEffect(()=>{
     if(!selected || !view.detection) return;
     const timer=setInterval(()=>{void rpc('status',{tabId:selected}).then(setView).catch(e=>setError(e.message));},1000);
@@ -54,8 +58,10 @@ function App() {
   const singleEditor=view.detection?.editorObservation?.singleEditor;
   const showSingle=singleEditor?.status==='observed' && view.detection?.editorObservation?.renderedAnswer.status!=='readable';
   const aleks=Boolean(view.detection && ALEKS_ORIGINS.includes(view.detection.origin));
-  const canFill=assist?.context.can_fill_integer && assist.result.proposal.status==='proposed' && assist.result.proposal.answers.length===1 &&
-    assist.result.proposal.answers[0].unit==='' && /^(0|[1-9]\d{0,11})$/.test(assist.result.proposal.answers[0].value);
+  const diagramRequired=needsImage || Boolean(view.detection?.promptObservation?.diagramReferenceDetected);
+  const hasImage=includeImage || Boolean(imageFile);
+  const fillBlockers=assist?proposalFillBlockers(assist):[];
+  const canFill=Boolean(assist && fillBlockers.length===0);
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">MVP · El recorrido automático está habilitado en el simulador local. ALEKS está pendiente de validación.</div>
@@ -106,11 +112,19 @@ function App() {
       <p>Consulta el ejercicio con tu modelo local. La IA puede equivocarse: revisa la propuesta antes de usarla.</p>
       <button className="secondary" disabled={busy || !mode} onClick={()=>void attempt(async()=>{setLocalStatus(await rpc('localAIStatus'));})}>Comprobar Ollama</button>
       {localStatus && <p className="small">{!localStatus.configured?'Configura AI_PROVIDER=ollama y AI_MODEL en .env y reinicia el backend.':!localStatus.online?'Ollama no está disponible. Abre la aplicación Ollama en tu computadora.':!localStatus.model_installed?`Falta instalar el modelo ${localStatus.model} en Ollama.`:`Ollama conectado · ${localStatus.model} instalado.`}</p>}
-      <label className="check"><input type="checkbox" checked={includeImage} disabled={busy} onChange={event=>setImage(event.target.checked)}/>Incluir captura visible de la pestaña seleccionada</label>
-      <p className="small">El texto y, si lo marcas, toda la captura visible se envían a Ollama en tu computadora. La captura puede incluir datos de tu cuenta. No se envían a una API externa.</p>
-      <button disabled={busy || !mode || health?.ai_provider!=='ollama' || (view.detection?.promptObservation?.status!=='readable' && !includeImage)} onClick={()=>void attempt(async()=>{
+      <label className="check"><input type="checkbox" checked={includeImage} disabled={busy} onChange={event=>{setImage(event.target.checked);setImageFile(undefined);setAssist(undefined);}}/>Incluir captura visible de la pestaña seleccionada</label>
+      <p className="small">Para capturar, activa esa pestaña y pulsa el icono del asistente en la barra de Chrome. Abrirlo desde el menú lateral o elegir otra pestaña no concede ese permiso.</p>
+      <label>Adjuntar imagen del ejercicio<input type="file" accept="image/png,image/jpeg,image/webp" disabled={busy} onChange={event=>{
+        const file=event.target.files?.[0];event.target.value='';
+        if(file)void attempt(async()=>{setAssist(undefined);setImageFile(undefined);setImage(false);setImageFile(await prepareAssistImage(file));});
+      }}/></label>
+      {imageFile && <><img src={imageFile} alt="Imagen adjunta para la consulta" style={{maxWidth:'100%',maxHeight:240,objectFit:'contain'}}/><button className="secondary" disabled={busy} onClick={()=>{setImageFile(undefined);setAssist(undefined);}}>Quitar imagen adjunta</button></>}
+      {!view.detection?.promptObservation?.diagramReferenceDetected && <label className="check"><input type="checkbox" checked={needsImage} disabled={busy} onChange={event=>{setNeedsImage(event.target.checked);setAssist(undefined);}}/>El ejercicio necesita una imagen o dibujo</label>}
+      {diagramRequired && !hasImage && <p role="note">Falta la imagen del ejercicio. Marca la captura visible o adjunta una imagen; no se consultará al modelo sin ella.</p>}
+      <p className="small">El texto y la imagen elegida se envían a Ollama en tu computadora. La captura visible incluye toda el área de la pestaña y puede contener datos de tu cuenta; puedes adjuntar un recorte del ejercicio. La imagen no se guarda en el historial ni se envía a una API externa.</p>
+      <button disabled={busy || !mode || health?.ai_provider!=='ollama' || (view.detection?.promptObservation?.status!=='readable' && !hasImage) || (diagramRequired && !hasImage)} onClick={()=>void attempt(async()=>{
         setAssist(undefined);setNotice('Consultando el modelo local…');setAssistActive(true);
-        try{setAssist(await rpc('assist',{tabId:selected,includeImage}));}finally{setNotice('');setAssistActive(false);}
+        try{setAssist(await rpc('assist',{tabId:selected,includeImage,needsImage,...(imageFile?{image:imageFile}:{})}));}finally{setNotice('');setAssistActive(false);}
       })}>Resolver con IA local</button>
       {assistActive && <button className="danger" onClick={()=>void rpc('cancelAssist',{tabId:selected}).catch(error=>setError(error.message))}>Cancelar operación de IA</button>}
       {health?.ai_provider!=='ollama' && <p className="small">Activa Ollama en .env para habilitar esta función. Consulta docs/IA_GENERAL.md.</p>}
@@ -123,7 +137,7 @@ function App() {
             await rpc('assistFill',{tabId:selected,proposalId:proposal.id});
             setView(await rpc('status',{tabId:selected}));setNotice('Entero reflejado en el recuadro. No se pulsó Verificar; revisa el contenido antes de entregarlo.');
           }finally{setAssistActive(false);}
-        })}>Introducir entero en el recuadro</button>:assist.result.proposal.status==='proposed' && <p className="small">Introduce esta propuesta manualmente. Este formato, estado del editor o captura todavía no admite escritura asistida.</p>}
+        })}>Introducir entero en el recuadro</button>:assist.result.proposal.status==='proposed' && <><p className="small">Escritura asistida no disponible:</p><ul>{fillBlockers.map(blocker=><li key={blocker}>{fillBlockerMessages[blocker]}</li>)}</ul></>}
       </div>}
     </section>}
     <section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>

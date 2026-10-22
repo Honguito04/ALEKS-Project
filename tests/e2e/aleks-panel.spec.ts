@@ -46,6 +46,45 @@ test('presenta un cálculo exacto como comprobado y disponible para escritura as
   await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toBeDisabled();
 });
 
+test('ofrece introducir el cálculo exacto sin reconocer Verificar y con botones matemáticos disponibles',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{
+    document.querySelector('#smt_bottomnav_button_input_checkAnswer')!.remove();
+    document.querySelector('.aleks-editor-menu')!.innerHTML='<button aria-label="Fraction">Fracción</button><button aria-label="π">π</button>';
+    window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'ordered_prizes'};
+  });
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toBeVisible();
+  await page.getByRole('button',{name:'Introducir entero en el recuadro'}).click();
+  await expect(page.getByRole('status')).toContainText('Entero reflejado');
+});
+
+test('muestra por qué un recuadro bloquea la escritura de un resultado comprobado',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{
+    document.querySelector<HTMLInputElement>('.ansed_input')!.readOnly=true;
+    window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'ordered_prizes'};
+  });
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('Resultado comprobado · premios por puestos')).toBeVisible();
+  await expect(page.getByText('El recuadro está deshabilitado o es de solo lectura.',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+});
+
+for(const verified of [true,false]) {
+  test(`la captura permite escritura solo para un cálculo comprobado por texto: ${verified}`,async({page})=>{
+    await openPanel(page);
+    if(verified)await page.evaluate(()=>{window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'ordered_prizes'};});
+    await page.getByLabel('Incluir captura visible de la pestaña seleccionada').check();
+    await page.getByRole('button',{name:'Resolver con IA local'}).click();
+    if(verified)await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toBeVisible();
+    else {
+      await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+      await expect(page.getByText('La propuesta depende de una captura.',{exact:false})).toBeVisible();
+    }
+  });
+}
+
 test('no presenta la incapacidad del modelo como datos faltantes ni ofrece escribir',async({page})=>{
   await openPanel(page);
   await page.evaluate(()=>{window.testAssistResult={proposal:{status:'unable_to_solve',answers:[],explanation:'El modelo no produjo una solución utilizable.',missing_information:[]}};});
@@ -53,4 +92,40 @@ test('no presenta la incapacidad del modelo como datos faltantes ni ofrece escri
   await expect(page.getByText('El modelo no obtuvo una solución utilizable',{exact:true})).toBeVisible();
   await expect(page.getByText('Falta información',{exact:true})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+});
+
+test('una imagen necesaria bloquea la consulta sin deshabilitar la elección de captura',async({page})=>{
+  await openPanel(page);
+  await page.getByLabel('El ejercicio necesita una imagen o dibujo').check();
+  await expect(page.getByRole('button',{name:'Resolver con IA local'})).toBeDisabled();
+  await expect(page.getByText('Falta la imagen del ejercicio.',{exact:false})).toBeVisible();
+  await expect(page.getByLabel('Incluir captura visible de la pestaña seleccionada')).toBeEnabled();
+  await page.getByLabel('Incluir captura visible de la pestaña seleccionada').check();
+  await expect(page.getByRole('button',{name:'Resolver con IA local'})).toBeEnabled();
+});
+
+test('adjunta una captura PNG como JPEG local y la retira al cambiar de ejercicio',async({page})=>{
+  await openPanel(page);
+  await page.getByLabel('El ejercicio necesita una imagen o dibujo').check();
+  const png=await page.evaluate(()=>{const canvas=document.createElement('canvas');canvas.width=320;canvas.height=200;canvas.getContext('2d')!.fillText('Diagrama de prueba',10,20);return canvas.toDataURL('image/png').split(',')[1];});
+  await page.getByLabel('Adjuntar imagen del ejercicio').setInputFiles({name:'ejercicio.png',mimeType:'image/png',buffer:Buffer.from(png,'base64')});
+  const image=page.getByAltText('Imagen adjunta para la consulta');
+  await expect(image).toBeVisible();await expect(image).toHaveAttribute('src',/^data:image\/jpeg;base64,/);
+  await expect(page.getByRole('button',{name:'Resolver con IA local'})).toBeEnabled();
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('Propuesta de IA · sin verificar')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+  await page.evaluate(()=>{document.querySelector('#algoPrompt')!.textContent='Nuevo ejercicio';});
+  await expect(image).toHaveCount(0);
+  await expect(page.getByText('Propuesta de IA · sin verificar')).toHaveCount(0);
+});
+
+test('un archivo ilegible deja los controles disponibles y no habilita consulta sin imagen',async({page})=>{
+  await openPanel(page);
+  await page.getByLabel('El ejercicio necesita una imagen o dibujo').check();
+  await page.getByLabel('Adjuntar imagen del ejercicio').setInputFiles({name:'roto.png',mimeType:'image/png',buffer:Buffer.from('not-an-image')});
+  await expect(page.getByRole('alert')).toContainText('No se pudo abrir la imagen');
+  await expect(page.getByRole('button',{name:'Resolver con IA local'})).toBeDisabled();
+  await expect(page.getByLabel('Incluir captura visible de la pestaña seleccionada')).toBeEnabled();
+  await expect(page.getByLabel('Adjuntar imagen del ejercicio')).toBeEnabled();
 });
