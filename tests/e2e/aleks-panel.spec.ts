@@ -129,3 +129,26 @@ test('un archivo ilegible deja los controles disponibles y no habilita consulta 
   await expect(page.getByLabel('Incluir captura visible de la pestaña seleccionada')).toBeEnabled();
   await expect(page.getByLabel('Adjuntar imagen del ejercicio')).toBeEnabled();
 });
+
+test('una revisión visual con cuenta comprobada mantiene el resultado sin verificación de geometría y sin escritura',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{window.testAssistResult={provider_calls:2,proposal:{status:'proposed',answers:[{field_key:'answer',value:'1496',unit:'cm^3'}],
+    explanation:'13*15*8 - 8*(15-7-7)*8 = 1496 cm^3. Cuenta comprobada; geometría sin verificación independiente.',missing_information:[]}};});
+  await page.getByLabel('Incluir captura visible de la pestaña seleccionada').check();
+  await expect(page.getByText('La consulta visual puede hacer dos pasadas',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('Propuesta de IA · sin verificar')).toBeVisible();
+  await expect(page.getByText('1496 cm^3',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+});
+
+test('una propuesta visual incoherente se presenta descartada y sin respuesta disponible',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{window.testAssistResult={proposal:{status:'unable_to_solve',answers:[],
+    explanation:'Propuesta visual descartada: la respuesta no coincide con el cálculo propuesto.',missing_information:[]}};});
+  await page.getByLabel('Incluir captura visible de la pestaña seleccionada').check();
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('Propuesta visual descartada:',{exact:false})).toBeVisible();
+  await expect(page.getByText('Respuesta del ejercicio:',{exact:false})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+});

@@ -12,6 +12,13 @@ CONTEXT = {"fingerprint": "a" * 64, "statement": "Hay 4 nadadores y premios para
 PROPOSAL = {"status": "proposed", "answers": [{"field_key": "answer", "value": "12", "unit": ""}],
             "explanation": "4 posibilidades para primero y 3 para segundo: 4 × 3 = 12.", "missing_information": []}
 SWIMMERS = "Hay 4 nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?"
+SOLID = {"status": "proposed", "answers": [{"field_key": "answer", "value": "1496", "unit": "cm^3"}],
+         "explanation": "Prisma rectangular completo menos un hueco rectangular que atraviesa la profundidad.",
+         "missing_information": [], "observations": ["Ancho total: 13 cm", "Altura total: 15 cm", "Profundidad: 8 cm",
+             "Dos alturas parciales de 7 cm", "Ancho del hueco: 8 cm"],
+         "calculations": [{"field_key": "answer", "expression": "13*15*8 - 8*(15-7-7)*8", "decimal_places": None}]}
+VISUAL_CONTEXT = {**CONTEXT, "statement": "Halle el volumen del sólido de abajo.", "diagram_required": True, "can_fill_integer": False}
+IMAGE = "data:image/jpeg;base64,/9j//9k="  # Solo prueba de transporte; no una imagen interpretable.
 
 
 @pytest.fixture
@@ -24,7 +31,14 @@ def ollama(monkeypatch):
     def handler(request):
         calls.append(request)
         assert request.url.host == "127.0.0.1" and request.url.port == 11434
-        return httpx.Response(200, json={"models": response_body.get("models", [{"name": settings.ai_model}])} if request.url.path == "/api/tags" else response_body)
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": response_body.get("models", [{"name": settings.ai_model}])})
+        properties = json.loads(request.content)["format"]["properties"]
+        if "observations" in properties:
+            return httpx.Response(200, json={"message": {"content": json.dumps(response_body.get("visual_draft", SOLID))}})
+        if "issues" in properties:
+            return httpx.Response(200, json={"message": {"content": json.dumps(response_body.get("visual_review", {"status": "consistent", "issues": [], "missing_information": []}))}})
+        return httpx.Response(200, json=response_body)
     original = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
     return calls, response_body
@@ -61,12 +75,101 @@ def test_missing_diagram_does_not_call_or_invent_an_answer(client, demo_headers,
 def test_image_is_forwarded_to_loopback_only_and_not_to_model_text(client, demo_headers, ollama):
     calls, _ = ollama
     # Solo prueba el transporte/base64; no acredita que estos bytes sean una foto útil.
-    image = "data:image/jpeg;base64,/9j//9k="
-    result = client.post("/assist", json={"context": {**CONTEXT, "diagram_required": True}, "image": image}, headers=demo_headers)
+    image = IMAGE
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": image}, headers=demo_headers)
     assert result.status_code == 200
     sent = json.loads(calls[-1].content)
     assert sent["messages"][1]["images"] == [image.split(",")[1]]
     assert "data:image" not in sent["messages"][1]["content"]
+    assert result.json()["verified"] is False and result.json()["provider_calls"] == 2
+    chats = [json.loads(call.content) for call in calls if call.url.path == "/api/chat"]
+    assert len(chats) == 2 and all(chat["messages"][1]["images"] == [image.split(",")[1]] for chat in chats)
+    assert result.json()["proposal"]["answers"] == SOLID["answers"]
+    assert "13*15*8 - 8*(15-7-7)*8 = 1496" in result.json()["proposal"]["explanation"]
+    assert "no verifica independientemente" in result.json()["proposal"]["explanation"]
+
+
+def test_reported_180_answer_with_728_calculation_is_discarded_before_visual_review(client, demo_headers, ollama):
+    calls, response = ollama
+    response["visual_draft"] = {**SOLID, "answers": [{"field_key": "answer", "value": "180", "unit": "cm^3"}],
+        "explanation": "El volumen del sólido de abajo es 728 cm³.",
+        "calculations": [{"field_key": "answer", "expression": "8*7*13", "decimal_places": None}]}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
+    assert result["proposal"]["status"] == "unable_to_solve" and result["proposal"]["answers"] == []
+    assert "no coincide" in result["proposal"]["explanation"]
+    assert "180" not in str(result) and "728" not in str(result)
+    assert result["provider_calls"] == 1 and sum(call.url.path == "/api/chat" for call in calls) == 1
+
+
+def test_consistent_arithmetic_is_not_enough_when_visual_review_rejects_the_geometry(client, demo_headers, ollama):
+    _, response = ollama
+    response["visual_draft"] = {**SOLID, "answers": [{"field_key": "answer", "value": "728", "unit": "cm^3"}],
+        "calculations": [{"field_key": "answer", "expression": "8*7*13", "decimal_places": None}]}
+    response["visual_review"] = {"status": "inconsistent", "issues": ["Se consideró solo una parte; falta descontar el hueco del prisma completo."], "missing_information": []}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
+    assert result["provider_calls"] == 2 and result["verified"] is False
+    assert result["proposal"]["status"] == "unable_to_solve" and result["proposal"]["answers"] == []
+    assert "falta descontar" in result["proposal"]["explanation"]
+
+
+@pytest.mark.parametrize("change", ["old-format", "missing-measures", "missing-formula", "extra-formula", "code", "false-verification"])
+def test_visual_proposals_need_measures_and_one_safe_formula_per_field(client, demo_headers, ollama, change):
+    calls, response = ollama
+    draft = json.loads(json.dumps(SOLID))
+    if change == "old-format": draft = dict(PROPOSAL)
+    if change == "missing-measures": draft["observations"] = []
+    if change == "missing-formula": draft["calculations"] = []
+    if change == "extra-formula": draft["calculations"] *= 2
+    if change == "code": draft["calculations"][0]["expression"] = "__import__('os').system('PRIVATE_UNTRUSTED_OUTPUT')"
+    if change == "false-verification": draft["verified"] = True
+    response["visual_draft"] = draft
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers)
+    assert result.status_code == 200 and result.json()["proposal"]["answers"] == []
+    assert result.json()["proposal"]["status"] == "unable_to_solve"
+    assert "PRIVATE_UNTRUSTED_OUTPUT" not in result.text
+    assert sum(call.url.path == "/api/chat" for call in calls) == 1
+
+
+@pytest.mark.parametrize("review", [
+    {"status": "consistent", "issues": ["No coincide la medida"], "missing_information": []},
+    {"status": "inconsistent", "issues": [], "missing_information": []},
+    {"status": "needs_context", "issues": [], "missing_information": []},
+    {"status": "consistent", "issues": [], "missing_information": [], "code": "PRIVATE_UNTRUSTED_OUTPUT"},
+])
+def test_invalid_second_review_does_not_release_a_numerical_answer(client, demo_headers, ollama, review):
+    _, response = ollama
+    response["visual_review"] = review
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers)
+    assert result.status_code == 200 and result.json()["proposal"]["status"] == "unable_to_solve"
+    assert result.json()["proposal"]["answers"] == [] and result.json()["provider_calls"] == 2
+    assert "PRIVATE_UNTRUSTED_OUTPUT" not in result.text
+
+
+def test_unreadable_dimension_in_review_requests_specific_information_without_answer(client, demo_headers, ollama):
+    _, response = ollama
+    response["visual_review"] = {"status": "needs_context", "issues": [], "missing_information": ["Profundidad legible del sólido"]}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
+    assert result["proposal"]["status"] == "needs_context" and result["proposal"]["answers"] == []
+    assert result["proposal"]["missing_information"] == ["Profundidad legible del sólido"]
+
+
+def test_unchecked_free_text_is_replaced_by_the_checked_formula_explanation(client, demo_headers, ollama):
+    _, response = ollama
+    response["visual_draft"] = {**SOLID, "explanation": "Conclusión libre inconsistente de 180 cm³."}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
+    # La revisión está simulada como favorable. Aun así la prosa libre nunca se publica.
+    assert "180" not in result["proposal"]["explanation"]
+    assert result["proposal"]["answers"][0]["value"] == "1496"
+    assert "= 1496" in result["proposal"]["explanation"]
+
+
+def test_no_visual_answer_when_draft_identifies_a_missing_measure(client, demo_headers, ollama):
+    calls, response = ollama
+    response["visual_draft"] = {"status": "needs_context", "answers": [], "calculations": [], "observations": [],
+        "explanation": "No se lee la profundidad.", "missing_information": ["Profundidad del prisma"]}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
+    assert result["proposal"]["status"] == "needs_context" and result["proposal"]["answers"] == []
+    assert sum(call.url.path == "/api/chat" for call in calls) == 1
 
 
 @pytest.mark.parametrize("change", ["unknown-field", "duplicate-field", "invalid-json", "code-property"])

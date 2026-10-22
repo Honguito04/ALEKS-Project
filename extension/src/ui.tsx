@@ -122,6 +122,7 @@ function App() {
       {!view.detection?.promptObservation?.diagramReferenceDetected && <label className="check"><input type="checkbox" checked={needsImage} disabled={busy} onChange={event=>{setNeedsImage(event.target.checked);setAssist(undefined);}}/>El ejercicio necesita una imagen o dibujo</label>}
       {diagramRequired && !hasImage && <p role="note">Falta la imagen del ejercicio. Marca la captura visible o adjunta una imagen; no se consultará al modelo sin ella.</p>}
       <p className="small">El texto y la imagen elegida se envían a Ollama en tu computadora. La captura visible incluye toda el área de la pestaña y puede contener datos de tu cuenta; puedes adjuntar un recorte del ejercicio. La imagen no se guarda en el historial ni se envía a una API externa.</p>
+      {hasImage && <p className="small">La consulta visual puede hacer dos pasadas del modelo y tardar más. Se comprueba la cuenta y se revisa de nuevo el dibujo; la interpretación visual sigue sin verificación independiente.</p>}
       <button disabled={busy || !mode || health?.ai_provider!=='ollama' || (view.detection?.promptObservation?.status!=='readable' && !hasImage) || (diagramRequired && !hasImage)} onClick={()=>void attempt(async()=>{
         setAssist(undefined);setNotice('Consultando el modelo local…');setAssistActive(true);
         try{setAssist(await rpc('assist',{tabId:selected,includeImage,needsImage,...(imageFile?{image:imageFile}:{})}));}finally{setNotice('');setAssistActive(false);}

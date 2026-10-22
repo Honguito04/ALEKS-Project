@@ -60,7 +60,7 @@ export const assistContextSchema=z.object({
 }).strict();
 export type AssistContext=z.infer<typeof assistContextSchema>;
 export const assistResultSchema=z.object({
-  fingerprint:z.string().regex(/^[a-f0-9]{64}$/),model:z.string().max(200),provider:z.enum(['ollama','deterministic']),provider_calls:z.number().int().min(0).max(1),verified:z.boolean(),
+  fingerprint:z.string().regex(/^[a-f0-9]{64}$/),model:z.string().max(200),provider:z.enum(['ollama','deterministic']),provider_calls:z.number().int().min(0).max(2),verified:z.boolean(),
   verification:z.enum(['none','ordered_prizes']).default('none'),
   proposal:z.object({status:z.enum(['proposed','needs_context','unable_to_solve']),answers:z.array(z.object({field_key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),value:z.string().min(1).max(500),unit:z.string().max(40)}).strict()).max(12),
     explanation:z.string().min(1).max(4000),missing_information:z.array(z.string().trim().min(1).max(300)).max(10)}).strict()

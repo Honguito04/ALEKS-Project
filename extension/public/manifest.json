@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Asistente Matem\u00e1tico \u2014 MVP",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Prueba verificada en simulador. Integraci\u00f3n ALEKS pendiente de validaci\u00f3n.",
   "minimum_chrome_version": "116",
   "permissions": [

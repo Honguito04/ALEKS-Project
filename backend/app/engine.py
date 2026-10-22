@@ -12,7 +12,7 @@ class Unsupported(ValueError):
     pass
 
 
-def expression(text: str, variable: bool = False):
+def expression(text: str, variable: bool = False, allow_pi: bool = False):
     if not text or len(text) > 240:
         raise Unsupported("Expresión vacía o demasiado larga")
     text = text.replace("^", "**")
@@ -31,6 +31,8 @@ def expression(text: str, variable: bool = False):
             return s.Rational(token)
         if isinstance(node, ast.Name) and node.id == "x" and variable:
             return X
+        if isinstance(node, ast.Name) and node.id == "pi" and allow_pi:
+            return s.pi
         if isinstance(node, ast.UnaryOp) and isinstance(node.op, (ast.USub, ast.UAdd)):
             v = visit(node.operand)
             return -v if isinstance(node.op, ast.USub) else v

@@ -150,7 +150,7 @@ async function handleUI(m:Record<string,unknown>) {
           if(state.status!=='pending')throw Error('Estado de consulta inválido.');
           await new Promise(resolve=>setTimeout(resolve,1000));
         }
-        if(response===undefined)throw Error('El modelo tardó más de cuatro minutos. Usa un modelo más pequeño o revisa los recursos disponibles.');
+        if(response===undefined)throw Error('El modelo tardó más de cuatro minutos. Revisa los recursos y el modelo local disponibles.');
         const result=assistResultSchema.parse(response);
         const current=await tab(t.id),fresh=assistContextSchema.parse(await send(t.id,'assistContext',{allowImage:hasImage}));
         if(assistJobs.get(t.id)!==job || current.url!==t.url || context.fingerprint!==fresh.fingerprint || result.fingerprint!==context.fingerprint)throw Error('El ejercicio cambió durante la consulta; se descartó la propuesta.');

@@ -292,3 +292,16 @@ it('rechaza una supuesta verificación del modelo sin comprobador y un falso con
   prepareAssist({...assistResult,proposal:{...assistResult.proposal,status:'needs_context',answers:[]}});
   expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
 });
+it('admite dos pasadas de revisión local con imagen sin atribuir verificación ni habilitar escritura',async()=>{
+  prepareAssist({...assistResult,provider_calls:2});
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false,image:'data:image/jpeg;base64,/9j//9k='});
+  expect(response.ok).toBe(true);expect(response.data.result).toMatchObject({provider_calls:2,verified:false,verification:'none'});
+  expect(response.data.context.can_fill_integer).toBe(false);
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id})).ok).toBe(false);
+});
+it('rechaza revisiones ilimitadas o una segunda pasada que se atribuya verificación matemática',async()=>{
+  prepareAssist({...assistResult,provider_calls:3});
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
+  prepareAssist({...assistResult,provider_calls:2,verified:true});
+  expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
+});
