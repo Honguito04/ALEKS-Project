@@ -16,6 +16,21 @@ async function openPanel(page:Page) {
 }
 const counters=(page:Page)=>page.evaluate(()=>({solves:window.automationTest.solves,submits:window.automationTest.submits,nexts:window.automationTest.nexts}));
 
+test('escribe una fracción, pulsa Verificar y confirma Correcta',async({page})=>{
+  await openPanel(page);await page.evaluate(()=>{window.automationTest.fraction=true;});
+  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
+  await expect(page.getByRole('status')).toContainText('1 correctas confirmadas');
+  expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
+});
+
+test('prepara diagnóstico desde el panel sin enviar respuestas',async({page})=>{
+  await openPanel(page);await page.getByRole('button',{name:'Preparar diagnóstico del editor'}).click();
+  const report=JSON.parse(await page.getByLabel('Diagnóstico del editor',{exact:true}).inputValue());
+  expect(report.rootCount).toBe(1);expect(report.controls.some((item:{label:string})=>item.label==='Verificar')).toBe(true);
+  expect(await counters(page)).toEqual({solves:0,submits:0,nexts:0});
+});
+
 test('el recorrido respeta la necesidad de imagen declarada por el usuario',async({page})=>{
   await openPanel(page);
   await page.getByLabel('El ejercicio necesita una imagen o dibujo').check();

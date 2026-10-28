@@ -31,8 +31,8 @@ test('el panel consulta y permite introducir el entero sin exigir cm³ o pulsar 
   await expect(page.getByText('Ollama conectado · test-model instalado.')).toBeVisible();
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Propuesta de IA · sin verificar')).toBeVisible();
-  await page.getByRole('button',{name:'Introducir entero en el recuadro'}).click();
-  await expect(page.getByRole('status')).toContainText('Entero reflejado');
+  await page.getByRole('button',{name:'Introducir respuesta en el recuadro'}).click();
+  await expect(page.getByRole('status')).toContainText('Respuesta reflejada');
   await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeVisible();
 });
@@ -43,7 +43,7 @@ test('presenta un cálculo exacto como comprobado y disponible para escritura as
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Resultado comprobado · premios por puestos')).toBeVisible();
   await expect(page.getByText('Propuesta de IA · sin verificar')).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toBeVisible();
   await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeVisible();
 });
@@ -56,9 +56,9 @@ test('ofrece introducir el cálculo exacto sin reconocer Verificar y con botones
     window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'ordered_prizes'};
   });
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toBeVisible();
-  await page.getByRole('button',{name:'Introducir entero en el recuadro'}).click();
-  await expect(page.getByRole('status')).toContainText('Entero reflejado');
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toBeVisible();
+  await page.getByRole('button',{name:'Introducir respuesta en el recuadro'}).click();
+  await expect(page.getByRole('status')).toContainText('Respuesta reflejada');
 });
 
 test('muestra por qué un recuadro bloquea la escritura de un resultado comprobado',async({page})=>{
@@ -70,7 +70,7 @@ test('muestra por qué un recuadro bloquea la escritura de un resultado comproba
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Resultado comprobado · premios por puestos')).toBeVisible();
   await expect(page.getByText('El recuadro está deshabilitado o es de solo lectura.',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
 });
 
 for(const verified of [true,false]) {
@@ -79,9 +79,9 @@ for(const verified of [true,false]) {
     if(verified)await page.evaluate(()=>{window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'ordered_prizes'};});
     await page.getByLabel('Incluir captura visible de la pestaña seleccionada').check();
     await page.getByRole('button',{name:'Resolver con IA local'}).click();
-    if(verified)await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toBeVisible();
+    if(verified)await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toBeVisible();
     else {
-      await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+      await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
       await expect(page.getByText('La propuesta depende de una captura.',{exact:false})).toBeVisible();
     }
   });
@@ -93,7 +93,7 @@ test('no presenta la incapacidad del modelo como datos faltantes ni ofrece escri
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('El modelo no obtuvo una solución utilizable',{exact:true})).toBeVisible();
   await expect(page.getByText('Falta información',{exact:true})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
 });
 
 test('una imagen necesaria bloquea la consulta sin deshabilitar la elección de captura',async({page})=>{
@@ -116,7 +116,7 @@ test('adjunta una captura PNG como JPEG local y la retira al cambiar de ejercici
   await expect(page.getByRole('button',{name:'Resolver con IA local'})).toBeEnabled();
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Propuesta de IA · sin verificar')).toBeVisible();
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
   await page.evaluate(()=>{document.querySelector('#algoPrompt')!.textContent='Nuevo ejercicio';});
   await expect(image).toHaveCount(0);
   await expect(page.getByText('Propuesta de IA · sin verificar')).toHaveCount(0);
@@ -141,7 +141,7 @@ test('una revisión visual con cuenta comprobada mantiene el resultado sin verif
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Propuesta de IA · sin verificar')).toBeVisible();
   await expect(page.getByText('1496 cm^3',{exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
 });
 
 test('una propuesta visual incoherente se presenta descartada y sin respuesta disponible',async({page})=>{
@@ -152,5 +152,5 @@ test('una propuesta visual incoherente se presenta descartada y sin respuesta di
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Propuesta visual descartada:',{exact:false})).toBeVisible();
   await expect(page.getByText('Respuesta del ejercicio:',{exact:false})).toHaveCount(0);
-  await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
 });

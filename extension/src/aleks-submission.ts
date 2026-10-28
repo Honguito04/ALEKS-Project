@@ -1,4 +1,4 @@
-import { assistContext,fillAssistInteger } from './aleks-assist';
+import { assistContext,fillAssistAnswer } from './aleks-assist';
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
 import { visible,disabled } from './aleks-dom';
@@ -72,7 +72,7 @@ export class AleksSubmission {
       const roots=[...this.document.querySelectorAll<HTMLElement>('.ansed_root')].filter(root=>visible(root) && !root.closest('#algoPrompt') && root.querySelector('input.ansed_input[aria-label="Answer Editor"]'));
       if(roots.length!==1)throw Error('No hay un único recuadro reconocido para esta entrega.');
       const root=roots[0];
-      await fillAssistInteger(this.document,fingerprint,value,signal);this.check(signal,generation);
+      await fillAssistAnswer(this.document,fingerprint,value,signal);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
       const editor=inspectAleksEditor(this.document);
       const freshTargets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
@@ -128,7 +128,7 @@ export class AleksSubmission {
         if(prompt.status==='readable' && prompt.fingerprint && prompt.fingerprint!==pending.fingerprint && !alerts(this.document).length) {
           const context=await assistContext(this.document);this.check(signal,generation);
           const editor=inspectAleksEditor(this.document);
-          if(context.can_fill_integer && editor.singleEditor.readback.status==='empty') {this.phase='idle';return;}
+          if((context.can_fill_integer || context.can_fill_fraction) && editor.singleEditor.readback.status==='empty') {this.phase='idle';return;}
           if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
             // Un nuevo ejercicio visual también puede terminar el avance. El
             // coordinador decide si su formato admite otra entrega.

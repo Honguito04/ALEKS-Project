@@ -2,7 +2,7 @@
 
 Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 
-**La versión 0.2.0 añade un recorrido ALEKS: resolver, escribir, verificar y avanzar después de una confirmación nueva de «Correcta».** Actualmente admite ejercicios de texto con un entero no negativo de hasta doce dígitos, sin unidad, en un único recuadro vacío compatible. Fracciones, diagramas y varios recuadros requieren intervención manual. La integración utiliza controles aportados por el usuario y pruebas sintéticas; falta comprobar el recorrido en ALEKS real. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
+**La versión 0.3.0 añade un recorrido ALEKS: resolver, escribir, verificar y avanzar después de una confirmación nueva de «Correcta».** Actualmente admite ejercicios de texto con un entero no negativo o una fracción reducida, sin unidad, en un único recuadro vacío compatible (doce dígitos por componente). Diagramas, unidades y varios recuadros requieren intervención manual. La integración utiliza controles aportados por el usuario y pruebas sintéticas; falta comprobar el recorrido en ALEKS real. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
 
 ¿Es tu primera instalación y no tienes experiencia en programación? Sigue la [guía desde cero para Windows](docs/GUIA_DESDE_CERO.md): incluye descarga, instalación, primera prueba y lectura en ALEKS.
 
@@ -86,7 +86,7 @@ Destinos externos: gestores de paquetes durante instalación; `accounts.google.c
 | Volumen de cilindro recto u oblicuo | Radio y altura perpendicular positivos, valor de pi explícito, dimensiones en la misma unidad (mm, cm o m), unidad cúbica verificada | Número y selector de unidad del simulador |
 | Formato decimal | 0–8 decimales; redondeo final con mitades alejadas de cero | Texto decimal |
 
-La tabla anterior describe el simulador. El recorrido ALEKS admite únicamente el editor de entero único descrito al inicio. Quedan fuera de la escritura automática los gráficos interactivos, construcción geométrica, OCR, matrices, múltiples campos numéricos, fracciones y unidades en ALEKS, soluciones complejas, infinitos conjuntos y campos de conjunto vacío. En volúmenes se exige la unidad cúbica correspondiente a las dimensiones y se selecciona por separado; en otras familias las unidades se conservan como metadatos. No hay conversión entre unidades o interpretación de unidades arbitrarias. La gramática admite números, `x`, `+ - * / ^` y `sqrt(constante)`; no admite multiplicación implícita o funciones arbitrarias.
+La tabla anterior describe el simulador. El recorrido ALEKS admite únicamente el editor numérico único descrito al inicio. Quedan fuera de la escritura automática los gráficos interactivos, construcción geométrica, OCR, matrices, múltiples campos numéricos, unidades en ALEKS, soluciones complejas, infinitos conjuntos y campos de conjunto vacío. En volúmenes se exige la unidad cúbica correspondiente a las dimensiones y se selecciona por separado; en otras familias las unidades se conservan como metadatos. No hay conversión entre unidades o interpretación de unidades arbitrarias. La gramática admite números, `x`, `+ - * / ^` y `sqrt(constante)`; no admite multiplicación implícita o funciones arbitrarias.
 
 ## Diseño y seguridad del flujo
 
@@ -119,9 +119,14 @@ Las pruebas del navegador ejecutan **el adaptador y controlador de producción c
 
 Consulta [docs/VALIDACION.md](docs/VALIDACION.md) para los resultados ejecutados y pendientes, y [docs/PLAN.md](docs/PLAN.md) para criterios y decisiones.
 
-## Recorrido ALEKS 0.2.0
+## Recorrido ALEKS 0.3.0
 
-Si ya tienes Ollama y el backend funcionando, sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md#actualizar-al-recorrido-020-en-windows). Se actualizan `extension/src` y `extension/public`, se ejecuta `npm.cmd run build`, se recarga la extensión en `chrome://extensions` y se actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`.
+El ejercicio de dos cajas se comprueba exactamente: `4/(1+4) × 3/(9+3) = 1/5`. Este comprobador reconoce la plantilla completa y variantes numéricas, sin llamar a Ollama. Otros problemas siguen usando el modelo. El lector y el escritor admiten fracciones reducidas `a/b`: el usuario confirmó que ALEKS convierte ese texto en una fracción vertical. La extensión exige leer ambos componentes antes de verificar; un `input.value` o el texto literal `1/5` sin conversión no acreditan escritura.
+
+Cuando el modelo no devuelve una respuesta, el recorrido muestra su motivo concreto. **Preparar diagnóstico del editor** y **Copiar diagnóstico** producen un informe acotado de símbolos, posiciones y botones conocidos, sin HTML completo, enlaces de sesión o datos de cuenta. No se otorga acceso genérico a funciones internas de ALEKS.
+
+
+Si ya tienes Ollama y el backend funcionando, sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md). Se actualizan `backend`, `extension/src` y `extension/public`, se reinicia el backend, se ejecuta `npm.cmd run build`, se recarga la extensión en `chrome://extensions` y se actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`.
 
 1. Abre el ejercicio en `https://latam-awu.aleks.com` y deja vacío su recuadro. En el panel pulsa **Autorizar sitio ALEKS**, selecciona esa pestaña y pulsa **Leer actividad seleccionada**.
 2. Comprueba que el backend y Ollama estén disponibles. Entra en demostración o inicia sesión en el asistente; ALEKS utiliza tu sesión propia en su pestaña.

@@ -21,6 +21,7 @@ function App() {
   const [assist,setAssist]=useState<AssistView>(),[includeImage,setImage]=useState(false);
   const [imageFile,setImageFile]=useState<string>(),[needsImage,setNeedsImage]=useState(false);
   const [assistActive,setAssistActive]=useState(false);
+  const [editorReport,setEditorReport]=useState('');
   const [automation,setAutomation]=useState<AutomationView>();
   const [autoExercises,setAutoExercises]=useState(10),[autoMinutes,setAutoMinutes]=useState(15),[autoCalls,setAutoCalls]=useState(20);
   const working=busy || Boolean(automation?.active);
@@ -42,7 +43,7 @@ function App() {
     await attempt(refresh);
   }
   useEffect(()=>{void chrome.permissions.contains({origins:[`${BACKEND}/*`]}).then(p=>{if(p) void attempt(refresh);});},[]);
-  useEffect(()=>{setImageFile(undefined);setNeedsImage(false);setAssist(undefined);},[selected,view.detection?.promptObservation?.fingerprint]);
+  useEffect(()=>{setImageFile(undefined);setNeedsImage(false);setAssist(undefined);setEditorReport('');},[selected,view.detection?.promptObservation?.fingerprint]);
   useEffect(()=>{
     if(!selected || !view.detection) return;
     const timer=setInterval(()=>{void rpc('status',{tabId:selected}).then(status=>{setView(status);setAutomation(status.automation);}).catch(e=>setError(e.message));},1000);
@@ -94,7 +95,7 @@ function App() {
   const canFill=Boolean(assist && fillBlockers.length===0);
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
-    <div className="banner">ALEKS · Recorrido automático disponible para un entero en un recuadro. Se avanza cuando ALEKS confirma «Correcta».</div>
+    <div className="banner">ALEKS · Recorrido automático para enteros y fracciones en un recuadro. Se avanza cuando ALEKS confirma «Correcta».</div>
     <section><div className="section-label">01 / CONEXIÓN</div>
       <div className="status"><span className={health?'dot on':'dot'}/><strong>{health?'Backend conectado · SymPy disponible':'Backend sin comprobar'}</strong></div>
       <p className="small">IA: {health?.ai_configured?'configurada':'opcional, sin configurar'} · Google: {health?.google_configured?'configurado':'pendiente de configuración'}</p>
@@ -159,22 +160,29 @@ function App() {
       })}>Resolver con IA local</button>
       {assistActive && <button className="danger" onClick={()=>void rpc('cancelAssist',{tabId:selected}).catch(error=>setError(error.message))}>Cancelar operación de IA</button>}
       {health?.ai_provider!=='ollama' && <p className="small">Activa Ollama en .env para habilitar esta función. Consulta docs/IA_GENERAL.md.</p>}
-      {assist && <div className="inset"><p><strong>{assist.result.verified?'Resultado comprobado · premios por puestos':assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':assist.result.proposal.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}</strong></p>
+      {assist && <div className="inset"><p><strong>{assist.result.verified?(assist.result.verification==='independent_boxes'?'Resultado comprobado · probabilidad de dos cajas':'Resultado comprobado · premios por puestos'):assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':assist.result.proposal.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}</strong></p>
         {assist.result.proposal.answers.map(answer=><p key={answer.field_key}>{assist.context.fields.find(field=>field.key===answer.field_key)?.label || answer.field_key}: <strong>{answer.value} {answer.unit}</strong></p>)}
         <p>{assist.result.proposal.explanation}</p>{assist.result.proposal.missing_information.map((item,i)=><p key={i}>{item}</p>)}
         {canFill ? <><button disabled={working} onClick={()=>void attempt(async()=>{
           const proposal=assist;setAssist(undefined);setAssistActive(true);
           try {
             await rpc('assistFill',{tabId:selected,proposalId:proposal.id});
-            setView(await rpc('status',{tabId:selected}));setNotice('Entero reflejado en el recuadro. No se pulsó Verificar; revisa el contenido antes de entregarlo.');
+            setView(await rpc('status',{tabId:selected}));setNotice('Respuesta reflejada en el recuadro. No se pulsó Verificar; revisa el contenido antes de entregarlo.');
           }finally{setAssistActive(false);}
-        })}>Introducir entero en el recuadro</button><button disabled={working || diagramRequired || hasImage} onClick={()=>void startAutomation(assist.id)}>Responder, verificar y continuar</button></>:assist.result.proposal.status==='proposed' && <><p className="small">Escritura asistida no disponible:</p><ul>{fillBlockers.map(blocker=><li key={blocker}>{fillBlockerMessages[blocker]}</li>)}</ul></>}
+        })}>Introducir respuesta en el recuadro</button><button disabled={working || diagramRequired || hasImage} onClick={()=>void startAutomation(assist.id)}>Responder, verificar y continuar</button></>:assist.result.proposal.status==='proposed' && <><p className="small">Escritura asistida no disponible:</p><ul>{fillBlockers.map(blocker=><li key={blocker}>{fillBlockerMessages[blocker]}</li>)}</ul></>}
       </div>}
+    </section>}
+    {aleks && <section aria-label="Diagnóstico de controles ALEKS">
+      <div className="section-label">CONTROLES DEL EJERCICIO</div>
+      <p className="small">Puedes copiar un diagnóstico del editor y sus botones para revisar formatos que todavía fallan. Incluye símbolos matemáticos y disposición de controles; excluye datos de cuenta, enlaces y el contenido de otros menús.</p>
+      <button className="secondary" disabled={working} onClick={()=>void attempt(async()=>{setEditorReport(JSON.stringify(await rpc('editorDiagnostics',{tabId:selected}),null,2));})}>Preparar diagnóstico del editor</button>
+      {editorReport && <><textarea aria-label="Diagnóstico del editor" value={editorReport} readOnly rows={8}/>
+      <button className="secondary" onClick={()=>void navigator.clipboard.writeText(editorReport).then(()=>setNotice('Diagnóstico copiado. Puedes pegarlo en el chat.')).catch(()=>setError('Selecciona el texto del diagnóstico y cópialo con Ctrl+C.'))}>Copiar diagnóstico</button></>}
     </section>}
     {aleks && <section aria-label="Recorrido automático ALEKS">
       <div className="section-label">RECORRIDO AUTOMÁTICO ALEKS</div>
       <p>Resuelve, escribe, pulsa «Verificar» o «Entregar» y espera la confirmación de ALEKS. Después de «Correcta», pulsa «Siguiente» o «Siguiente tema» y continúa.</p>
-      <p className="small">Admite un entero no negativo, sin unidad, en un único recuadro vacío. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas u otros formatos. Mantén el panel abierto durante el recorrido.</p>
+      <p className="small">Admite enteros y fracciones reducidas no negativas, sin unidad, en un único recuadro vacío. Escribe a/b y comprueba que ALEKS lo represente como fracción vertical. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas o formatos que aún no reconoce. Mantén el panel abierto durante el recorrido.</p>
       <div className="limits">
         <label>Máximo de respuestas<input aria-label="Máximo de respuestas ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))}/></label>
         <label>Máximo de minutos<input aria-label="Máximo de minutos ALEKS" type="number" min="1" max="120" disabled={working} value={autoMinutes} onChange={e=>setAutoMinutes(Number(e.target.value))}/></label>

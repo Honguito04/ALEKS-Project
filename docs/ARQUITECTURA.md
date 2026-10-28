@@ -1,5 +1,12 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.3.0
+
+`answer-format.ts` define una gramática cerrada de enteros no negativos y fracciones reducidas, con doce dígitos por componente. `fillAssistAnswer` solicita escritura de `a/b`; `aleks-single-editor` comprueba dos filas alineadas, dentro del editor, con denominador positivo y fracción reducida. El usuario confirmó conversión manual automática de este formato. No se usa código generado, funciones internas ni permisos adicionales.
+
+`can_fill_fraction` es capacidad local de la extensión; el worker la excluye del transporte al modelo. `AssistResult.verification` añade `independent_boxes` para el comprobador exacto de dos cajas. Los motivos de incapacidad del modelo se conservan en el mensaje del recorrido. `editor-diagnostics.ts` exporta sólo un inventario acotado de raíces/árboles y controles conocidos; excluye URLs, IDs dinámicos, texto ajeno y buffers. El panel permite copiarlo explícitamente.
+
+
 ## Recorrido ALEKS 0.2.0
 
 `aleks-automation.ts` coordina por fases las consultas `/assist`, la entrega y el avance. El panel abierto pide una fase por mensaje; cada fase termina antes de programar la siguiente. Límites explícitos: ejercicios, minutos y llamadas IA. El worker almacena únicamente progreso en `storage.session`; las propuestas quedan en memoria. Al reiniciarse el worker se marca detenido y se cancela el contenido, sin repetir entregas.

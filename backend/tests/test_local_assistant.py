@@ -12,6 +12,10 @@ CONTEXT = {"fingerprint": "a" * 64, "statement": "Hay 4 nadadores y premios para
 PROPOSAL = {"status": "proposed", "answers": [{"field_key": "answer", "value": "12", "unit": ""}],
             "explanation": "4 posibilidades para primero y 3 para segundo: 4 × 3 = 12.", "missing_information": []}
 SWIMMERS = "Hay 4 nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?"
+BOXES = ("En una caja hay 1 lápiz y 4 bolígrafos. En una segunda caja hay 9 marcadores y 3 crayones. "
+         "Se elige al azar un artículo de cada una de las cajas. ¿Cuál es la probabilidad de que de la primera caja "
+         "se elija un bolígrafo y que de la segunda caja se seleccione un crayón? "
+         "Escribir la respuesta como una fracción en forma reducida.")
 SOLID = {"status": "proposed", "answers": [{"field_key": "answer", "value": "1496", "unit": "cm^3"}],
          "explanation": "Prisma rectangular completo menos un hueco rectangular que atraviesa la profundidad.",
          "missing_information": [], "observations": ["Ancho total: 13 cm", "Altura total: 15 cm", "Profundidad: 8 cm",
@@ -380,3 +384,57 @@ def test_verified_output_cannot_come_from_a_model_proposal():
                      verified=True, verification="ordered_prizes")
     with pytest.raises(ValueError):
         AssistProposal.model_validate({**PROPOSAL, "missing_information": ["Falta un dato"]})
+
+
+@pytest.mark.parametrize("route", ["/assist", "/assist/jobs"])
+def test_box_regression_returns_fraction_without_asking_the_model(client, demo_headers, ollama, route):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({"status": "unable_to_solve", "answers": [],
+        "explanation": "No hay una respuesta estructurada.", "missing_information": []})
+    # La incapacidad de escribir enteros no significa falta de datos matemáticos.
+    context = {**CONTEXT, "statement": BOXES, "can_fill_integer": False}
+    result = client.post(route, json={"context": context}, headers=demo_headers)
+    if route.endswith("jobs"):
+        path = route + "/" + result.json()["id"]
+        for _ in range(20):
+            result = client.get(path, headers=demo_headers)
+            if result.json()["status"] != "pending": break
+        body = result.json()["result"]
+    else:
+        assert result.status_code == 200
+        body = result.json()
+    assert body["provider"] == "deterministic" and body["provider_calls"] == 0
+    assert body["verified"] is True and body["verification"] == "independent_boxes"
+    assert body["proposal"]["answers"] == [{"field_key": "answer", "value": "1/5", "unit": ""}]
+    assert "(4/5) × (3/12) = 1/5" in body["proposal"]["explanation"]
+    assert calls == []
+
+
+def test_box_checker_does_not_override_a_required_diagram(client, demo_headers, ollama):
+    calls, response = ollama
+    response["visual_draft"] = {"status": "needs_context", "answers": [], "explanation": "Diagrama sin datos suficientes.",
+        "missing_information": ["Contenido del dibujo"], "observations": [], "calculations": []}
+    context = {**CONTEXT, "statement": BOXES, "diagram_required": True}
+    without = client.post("/assist", json={"context": context}, headers=demo_headers).json()
+    assert without["verified"] is False and without["proposal"]["status"] == "needs_context"
+    assert not calls
+    with_image = client.post("/assist", json={"context": context, "image": IMAGE}, headers=demo_headers).json()
+    assert with_image["verified"] is False and with_image["verification"] == "none"
+    assert with_image["proposal"]["status"] == "needs_context" and with_image["provider_calls"] == 1
+
+
+def test_boxes_with_extra_conditions_fall_back_to_the_model_as_unverified(client, demo_headers, ollama):
+    calls, response = ollama
+    proposed = {**PROPOSAL, "answers": [{"field_key": "answer", "value": "2/7", "unit": ""}]}
+    response["message"]["content"] = json.dumps(proposed)
+    result = client.post("/assist", json={"context": {**CONTEXT, "statement": BOXES + " Se cambia el contenido de las cajas."}}, headers=demo_headers).json()
+    assert result["verified"] is False and result["provider_calls"] == 1
+    assert result["proposal"]["answers"] == proposed["answers"]
+    instructions = json.loads(calls[-1].content)["messages"][0]["content"]
+    assert "cadena a/b" in instructions and "estado del editor no es un dato matemático faltante" in instructions
+
+
+def test_model_cannot_claim_independent_box_verification():
+    with pytest.raises(ValueError):
+        AssistResult(fingerprint="a" * 64, proposal=AssistProposal.model_validate(PROPOSAL), model="test", provider_calls=1,
+                     verified=True, verification="independent_boxes")

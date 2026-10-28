@@ -1,4 +1,5 @@
 import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
+import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { captureFillPolicy,requireAssistImage,proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
 
@@ -142,7 +143,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
         await automationStatus(t.id);starting.signal.throwIfAborted();
         const context=assistContextSchema.parse(await send(t.id,'assistContext'));
         starting.signal.throwIfAborted();
-        if(!context.can_fill_integer)throw Error('El recorrido necesita un único recuadro vacío para un entero y un enunciado sin diagramas.');
+        if(!context.can_fill_integer && !context.can_fill_fraction)throw Error('El recorrido necesita un único recuadro vacío para un entero o fracción y un enunciado sin diagramas.');
         const seed=m.proposalId===undefined?undefined:assistProposals.get(t.id);
         if(m.proposalId!==undefined && (!seed || seed.id!==m.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta cambió; vuelve a consultar.');
         const ensureTab=async()=>{const current=await tab(t.id);if(current.url!==t.url || !await auth())throw Error('La pestaña o la sesión cambió. Se detuvo el recorrido.');};
@@ -159,7 +160,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           save:async view=>{
             // Solo progreso: nunca guardar el enunciado, imagen ni respuesta.
             const {answer,...progress}=view;
-            await chrome.storage.session.set({[automationKey(t.id)]:progress});
+            await chrome.storage.session.set({[automationKey(t.id)]:{...progress,message:view.phase==='DETENIDO'?'Recorrido detenido. Revisa el resultado en ALEKS.':view.message}});
           }
         },seed);
         await ensureTab();starting.signal.throwIfAborted();
@@ -182,6 +183,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       if(run)return run.stop();
       await cancelTabAssist(id);return automationStatus(id);
     }
+    case 'editorDiagnostics': return send((await tab(m.tabId)).id,'editorDiagnostics');
     case 'localAIStatus': return api('/ai/local/status','GET',undefined,true);
     case 'assist': {
       const t=await tab(m.tabId);
@@ -215,7 +217,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
         // Peticiones cortas: MV3 puede terminar un worker cuyo fetch no recibe
         // respuesta durante 30 s. No mantenemos un fetch abierto a la inferencia.
         // Los motivos de escritura son diagnóstico local, no datos del modelo.
-        const {fill_blockers,...modelContext}=context;
+        const {fill_blockers,can_fill_fraction,...modelContext}=context;
         if(!isCurrent() || assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
         const started=await api('/assist/jobs','POST',{context:modelContext,...(image?{image}:{})},true);
         if(typeof started?.id!=='string' || !/^[a-f0-9-]{36}$/.test(started.id))throw Error('Identificador de consulta inválido.');
@@ -254,7 +256,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       const blockers=proposalFillBlockers(proposal);
       if(blockers.length)throw Error(blockers.map(blocker=>fillBlockerMessages[blocker]).join(' '));
       const answers=proposal.result.proposal.answers;
-      if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !/^(0|[1-9]\d{0,11})$/.test(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero sin unidad.');
+      if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !parseSupportedAnswer(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero o fracción sin unidad.');
       assistWriters.add(t.id);
       try{return await send(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answers[0].value});}
       finally{assistWriters.delete(t.id);}

@@ -51,22 +51,22 @@ export interface SingleEditorObservation {
   readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string};
 }
 export const fillBlockerSchema=z.enum(['unreadable_prompt','editor_missing','multiple_editors','editor_structure','editor_disabled',
-  'editor_not_empty','unsupported_readback','result_present','diagram_required','image_based_proposal','answer_format','no_answer','unknown']);
+  'editor_not_empty','unsupported_readback','result_present','diagram_required','image_based_proposal','answer_format','no_answer','fraction_control','unknown']);
 export type FillBlocker=z.infer<typeof fillBlockerSchema>;
 export const assistContextSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),statement:z.string().min(1).max(8000),
   fields:z.array(z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().min(1).max(200)}).strict()).min(1).max(12),
-  diagram_required:z.boolean(),can_fill_integer:z.boolean(),fill_blockers:z.array(fillBlockerSchema).max(13).default([])
+  diagram_required:z.boolean(),can_fill_integer:z.boolean(),can_fill_fraction:z.boolean().optional(),fill_blockers:z.array(fillBlockerSchema).max(14).default([])
 }).strict();
 export type AssistContext=z.infer<typeof assistContextSchema>;
 export const assistResultSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),model:z.string().max(200),provider:z.enum(['ollama','deterministic']),provider_calls:z.number().int().min(0).max(2),verified:z.boolean(),
-  verification:z.enum(['none','ordered_prizes']).default('none'),
+  verification:z.enum(['none','ordered_prizes','independent_boxes']).default('none'),
   proposal:z.object({status:z.enum(['proposed','needs_context','unable_to_solve']),answers:z.array(z.object({field_key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),value:z.string().min(1).max(500),unit:z.string().max(40)}).strict()).max(12),
     explanation:z.string().min(1).max(4000),missing_information:z.array(z.string().trim().min(1).max(300)).max(10)}).strict()
 }).strict().superRefine((result,ctx)=>{
   const exact=result.provider==='deterministic';
-  if(result.verified!==exact || (result.verification==='ordered_prizes')!==exact || (exact && result.provider_calls!==0))ctx.addIssue({code:'custom',message:'Verificación sin comprobador independiente'});
+  if(result.verified!==exact || (result.verification!=='none')!==exact || (exact && result.provider_calls!==0))ctx.addIssue({code:'custom',message:'Verificación sin comprobador independiente'});
   const proposal=result.proposal;
   if((proposal.status==='proposed')!==Boolean(proposal.answers.length) || (proposal.status==='needs_context')!==Boolean(proposal.missing_information.length) ||
     new Set(proposal.answers.map(answer=>answer.field_key)).size!==proposal.answers.length || (exact && proposal.status!=='proposed'))ctx.addIssue({code:'custom',message:'Estado de propuesta incoherente'});

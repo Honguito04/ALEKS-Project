@@ -2,6 +2,16 @@
 
 Actualización: 28 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
+## Revisión 0.3.0: fracciones (28 de octubre)
+
+- Backend: **164 pruebas pasadas**, incluidas 28 nuevas sobre probabilidad de dos cajas, `/assist`, trabajos y formato de salida; advertencia conocida de Starlette/httpx.
+- Frontend: compilación y TypeScript correctos; **114 pruebas unitarias pasadas**.
+- Navegador: **111 pruebas afectadas pasadas** (contexto, lectura entera/fracción, entrega, panel y diagnóstico). Incluyen conversión de a/b, fracción errónea/no representada, cancelación, ausencia de menú, envío confirmado y diagnóstico sin HTML/buffers/URLs.
+
+El usuario confirmó que escribir manualmente `1/5` crea una fracción vertical. El escritor solicita esa conversión con eventos públicos y exige una lectura visual coincidente; el comportamiento de eventos sintéticos en su instalación sigue pendiente. Las pruebas simulan el editor, Chrome y las respuestas de ALEKS. No se evaluó una sesión autenticada del usuario ni un modelo real de Ollama desde este entorno. No se añadieron permisos para funciones internas ni acceso global al navegador. El diagnóstico se prepara y copia por acción expresa.
+
+La plantilla de las dos cajas calcula exactamente `4/(1+4) × 3/(9+3) = 1/5` y variantes numéricas; rechaza condiciones y categorías no reconocidas. No se ha añadido una respuesta fija ni un solucionador universal. Los apartados siguientes conservan resultados de revisiones anteriores.
+
 | Comprobación | Resultado observado |
 | --- | --- |
 | `bash scripts/setup.sh` | Correcta, incluida reinstalación con lockfiles y conservación de `.env` existente |

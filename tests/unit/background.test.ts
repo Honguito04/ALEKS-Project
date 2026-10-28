@@ -130,6 +130,17 @@ it('el backend que falla no crea una identidad de demostración ficticia',async(
 const assistContext={fingerprint:'b'.repeat(64),statement:'4 nadadores, dos premios distintos.',fields:[{key:'answer',label:'Respuesta'}],diagram_required:false,can_fill_integer:true};
 const assistResult={fingerprint:assistContext.fingerprint,model:'local-test',provider:'ollama',provider_calls:1,verified:false,verification:'none',
   proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'4 × 3',missing_information:[]}};
+it('acepta la fracción comprobada de dos cajas y mantiene sus capacidades fuera del backend',async()=>{
+  prepareAssist({...assistResult,provider:'deterministic',provider_calls:0,verified:true,verification:'independent_boxes',
+    proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'1/5',unit:''}]}});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,data:message.type==='assistContext'?{...assistContext,can_fill_fraction:true}:{written:true}}));
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(response.ok).toBe(true);expect(response.data.result.verification).toBe('independent_boxes');
+  expect(JSON.parse(fetchMock.mock.calls[0][1].body).context).not.toHaveProperty('can_fill_fraction');
+  const filled=await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id});
+  expect(filled.ok).toBe(true);
+  expect(tabsSend.mock.calls.at(-1)?.[1]).toMatchObject({type:'assistFill',value:'1/5'});
+});
 function prepareAssist(result=assistResult) {
   url=ALEKS_ACTIVITY+'/exercise-fixture';
   tabsSend.mockResolvedValue({ok:true,data:assistContext});

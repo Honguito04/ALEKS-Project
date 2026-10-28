@@ -2,7 +2,8 @@ import { Controller } from './controller';
 import { SimulatorAdapter, PendingAleksAdapter } from './adapters';
 import { simulatorURL, type Limits, type Run, limitsSchema } from './shared';
 import { AleksSubmission } from './aleks-submission';
-import { assistContext,fillAssistInteger } from './aleks-assist';
+import { editorDiagnostics } from './editor-diagnostics';
+import { assistContext,fillAssistAnswer } from './aleks-assist';
 
 declare global { interface Window { __mathAssistantLoaded?:boolean } }
 if(!window.__mathAssistantLoaded) {
@@ -35,6 +36,7 @@ if(!window.__mathAssistantLoaded) {
     void (async()=>{
       await initialized;
       if(message.type==='status') return {detection:await adapter.detect(),run:controller.run,exercise:controller.exercise,solution:controller.solution};
+      if(message.type==='editorDiagnostics' && !simulatorURL(location.href))return editorDiagnostics(document);
       if(message.type==='assistContext' && !simulatorURL(location.href))return assistContext(document,message.allowImage===true);
       if(message.type==='pause') {automationId=undefined;assistAbort?.abort();submission.reset();await controller.pause();return true;}
       if(message.type==='stop') {automationId=undefined;assistAbort?.abort();submission.reset();await controller.stop();return true;}
@@ -56,7 +58,7 @@ if(!window.__mathAssistantLoaded) {
         }
         if(message.type==='assistFill' && !simulatorURL(location.href)) {
           if(typeof message.fingerprint!=='string' || typeof message.value!=='string')throw Error('Propuesta inválida');
-          assistAbort=new AbortController();return await fillAssistInteger(document,message.fingerprint,message.value,assistAbort.signal);
+          assistAbort=new AbortController();return await fillAssistAnswer(document,message.fingerprint,message.value,assistAbort.signal);
         }
         else if(message.type==='start') await controller.start(limitsSchema.parse(message.limits) as Limits,message.authorization);
         else if(message.type==='resume') await controller.resume();

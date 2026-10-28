@@ -2,6 +2,35 @@
 
 El objetivo es ampliar la cobertura por interpretación del contenido, sin programar una regla para cada enunciado. Una IA multimodal puede trabajar con texto, fórmulas y diagramas. La extensión puede introducir respuestas y pulsar controles, pero necesita comprobar lo que la interfaz registró. Ningún modelo garantiza resolver todos los ejercicios ni manejar cualquier editor.
 
+## Actualización 0.3.0: fracciones y diagnóstico
+
+La escritura admite un entero no negativo o una fracción reducida `a/b`, con hasta doce dígitos por componente, denominador positivo, sin unidad y en un único recuadro vacío. El usuario confirmó que escribir `1/5` crea una fracción vertical en su editor. El escritor solicita esa conversión una vez y comprueba numerador y denominador en dos filas antes de pulsar Verificar. No vuelve a intentarlo con otra estrategia si falla. Las pruebas de eventos son sintéticas: falta comprobar la aceptación de esos eventos en Chrome del usuario.
+
+El nuevo comprobador `independent_boxes` obtiene `4/5 × 3/12 = 1/5` para la captura recibida, usando fracciones exactas y cero llamadas a Ollama. Exige el enunciado completo de la plantilla de dos cajas, categorías reconocidas y coincidencia de los objetos pedidos; no interpreta restricciones extra ni sustituye al modelo en problemas distintos. En este ejercicio todos los datos están en el texto: no requiere captura.
+
+El recorrido conserva la explicación y los datos faltantes que devuelve el modelo si no propone una respuesta. El panel añade **Preparar diagnóstico del editor** y **Copiar diagnóstico**: comparte únicamente estructura acotada, símbolos matemáticos, geometría relativa y botones conocidos. No incluye input.value, enlaces, HTML completo, cookies ni menús de cuenta. Se copia por acción del usuario y no se envía a Ollama.
+
+Para instalar 0.3.0:
+
+1. Descarga el ZIP actualizado de main. Detén el backend con Ctrl+C.
+2. Copia **backend** y **extension** al proyecto original reemplazando archivos. Conserva `.env`, `.venv` y `node_modules`.
+3. En PowerShell, desde la carpeta principal, ejecuta `npm.cmd run build`.
+4. Arranca el backend:
+
+   ```powershell
+   $env:AI_PROVIDER = "ollama"
+   $env:AI_MODEL = "qwen3-vl:4b"
+   .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+   ```
+
+5. Recarga el asistente en `chrome://extensions` y comprueba **0.3.0**. Pulsa F5 en ALEKS y **Leer actividad seleccionada**.
+6. Para el ejercicio de las cajas, deja vacío el recuadro y la captura desmarcada. Pulsa **Resolver con IA local**: debe mostrar **Resultado comprobado · probabilidad de dos cajas**, **1/5**. Usa **Introducir respuesta en el recuadro** para probar únicamente la escritura o **Responder, verificar y continuar** para iniciar el recorrido.
+7. Si la escritura no se refleja, pulsa **Preparar diagnóstico del editor** y **Copiar diagnóstico** para compartir el estado actual. No hace falta pegar toda la página.
+
+No hay acceso desde este entorno al Chrome autenticado del usuario. Los permisos del sitio permiten interactuar con controles de la pestaña; no aseguran compatibilidad con todos los editores, diagramas o actividades. El recorrido sigue limitado a los formatos descritos.
+
+Los apartados siguientes documentan el comportamiento anterior de 0.2.0 y la instalación inicial; para actualizar usa los pasos de 0.3.0 anteriores.
+
 ## Estado actual
 
 La versión **0.2.0** incorpora **Iniciar recorrido automático** y **Responder, verificar y continuar**. Resuelve ejercicios compatibles, escribe la respuesta, pulsa Verificar o Entregar y avanza cuando ALEKS confirma una nueva devolución Correcta asociada a ese envío. Conserva **Resolver con IA local**, **Comprobar Ollama** e **Introducir entero en el recuadro** para consultar o escribir por separado. La consulta no está limitada a las familias matemáticas del simulador: envía texto y, si lo eliges, una captura visible o una imagen adjunta a Ollama en tu computadora. El modelo devuelve una propuesta por campo, unidades y explicación, o indica qué información falta.

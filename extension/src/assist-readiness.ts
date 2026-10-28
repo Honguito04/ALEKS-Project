@@ -1,3 +1,4 @@
+import { parseSupportedAnswer } from './answer-format';
 import type { AssistContext,AssistResult,AssistView,FillBlocker } from './shared';
 
 export const fillBlockerMessages:Record<FillBlocker,string>={
@@ -11,29 +12,31 @@ export const fillBlockerMessages:Record<FillBlocker,string>={
   result_present:'Se observa un resultado o un botón de avance. Abre un ejercicio sin resolver y vuelve a consultar.',
   diagram_required:'Esta respuesta depende de un diagrama que la escritura asistida no valida.',
   image_based_proposal:'La propuesta depende de una captura. Si el ejercicio se resuelve solo con el texto, desmarca la captura y vuelve a consultar.',
-  answer_format:'La escritura actual admite un entero no negativo de hasta doce dígitos, sin unidad, en un único recuadro.',
+  answer_format:'La escritura admite un entero o una fracción reducida no negativa, sin unidad, en un único recuadro (hasta doce dígitos por componente).',
+  fraction_control:'La lectura actual no confirmó un editor vacío compatible con fracciones. Vuelve a leer la actividad.',
   no_answer:'No hay una respuesta estructurada disponible para introducir.',
   unknown:'Esta consulta no confirmó que pueda escribir. Vuelve a leer la actividad y consultar.'
 };
 
 export function requireAssistImage(context:AssistContext,required:boolean):AssistContext {
   if(!required || context.diagram_required)return context;
-  return {...context,diagram_required:true,can_fill_integer:false,fill_blockers:[...new Set([...context.fill_blockers,'diagram_required' as const])]};
+  return {...context,diagram_required:true,can_fill_integer:false,can_fill_fraction:false,fill_blockers:[...new Set([...context.fill_blockers,'diagram_required' as const])]};
 }
 
 export function captureFillPolicy(context:AssistContext,result:AssistResult,includeImage:boolean):AssistContext {
-  const textVerified=result.verified && result.provider==='deterministic' && result.verification==='ordered_prizes' && !context.diagram_required;
+  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes'].includes(result.verification) && !context.diagram_required;
   if(!includeImage || textVerified)return context;
-  return {...context,can_fill_integer:false,fill_blockers:[...new Set([...context.fill_blockers,'image_based_proposal' as const])]};
+  return {...context,can_fill_integer:false,can_fill_fraction:false,fill_blockers:[...new Set([...context.fill_blockers,'image_based_proposal' as const])]};
 }
 
 /** Un mismo contrato de elegibilidad para el botón del panel y el worker. */
 export function proposalFillBlockers(view:AssistView):FillBlocker[] {
   const blockers=[...view.context.fill_blockers];
-  if(!view.context.can_fill_integer && !blockers.length)blockers.push('unknown');
+  if(!view.context.can_fill_integer && !view.context.can_fill_fraction && !blockers.length)blockers.push('unknown');
   const {proposal}=view.result;
   if(proposal.status!=='proposed')blockers.push('no_answer');
   else if(proposal.answers.length!==1 || proposal.answers[0].field_key!=='answer' || proposal.answers[0].unit!=='' ||
-    !/^(0|[1-9]\d{0,11})$/u.test(proposal.answers[0].value))blockers.push('answer_format');
+    !parseSupportedAnswer(proposal.answers[0].value))blockers.push('answer_format');
+  else if(parseSupportedAnswer(proposal.answers[0].value)?.kind==='fraction' && !view.context.can_fill_fraction)blockers.push('fraction_control');
   return [...new Set(blockers)];
 }

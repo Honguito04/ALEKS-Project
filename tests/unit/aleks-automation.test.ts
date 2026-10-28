@@ -21,6 +21,20 @@ function harness(overrides:Partial<AutomationLimits>={},seed?:AssistView) {
 afterEach(()=>vi.useRealTimers());
 
 describe('recorrido ALEKS por fases',()=>{
+  it('conserva la explicación del modelo cuando falta una respuesta utilizable',async()=>{
+    const {run,deps}=harness();const candidate=proposal();
+    candidate.result.proposal={status:'needs_context',answers:[],explanation:'No se distingue el denominador.',missing_information:['Valor del denominador']};
+    deps.solve=vi.fn(async()=>candidate);await run.step();
+    expect(run.view).toMatchObject({phase:'DETENIDO',aiCalls:1});
+    expect(run.view.message).toContain('No se distingue el denominador');expect(run.view.message).toContain('Valor del denominador');
+    expect(deps.submit).not.toHaveBeenCalled();
+  });
+
+  it('acepta una fracción reducida sólo con capacidad del editor confirmada',async()=>{
+    const candidate=proposal();candidate.context.can_fill_fraction=true;candidate.result.proposal.answers[0].value='1/5';
+    const {run,deps}=harness({maxExercises:1},candidate);await run.step();
+    expect(run.view).toMatchObject({accepted:1,phase:'COMPLETADO'});expect(deps.submit).toHaveBeenCalledWith(candidate);
+  });
   it('resuelve, entrega y avanza solo después de Correcta, hasta el límite',async()=>{
     const {run,deps,saved}=harness();
     expect(run.view.phase).toBe('LEYENDO');
@@ -69,7 +83,7 @@ describe('recorrido ALEKS por fases',()=>{
 
   it('rechaza una propuesta seed incompatible antes de crear el recorrido',()=>{
     const candidate=proposal();candidate.result.proposal.answers[0].value='1/2';
-    expect(()=>harness({},candidate)).toThrow('entero');
+    expect(()=>harness({},candidate)).toThrow('fracciones');
   });
 
   it('no repite un ejercicio que reaparece después de avanzar',async()=>{

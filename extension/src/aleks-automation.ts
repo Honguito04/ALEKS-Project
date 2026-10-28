@@ -49,6 +49,10 @@ export class AleksAutomation {
     const proposal:AssistView={id:raw.id,context:assistContextSchema.parse(raw.context),result:assistResultSchema.parse(raw.result)};
     if(proposal.context.fingerprint!==proposal.result.fingerprint)throw Error('La propuesta no corresponde al ejercicio leído.');
     if(this.submitted.has(proposal.context.fingerprint))throw Error('Este ejercicio ya se envió en el recorrido. No se repetirá la entrega.');
+    if(proposal.result.proposal.status!=='proposed') {
+      const detail=proposal.result.proposal;
+      throw Error(`${detail.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}: ${detail.explanation} ${detail.missing_information.join(' ')}`.trim());
+    }
     const blockers=proposalFillBlockers(proposal);
     if(blockers.length)throw Error(blockers.map(blocker=>fillBlockerMessages[blocker]).join(' '));
     this.proposal=proposal;
