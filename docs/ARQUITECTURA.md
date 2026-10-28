@@ -1,5 +1,15 @@
 # Contratos y ampliación del adaptador
 
+## Recorrido ALEKS 0.2.0
+
+`aleks-automation.ts` coordina por fases las consultas `/assist`, la entrega y el avance. El panel abierto pide una fase por mensaje; cada fase termina antes de programar la siguiente. Límites explícitos: ejercicios, minutos y llamadas IA. El worker almacena únicamente progreso en `storage.session`; las propuestas quedan en memoria. Al reiniciarse el worker se marca detenido y se cancela el contenido, sin repetir entregas.
+
+`aleks-submission.ts` reutiliza `fillAssistInteger`, comprueba el árbol visual y pulsa el control observado Verificar/Entregar una sola vez. Vincula un alert nuevo o actualizado con Correcta al enunciado conservado, y exige el control de continuación. `next()` revalida esa evidencia y espera un enunciado diferente con recuadro vacío. `content.ts` comprueba el identificador de recorrido, invalidado al detenerse, incluso para mensajes que llegan tarde. Los errores y tiempos agotados detienen la ejecución.
+
+Este recorrido acepta un entero no negativo de hasta doce dígitos, sin unidad, en un único recuadro vacío; diagramas y formatos más complejos conservan la consulta manual. La aceptación procede de la plataforma, no de que Ollama marque su propuesta como correcta. La compatibilidad con eventos nativos de ALEKS sigue pendiente de prueba. Los contratos originales y la evolución de inspección que siguen documentados debajo no habilitan `/solve` para ALEKS.
+
+## Contratos originales del simulador
+
 `Exercise` es el dato que cruza la frontera extensión/backend: origen lógico, actividad, huella SHA-256, enunciado, AST matemático restringido (`MathSpec`), tipo/correspondencia de campo, alternativas, dominio, unidades, precisión, evidencia y ambigüedades. Zod y Pydantic rechazan propiedades extra y tamaños fuera de límites.
 
 Para `cylinder_volume` son explícitos el radio, altura, unidades de cada dimensión, valor prescrito de pi y confirmación de que la altura es perpendicular. Se rechazan dimensiones de unidades diferentes, valores no positivos, altura inclinada/ambigua y una unidad de resultado que no sea la cúbica correspondiente. El campo `quantity` requiere número y unidad seleccionada; `Solution.unit` debe coincidir antes de escribir. La calificación y la idempotencia del simulador también incluyen esa unidad. Este contrato no define los selectores o eventos del editor real de ALEKS.

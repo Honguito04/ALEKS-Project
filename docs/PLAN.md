@@ -13,3 +13,8 @@ Criterio ejecutable: backend arrancable y secuencia completa del simulador aprob
 Decisiones: origen local fijo y explícito; un solo campo de texto/radio; respuestas exactas por defecto; diez ejercicios por sesión; cero llamadas externas por defecto; ningún envío automático basado únicamente en interpretación de IA. No se capturan imágenes en esta versión.
 
 Ampliación posterior solicitada: el usuario eligió un modelo local para cubrir problemas generales. El copiloto Ollama se implementa separado del controlador automático: texto/captura opcional, propuesta estructurada, revisión y tentativa de escritura comprobada de entero en un recuadro vacío. La instalación real del modelo y los eventos de ALEKS están pendientes de prueba en la computadora del usuario; formatos complejos y envío/avance autónomos siguen fuera de este primer recorrido. Véase `IA_GENERAL.md`.
+
+
+## Ampliación solicitada el 28 de octubre de 2026
+
+La versión 0.2.0 implementa un recorrido ALEKS separado para escribir, verificar y avanzar después de una devolución nueva Correcta. Sigue limitado al entero único sin unidad y al texto sin diagramas. Tiene límites, detención y protección frente a entregas repetidas; conserva el controlador original del simulador. Esta solicitud amplía las decisiones iniciales sobre envíos automáticos de propuestas locales. La prueba contra ALEKS nativo permanece pendiente. Véanse `IA_GENERAL.md` y `VALIDACION.md`.

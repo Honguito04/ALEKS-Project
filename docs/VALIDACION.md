@@ -1,19 +1,32 @@
 # Validación ejecutada
 
-Actualización: 21 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+Actualización: 28 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
 | Comprobación | Resultado observado |
 | --- | --- |
 | `bash scripts/setup.sh` | Correcta, incluida reinstalación con lockfiles y conservación de `.env` existente |
 | TypeScript + `npm run build` | Correctos; `dist/` incluye manifest MV3, panel, opciones, worker modular y content script IIFE |
-| `npm test` | **61 pasadas** en la revisión visual 0.1.2: 20 del controlador y 41 de fronteras de mensajes, revisión y apertura del worker/copiloto; extensión sin cambios en la corrección posterior de formato |
-| `.venv/bin/python -m pytest backend/tests -q` | **136 pasadas**, incluidas 23 regresiones nuevas de formato/compatibilidad del modelo; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
+| `npm test` | **111 pasadas**: 20 del controlador original, 55 del worker y 36 del coordinador ALEKS |
+| `.venv/bin/python -m pytest backend/tests -q` | **136 pasadas en la revisión previa**, backend sin cambios en 0.2.0; incluidas 23 regresiones nuevas de formato/compatibilidad del modelo; una advertencia de deprecación Starlette/httpx en el cliente de pruebas |
+| Recorrido 0.2.0: entrega, contenido y panel | **44 pasadas** al cerrar la revisión: 23 de entrega/avance, 4 de identificación de recorrido en contenido, 5 del panel automático y 12 del copiloto |
+| Pasada completa durante 0.2.0 | **195 de 197 pasadas** inicialmente; dos aserciones conservaban el botón antiguo del simulador y se actualizaron al control nuevo. Ambos casos pasaron en la repetición de 44 anterior, que también incorpora siete casos nuevos. No hubo fallos pendientes |
 | `npm run test:e2e` | **150 pasadas** en la revisión anterior: 10 del simulador, 98 del diagnóstico de editor, 28 del lector de enunciados y 14 del contexto/escritura/panel del copiloto |
 | `npm run test:e2e -- tests/e2e/aleks-assist.spec.ts tests/e2e/aleks-panel.spec.ts` | **27 pasadas** en la corrección de elegibilidad: 20 de contexto/escritura y 7 del panel; incluyen los 14 casos anteriores y 13 regresiones nuevas |
 | Copiloto, panel y lector de enunciados tras añadir adjuntos | **62 casos comprobados**: 24 de contexto/escritura, 10 del panel y 28 del lector. Pasaron 61 en la primera ejecución; se actualizó una aserción del mensaje de dibujo y el caso restante pasó al reejecutarlo |
 | `npm run test:e2e -- tests/e2e/aleks-panel.spec.ts` | **12 pasadas** para la revisión visual 0.1.2, incluidas propuesta visual sin verificación de geometría y respuesta incoherente descartada |
 | `pip check` | Sin dependencias incompatibles |
 | Sintaxis Python | `compileall` correcto |
+
+
+## Recorrido ALEKS 0.2.0 (28 de octubre)
+
+Se implementó la solicitud de escribir, verificar y continuar con cada respuesta correcta. El coordinador hace una fase por mensaje del panel; guarda progreso antes de acciones, reserva presupuesto de consultas y permite cancelar durante lectura, envío o avance. El worker mantiene el origen, la sesión y el identificador de recorrido. El content script invalida ese identificador al detenerse, para rechazar comandos tardíos. Reiniciar el worker deja el recorrido detenido, sin recuperación automática de una entrega incierta.
+
+La entrega reutiliza el escritor de entero y comprueba el árbol visual antes de pulsar una sola vez Verificar/Entregar. Exige una devolución nueva Correcta en el alert observado y el botón de continuación; mostrar un alert antiguo oculto no basta. Al avanzar exige otro enunciado y recuadro vacío. Las pruebas cubren rechazo, resultado ausente/antiguo, duplicados, cambios de contexto, cancelación, límites y dos ejercicios consecutivos. El panel incluye los límites y el botón Detener recorrido. Los dibujos declarados por el usuario conservan la consulta individual.
+
+Alcance: entero no negativo de hasta doce dígitos, sin unidad, en un único recuadro vacío y un enunciado textual sin diagramas. Los modelos pueden equivocarse; una propuesta de Ollama no se convierte en verificación matemática. La señal que permite avanzar proviene de ALEKS después de la entrega. No se ejecutaron consultas reales a Ollama ni escrituras en una cuenta ALEKS desde este entorno. Los eventos del editor, las APIs Chrome y las calificaciones en las pruebas están simulados.
+
+Los apartados siguientes conservan la historia de validación de versiones anteriores; sus restricciones de envío describen aquellas revisiones.
 
 La secuencia del navegador resolvió y consiguió **diez aceptaciones de diez envíos**, sin intervención entre ejercicios: fracciones, decimales exactos, porcentaje, proporción, ecuación lineal, cuadrática, restricción de denominador, alternativa única, redondeo y raíces irracionales. La calificación del simulador usa un oráculo de respuestas original separado del motor.
 
@@ -79,9 +92,9 @@ La validación de Google usa firmas RSA reales y certificados de prueba locales,
 
 - **Carga nativa de la extensión en Chrome**: el usuario reportó que la extensión ya funciona correctamente en su instalación y luego probó el diagnóstico en ALEKS. El agente no ejecutó la carga nativa: el Chromium administrado devolvió `Loading of unpacked extensions is disabled by the administrator` y no se modificó esa política. Playwright usa un puente exclusivo de pruebas para ejecutar las clases de producción, por lo que no valida las APIs nativas de extensión ni la autorización del navegador.
 - **Google con cuenta real**: faltan las credenciales OAuth del propietario y la configuración de su cliente. El botón y flujo están implementados; no se simula una identidad Google.
-- **IA**: proveedor OpenAI conservado sin llamadas facturables. El usuario confirmó una consulta real a Gemma3:4b y reportó un error matemático; el agente valida el protocolo con mocks. El nuevo comprobador acredita solo el formato completo reconocido de premios por puestos, con una procedencia separada de Ollama. Otras propuestas del modelo siguen sin verificar; no se habilitan entregas automáticas por ellas.
-- **ALEKS**: el usuario reportó aceptación manual de 226 cm³ y de las respuestas finales del círculo. Los fixtures validan lectura de símbolos, tabla, enteros, menú y señal positiva. El nuevo copiloto permite consulta local y tentativa de escritura asistida de entero; falta probarla contra los eventos reales de ALEKS y comprobar el modelo en problemas/diagramas reales. El agente no ejecutó escrituras o entregas en una cuenta ALEKS. El adaptador automático y `/solve` siguen bloqueados para ALEKS; el nuevo `/assist` únicamente propone, y la escritura asistida se inicia por una acción independiente del panel, sin entregar o avanzar.
+- **IA**: proveedor OpenAI conservado sin llamadas facturables. El usuario confirmó una consulta real a Gemma3:4b y reportó un error matemático; el agente valida el protocolo con mocks. El nuevo comprobador acredita solo el formato completo reconocido de premios por puestos, con una procedencia separada de Ollama. Otras propuestas del modelo siguen sin verificación matemática independiente. El recorrido solicitado permite enviarlas si cumplen el formato admitido y espera la calificación real de ALEKS antes de avanzar.
+- **ALEKS**: el usuario reportó aceptación manual de 226 cm³ y de las respuestas finales del círculo. Los fixtures validan lectura de símbolos, tabla, enteros, menú y señal positiva. El nuevo copiloto permite consulta local y tentativa de escritura asistida de entero; falta probarla contra los eventos reales de ALEKS y comprobar el modelo en problemas/diagramas reales. El agente no ejecutó escrituras o entregas en una cuenta ALEKS. El controlador original y `/solve` siguen reservados al simulador. El nuevo coordinador ALEKS 0.2.0 usa `/assist` para consultar y comandos separados para escribir, entregar y avanzar. Sus pruebas DOM no acreditan compatibilidad con el editor nativo.
 - **Windows**: instrucciones incluidas; no se ha ejecutado Windows en este entorno.
 - **CI de GitHub**: workflow incluido; los resultados anteriores corresponden a esta máquina y no acreditan un resultado remoto.
 
-Esta versión permite probar el recorrido matemático y automático en el simulador. No acredita compatibilidad con un curso o componente de ALEKS ni funciona con Chrome cerrado.
+Esta versión permite probar el recorrido matemático del simulador y el recorrido ALEKS de enteros. No acredita compatibilidad con un curso o componente de ALEKS ni funciona con Chrome cerrado.

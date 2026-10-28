@@ -305,3 +305,187 @@ it('rechaza revisiones ilimitadas o una segunda pasada que se atribuya verificac
   prepareAssist({...assistResult,provider_calls:2,verified:true});
   expect((await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).ok).toBe(false);
 });
+
+const automationLimits={maxExercises:2,maxMinutes:5,maxAICalls:10};
+function prepareAutomation() {
+  url=ALEKS_ACTIVITY+'/exercise-fixture';
+  const state={index:0,submission:{status:'accepted'},contextChange:{} as Record<string,unknown>};
+  const context=()=>({...assistContext,fingerprint:(state.index?'c':'b').repeat(64),...state.contextChange});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistContext')return {ok:true,data:context()};
+    if(message.type==='status')return {ok:true,data:{detection:{origin:ALEKS_ACTIVITY}}};
+    if(message.type==='automationSubmit')return {ok:true,data:state.submission};
+    if(message.type==='automationNext'){state.index++;return {ok:true,data:true};}
+    if(message.type==='automationReset' || message.type==='stop')return {ok:true,data:true};
+    throw Error(`Comando inesperado: ${message.type}`);
+  });
+  fetchMock.mockImplementation(async(destination:string,request:RequestInit)=>{
+    if(destination===BACKEND+'/assist/jobs')return Response.json({id:'00000000-0000-4000-8000-000000000002'});
+    if(request.method==='DELETE')return Response.json({ok:true});
+    return Response.json({status:'completed',result:{...assistResult,fingerprint:context().fingerprint}});
+  });
+  return state;
+}
+const automationStart=(extra:Record<string,unknown>={})=>send({scope:'ui',type:'automationStart',tabId:7,limits:automationLimits,...extra});
+const automationStep=(runId:string,extra:Record<string,unknown>={})=>send({scope:'ui',type:'automationStep',tabId:7,runId,...extra});
+const automationStop=()=>send({scope:'ui',type:'automationStop',tabId:7});
+const adapterCalls=(type:string)=>tabsSend.mock.calls.filter(([,message])=>message.type===type);
+
+it('recorre dos ejercicios y avanza solamente tras la confirmación de la primera entrega',async()=>{
+  prepareAutomation();
+  const started=await automationStart();expect(started.ok).toBe(true);
+  const runId=started.data.id;
+  expect(adapterCalls('automationSubmit')).toHaveLength(0);
+  expect((await automationStep(runId)).data).toMatchObject({phase:'LISTO',accepted:0});
+  const submitted=await automationStep(runId,{value:'999',fingerprint:'f'.repeat(64)});
+  expect(submitted.data).toMatchObject({phase:'CORRECTA',accepted:1});
+  expect(adapterCalls('automationSubmit')[0]).toEqual([7,expect.objectContaining({scope:'adapter',type:'automationSubmit',fingerprint:assistContext.fingerprint,value:'12'})]);
+  expect(adapterCalls('automationNext')).toHaveLength(0);
+  await automationStep(runId);
+  expect(adapterCalls('automationNext')).toHaveLength(1);
+  await automationStep(runId);
+  const finished=await automationStep(runId);
+  expect(finished.data).toMatchObject({phase:'COMPLETADO',active:false,accepted:2});
+  await automationStep(runId);
+  expect(adapterCalls('automationSubmit')).toHaveLength(2);
+  expect(adapterCalls('automationNext')).toHaveLength(1);
+  expect(JSON.stringify(session)).not.toContain('nadadores');
+  expect(session['aleksAutomation:7']).not.toHaveProperty('answer');
+});
+
+it('usa una propuesta vigente sin volver a consultar y no acepta respuestas inyectadas por UI',async()=>{
+  prepareAutomation();
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  const queries=fetchMock.mock.calls.length;
+  const started=await automationStart({proposalId:proposal.id,limits:{...automationLimits,maxExercises:1},answer:'999'});
+  expect(started.ok).toBe(true);
+  expect((await automationStep(started.data.id)).data).toMatchObject({active:false,accepted:1});
+  expect(adapterCalls('automationSubmit')[0][1].value).toBe('12');
+  expect(fetchMock).toHaveBeenCalledTimes(queries);
+  expect((await automationStart({proposalId:proposal.id})).ok).toBe(false);
+});
+
+it('impide consultar o escribir manualmente durante un recorrido y rechaza mensajes de contenido',async()=>{
+  prepareAutomation();const started=await automationStart();
+  for(const type of ['assist','assistFill','start']) {
+    const reply=await send({scope:'ui',type,tabId:7,includeImage:false,proposalId:'inventada',automated:true});
+    expect(reply.ok).toBe(false);expect(reply.error).toContain('Detén el recorrido');
+  }
+  expect((await send({scope:'content',type:'automationStart',tabId:7,limits:automationLimits},content())).ok).toBe(false);
+  expect((await automationStep('otro-recorrido')).ok).toBe(false);
+  expect(adapterCalls('automationSubmit')).toHaveLength(0);
+  expect((await automationStop()).data).toMatchObject({active:false});
+  expect((await automationStep(started.data.id)).data).toMatchObject({active:false});
+});
+
+it.each(['rejected','unknown'])('detiene una entrega %s sin avanzar ni volver a enviarla',async status=>{
+  const state=prepareAutomation();state.submission={status};
+  const started=await automationStart();await automationStep(started.data.id);
+  expect((await automationStep(started.data.id)).data).toMatchObject({active:false,accepted:0});
+  await automationStep(started.data.id);
+  expect(adapterCalls('automationSubmit')).toHaveLength(1);expect(adapterCalls('automationNext')).toHaveLength(0);
+});
+
+it('detiene el recorrido si el adaptador no confirma la entrega',async()=>{
+  prepareAutomation();const original=tabsSend.getMockImplementation()!;
+  tabsSend.mockImplementation(async(id:number,message:Record<string,unknown>)=>message.type==='automationSubmit'?{ok:false,error:'ALEKS no confirmó la respuesta'}:original(id,message));
+  const started=await automationStart();await automationStep(started.data.id);
+  const failed=await automationStep(started.data.id);
+  expect(failed.data).toMatchObject({active:false,accepted:0});expect(failed.data.message).toContain('no confirmó');
+  expect(adapterCalls('automationNext')).toHaveLength(0);
+});
+
+it('cancelar durante una entrega impide que una confirmación tardía reactive el recorrido',async()=>{
+  prepareAutomation();const original=tabsSend.getMockImplementation()!;
+  let notify:()=>void=()=>{},finish:(value:unknown)=>void=()=>{};
+  const pending=new Promise<void>(resolve=>{notify=resolve;});
+  tabsSend.mockImplementation(async(id:number,message:Record<string,unknown>)=>{
+    if(message.type==='automationSubmit')return new Promise(resolve=>{finish=resolve;notify();});
+    return original(id,message);
+  });
+  const started=await automationStart();await automationStep(started.data.id);
+  const submitting=automationStep(started.data.id);await pending;
+  expect((await automationStop()).data.active).toBe(false);
+  finish({ok:true,data:{status:'accepted'}});
+  expect((await submitting).data.active).toBe(false);
+  await automationStep(started.data.id);
+  expect(adapterCalls('automationNext')).toHaveLength(0);
+  expect(adapterCalls('stop').length).toBeGreaterThan(0);
+});
+
+it('rechaza un inicio sin sesión, permiso o con editor no compatible',async()=>{
+  const state=prepareAutomation();
+  delete session.auth;expect((await automationStart()).ok).toBe(false);
+  session.auth={token:'not-exposed-to-content',mode:'demo'};permitted=false;
+  expect((await automationStart()).ok).toBe(false);permitted=true;
+  state.contextChange={can_fill_integer:false,fill_blockers:['multiple_editors']};
+  expect((await automationStart()).ok).toBe(false);
+  expect(adapterCalls('automationReset')).toHaveLength(0);expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('rechaza dos inicios concurrentes en la misma pestaña',async()=>{
+  prepareAutomation();const original=tabsSend.getMockImplementation()!;
+  let notify:()=>void=()=>{},resume:()=>void=()=>{};
+  const entered=new Promise<void>(resolve=>{notify=resolve;}),waiting=new Promise<void>(resolve=>{resume=resolve;});
+  tabsSend.mockImplementation(async(id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistContext'){notify();await waiting;}
+    return original(id,message);
+  });
+  const pending=automationStart();await entered;
+  expect((await automationStart()).ok).toBe(false);
+  resume();expect((await pending).ok).toBe(true);
+  await automationStop();expect(adapterCalls('automationReset')).toHaveLength(1);
+});
+
+it('tras reiniciar el worker convierte un envío pendiente guardado en detenido sin reenviarlo',async()=>{
+  prepareAutomation();
+  session['aleksAutomation:7']={id:'previous-run',phase:'ENVIANDO',active:true,busy:true,accepted:2,aiCalls:3,started:Date.now(),limits:automationLimits,message:'Esperando Correcta'};
+  const response=await send({scope:'ui',type:'status',tabId:7});
+  expect(response.data.automation).toMatchObject({phase:'DETENIDO',active:false,busy:false,accepted:2});
+  expect(response.data.automation.message).toContain('reinició');
+  expect(adapterCalls('stop')).toHaveLength(1);expect(adapterCalls('automationSubmit')).toHaveLength(0);
+  expect((await automationStep('previous-run')).ok).toBe(false);
+  expect(fetchMock).not.toHaveBeenCalled();
+});
+
+it('cambio de URL tras resolver detiene el recorrido antes de escribir',async()=>{
+  prepareAutomation();const started=await automationStart();await automationStep(started.data.id);
+  url=ALEKS_ACTIVITY+'/different-activity';
+  const response=await automationStep(started.data.id);
+  expect(response.data).toMatchObject({active:false,accepted:0});
+  expect(adapterCalls('automationSubmit')).toHaveLength(0);
+});
+
+it('detener durante el inicio pendiente impide que se cree después un recorrido activo',async()=>{
+  prepareAutomation();const original=tabsSend.getMockImplementation()!;
+  let notify:()=>void=()=>{},resume:()=>void=()=>{};
+  const entered=new Promise<void>(resolve=>{notify=resolve;}),waiting=new Promise<void>(resolve=>{resume=resolve;});
+  tabsSend.mockImplementation(async(id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistContext'){notify();await waiting;}
+    return original(id,message);
+  });
+  const pending=automationStart();await entered;
+  await automationStop();resume();
+  const started=await pending;
+  expect(started.ok).toBe(false);
+  expect(adapterCalls('automationReset')).toHaveLength(0);
+  const current=await send({scope:'ui',type:'status',tabId:7});
+  expect(current.data.automation?.active).not.toBe(true);
+});
+
+it('cerrar sesión después de resolver detiene el recorrido antes de entregar',async()=>{
+  prepareAutomation();const started=await automationStart();await automationStep(started.data.id);
+  delete session.auth;
+  const response=await automationStep(started.data.id);
+  expect(response.data).toMatchObject({active:false,accepted:0});
+  expect(adapterCalls('automationSubmit')).toHaveLength(0);
+});
+
+it('Detener sigue disponible si la pestaña salió de ALEKS o perdió el permiso',async()=>{
+  prepareAutomation();await automationStart();
+  url='https://example.org/';permitted=false;
+  const stopped=await automationStop();
+  expect(stopped).toMatchObject({ok:true,data:{active:false,phase:'DETENIDO'}});
+  expect(adapterCalls('stop')).toHaveLength(1);
+  expect(adapterCalls('automationSubmit')).toHaveLength(0);
+});

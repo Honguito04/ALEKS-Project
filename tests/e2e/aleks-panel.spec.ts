@@ -33,7 +33,8 @@ test('el panel consulta y permite introducir el entero sin exigir cm³ o pulsar 
   await expect(page.getByText('Propuesta de IA · sin verificar')).toBeVisible();
   await page.getByRole('button',{name:'Introducir entero en el recuadro'}).click();
   await expect(page.getByRole('status')).toContainText('Entero reflejado');
-  await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeVisible();
 });
 
 test('presenta un cálculo exacto como comprobado y disponible para escritura asistida',async({page})=>{
@@ -43,7 +44,8 @@ test('presenta un cálculo exacto como comprobado y disponible para escritura as
   await expect(page.getByText('Resultado comprobado · premios por puestos')).toBeVisible();
   await expect(page.getByText('Propuesta de IA · sin verificar')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Introducir entero en el recuadro'})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toBeDisabled();
+  await expect(page.getByRole('button',{name:'Autorizar e iniciar'})).toHaveCount(0);
+  await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeVisible();
 });
 
 test('ofrece introducir el cálculo exacto sin reconocer Verificar y con botones matemáticos disponibles',async({page})=>{

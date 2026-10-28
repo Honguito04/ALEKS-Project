@@ -1,4 +1,5 @@
 import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
+import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { captureFillPolicy,requireAssistImage,proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
 
 type Auth = {token:string;mode:'demo'|'google'};
@@ -7,6 +8,30 @@ const assistProposals=new Map<number,AssistView>();
 const assistJobs=new Map<number,string>();
 const assistWriters=new Set<number>();
 const assistRemoteJobs=new Map<number,string>();
+const automations=new Map<number,AleksAutomation>();
+const automationStarting=new Map<number,AbortController>();
+const automationKey=(id:number)=>`aleksAutomation:${id}`;
+async function cancelTabAssist(id:number) {
+  automationStarting.get(id)?.abort();
+  assistJobs.delete(id);assistProposals.delete(id);
+  const remote=assistRemoteJobs.get(id);assistRemoteJobs.delete(id);
+  await Promise.allSettled([
+    chrome.tabs.sendMessage(id,{scope:'adapter',type:'stop'}),
+    ...(remote?[api(`/assist/jobs/${remote}`,'DELETE',undefined,true)]:[])
+  ]);
+}
+async function automationStatus(id:number):Promise<AutomationView|undefined> {
+  const live=automations.get(id);if(live)return live.view;
+  const stored=(await chrome.storage.session.get(automationKey(id)))[automationKey(id)] as AutomationView|undefined;
+  if(!stored)return;
+  if(stored.active) {
+    // No repetir una entrega cuyo resultado se perdió al reiniciar el worker.
+    const interrupted={...stored,active:false,busy:false,phase:'DETENIDO' as const,message:'La extensión se reinició. Revisa ALEKS antes de iniciar otro recorrido.'};
+    await chrome.storage.session.set({[automationKey(id)]:interrupted});
+    await cancelTabAssist(id);return interrupted;
+  }
+  return stored;
+}
 // El modo automático de panel omite activeTab en Chromium. El clic de action
 // concede el permiso antes de este evento. Abrir de forma directa conserva su
 // gesto de usuario; no esperar operaciones asíncronas antes de sidePanel.open.
@@ -41,8 +66,8 @@ async function tab(id:unknown) {
   if(!await chrome.permissions.contains({origins:[`${new URL(t.url).origin}/*`]})) throw Error('Falta el permiso del sitio');
   return t as chrome.tabs.Tab & {id:number;url:string};
 }
-async function send(id:number,type:string,data:Record<string,unknown>={}) {
-  await tab(id);
+async function send(id:number,type:string,data:Record<string,unknown>={},isCurrent=()=>true) {
+  await tab(id);if(!isCurrent())throw Error('Recorrido detenido.');
   const response=await chrome.tabs.sendMessage(id,{scope:'adapter',type,...data});
   if(!response?.ok) throw Error(response?.error || 'El adaptador no respondió');return response.data;
 }
@@ -52,6 +77,8 @@ async function attach(id:unknown) {
   return {...await send(t.id,'status'),tab:{id:t.id,title:t.title || 'Actividad matemática',url:t.url}};
 }
 async function stopAll() {
+  for(const starting of automationStarting.values())starting.abort();
+  await Promise.allSettled([...automations.values()].map(run=>run.stop('Recorrido detenido por cambio de sesión o permisos.')));
   const activeAssist=[...assistWriters];
   const jobs=[...assistRemoteJobs.values()];assistRemoteJobs.clear();
   assistProposals.clear();assistJobs.clear();
@@ -63,7 +90,9 @@ async function stopAll() {
 const random=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return btoa(String.fromCharCode(...bytes)).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');};
 async function sha(text:string) {return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');}
 
-async function handleUI(m:Record<string,unknown>) {
+async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>true):Promise<any> {
+  if(!automated && ['assist','assistFill','start'].includes(String(m.type)) &&
+    (automations.get(Number(m.tabId))?.view.active || automationStarting.has(Number(m.tabId))))throw Error('Detén el recorrido automático antes de iniciar otra operación.');
   switch(m.type) {
     case 'health': return api('/health');
     case 'session': return await auth() ? api('/auth/session','GET',undefined,true):{mode:null};
@@ -101,8 +130,58 @@ async function handleUI(m:Record<string,unknown>) {
       await chrome.permissions.remove({origins:[`${BACKEND}/*`,...ALEKS_ORIGINS.map(origin=>`${origin}/*`)]});return true;
     }
     case 'tabs': return (await chrome.tabs.query({})).filter(t=>t.id && t.url && allowedTab(t.url)).map(t=>({id:t.id,title:t.title,url:t.url}));
-    case 'attach': return attach(m.tabId);
-    case 'status': return send((await tab(m.tabId)).id,'status');
+    case 'attach': {const result=await attach(m.tabId);return {...result,automation:await automationStatus(result.tab.id)};}
+    case 'status': {const t=await tab(m.tabId);return {...await send(t.id,'status'),automation:await automationStatus(t.id)};}
+    case 'automationStart': {
+      const t=await tab(m.tabId);
+      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth())throw Error('Selecciona ALEKS e inicia sesión en el asistente.');
+      if(automationStarting.has(t.id) || (automations.get(t.id)?.view.active || automations.get(t.id)?.view.busy) || assistJobs.has(t.id) || assistWriters.has(t.id))throw Error('Ya hay una operación en curso en esta pestaña.');
+      const starting=new AbortController();automationStarting.set(t.id,starting);
+      try {
+        const limits=automationLimitsSchema.parse(m.limits);
+        await automationStatus(t.id);starting.signal.throwIfAborted();
+        const context=assistContextSchema.parse(await send(t.id,'assistContext'));
+        starting.signal.throwIfAborted();
+        if(!context.can_fill_integer)throw Error('El recorrido necesita un único recuadro vacío para un entero y un enunciado sin diagramas.');
+        const seed=m.proposalId===undefined?undefined:assistProposals.get(t.id);
+        if(m.proposalId!==undefined && (!seed || seed.id!==m.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta cambió; vuelve a consultar.');
+        const ensureTab=async()=>{const current=await tab(t.id);if(current.url!==t.url || !await auth())throw Error('La pestaña o la sesión cambió. Se detuvo el recorrido.');};
+        const run:AleksAutomation=new AleksAutomation(limits,{
+          now:()=>Date.now(),
+          solve:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return handleUI({type:'assist',tabId:t.id,includeImage:false},true,()=>run.view.active);},
+          submit:async proposal=>{
+            await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');assistProposals.delete(t.id);assistWriters.add(t.id);
+            try{return await send(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:proposal.result.proposal.answers[0].value,runId:run.view.id},()=>run.view.active);}
+            finally{assistWriters.delete(t.id);}
+          },
+          next:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return send(t.id,'automationNext',{runId:run.view.id},()=>run.view.active);},
+          cancel:()=>cancelTabAssist(t.id),
+          save:async view=>{
+            // Solo progreso: nunca guardar el enunciado, imagen ni respuesta.
+            const {answer,...progress}=view;
+            await chrome.storage.session.set({[automationKey(t.id)]:progress});
+          }
+        },seed);
+        await ensureTab();starting.signal.throwIfAborted();
+        await send(t.id,'automationReset',{runId:run.view.id},()=>!starting.signal.aborted);starting.signal.throwIfAborted();
+        automations.set(t.id,run);assistProposals.delete(t.id);
+        const {answer,...progress}=run.view;await chrome.storage.session.set({[automationKey(t.id)]:progress});
+        return run.view;
+      }catch(error){await automations.get(t.id)?.stop('No se pudo iniciar el recorrido.');await cancelTabAssist(t.id);throw error;}
+      finally{automationStarting.delete(t.id);}
+    }
+    case 'automationStep': {
+      const t=await tab(m.tabId),run=automations.get(t.id);
+      if(!run || run.view.id!==m.runId)throw Error('El recorrido ya no está activo. Vuelve a leer su estado.');
+      return run.step();
+    }
+    case 'automationStop': {
+      automationStarting.get(Number(m.tabId))?.abort();
+      if(typeof m.tabId!=='number' || !Number.isInteger(m.tabId))throw Error('Selecciona una pestaña');
+      const id=m.tabId,run=automations.get(id);
+      if(run)return run.stop();
+      await cancelTabAssist(id);return automationStatus(id);
+    }
     case 'localAIStatus': return api('/ai/local/status','GET',undefined,true);
     case 'assist': {
       const t=await tab(m.tabId);
@@ -111,6 +190,7 @@ async function handleUI(m:Record<string,unknown>) {
       if(m.image!==undefined && (m.includeImage || typeof m.image!=='string' || m.image.length>1_333_359 || !/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/.test(m.image)))throw Error('Adjunta una única captura JPEG válida y acotada.');
       const hasImage=m.includeImage || m.image!==undefined;
       if(!await auth())throw Error('Entra en demostración o inicia sesión en la aplicación.');
+      if(!isCurrent())throw Error('Recorrido detenido.');
       if(assistJobs.has(t.id))throw Error('Ya hay una consulta de IA en curso en esta pestaña.');
       const job=crypto.randomUUID();assistJobs.set(t.id,job);assistProposals.delete(t.id);let remoteId:string|undefined;
       try {
@@ -136,6 +216,7 @@ async function handleUI(m:Record<string,unknown>) {
         // respuesta durante 30 s. No mantenemos un fetch abierto a la inferencia.
         // Los motivos de escritura son diagnóstico local, no datos del modelo.
         const {fill_blockers,...modelContext}=context;
+        if(!isCurrent() || assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
         const started=await api('/assist/jobs','POST',{context:modelContext,...(image?{image}:{})},true);
         if(typeof started?.id!=='string' || !/^[a-f0-9-]{36}$/.test(started.id))throw Error('Identificador de consulta inválido.');
         remoteId=started.id;
@@ -190,7 +271,7 @@ async function handleUI(m:Record<string,unknown>) {
       return send(t.id,'start',{limits,authorization:consent});
     }
     case 'pause': case 'resume': case 'stop': case 'cancelAssist': {
-      const t=await tab(m.tabId);assistProposals.delete(t.id);assistJobs.delete(t.id);
+      const t=await tab(m.tabId);await automations.get(t.id)?.stop();assistProposals.delete(t.id);assistJobs.delete(t.id);
       const remote=assistRemoteJobs.get(t.id);assistRemoteJobs.delete(t.id);
       if(remote)await api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});
       return send(t.id,m.type==='cancelAssist'?'stop':String(m.type));
@@ -238,6 +319,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
 });
 chrome.permissions.onRemoved.addListener(()=>{void stopAll();});
 chrome.tabs.onRemoved.addListener(id=>{
+  void automations.get(id)?.stop('La pestaña se cerró.').finally(()=>chrome.storage.session.remove(automationKey(id)));automations.delete(id);
   assistProposals.delete(id);assistJobs.delete(id);assistWriters.delete(id);
   const remote=assistRemoteJobs.get(id);assistRemoteJobs.delete(id);if(remote)void api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});
   void chrome.storage.local.remove([`run:${id}`,`consent:${id}`]);
