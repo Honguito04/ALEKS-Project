@@ -48,6 +48,45 @@ test('presenta un cálculo exacto como comprobado y disponible para escritura as
   await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeVisible();
 });
 
+test('distingue el recorrido detenido de una nueva propuesta válida de 15/64',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{
+    window.testAutomation={id:'previous-run',phase:'DETENIDO',active:false,busy:false,canContinue:false,
+      accepted:2,aiCalls:3,started:Date.now(),limits:{maxExercises:10,maxMinutes:15,maxAICalls:20},
+      message:'La propuesta anterior no tenía un formato de respuesta admitido.'};
+    window.testAssistResult={proposal:{status:'proposed',answers:[{field_key:'answer',value:'15/64',unit:''}],
+      explanation:'Los giros son independientes: (3/8) × (5/8) = 15/64.',missing_information:[]}};
+  });
+  const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
+  await expect(status.getByText('DETENIDO',{exact:true})).toBeVisible();
+  await expect(page.getByText('Recorrido anterior · DETENIDO',{exact:true})).toHaveCount(0);
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('15/64',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Responder, verificar y continuar'})).toBeEnabled();
+  await expect(page.getByText('Escritura asistida no disponible:',{exact:true})).toHaveCount(0);
+  await expect(status.getByText('Recorrido anterior · DETENIDO',{exact:true})).toBeVisible();
+  await expect(status).toContainText('La consulta nueva se muestra arriba; su resultado no pertenece a este recorrido.');
+  await expect(status).toContainText('La propuesta anterior no tenía un formato de respuesta admitido.');
+  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 3 llamadas IA');
+  expect(await page.evaluate(()=>window.testPanelMessages.filter(message=>message.type==='automationStart' || message.type==='assistFill'))).toEqual([]);
+});
+
+test('presenta el comprobador de dos giros con su etiqueta y permite la fracción canónica',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{
+    window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'independent_spins',
+      proposal:{status:'proposed',answers:[{field_key:'answer',value:'15/64',unit:''}],
+        explanation:'Los giros son independientes: (3/8) × (5/8) = 15/64.',missing_information:[]}};
+  });
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('Resultado comprobado · probabilidad de dos giros',{exact:true})).toBeVisible();
+  await expect(page.getByText('Resultado comprobado · premios por puestos',{exact:true})).toHaveCount(0);
+  await expect(page.getByText('15/64',{exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toBeEnabled();
+  await expect(page.getByRole('button',{name:'Responder, verificar y continuar'})).toBeEnabled();
+});
+
 test('ofrece introducir el cálculo exacto sin reconocer Verificar y con botones matemáticos disponibles',async({page})=>{
   await openPanel(page);
   await page.evaluate(()=>{

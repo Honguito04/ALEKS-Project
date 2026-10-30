@@ -16,6 +16,10 @@ BOXES = ("En una caja hay 1 lápiz y 4 bolígrafos. En una segunda caja hay 9 ma
          "Se elige al azar un artículo de cada una de las cajas. ¿Cuál es la probabilidad de que de la primera caja "
          "se elija un bolígrafo y que de la segunda caja se seleccione un crayón? "
          "Escribir la respuesta como una fracción en forma reducida.")
+SPINNER = ("Una ruleta está dividida en 8 secciones de igual tamaño, de las cuales 3 son de color gris "
+           "y 5 son de color azul. La ruleta se gira dos veces. ¿Cuál es la probabilidad de que en el "
+           "primer giro la ruleta pare en gris y que en el segundo giro la ruleta pare en azul? "
+           "Escribir la respuesta como una fracción en forma reducida.")
 SOLID = {"status": "proposed", "answers": [{"field_key": "answer", "value": "1496", "unit": "cm^3"}],
          "explanation": "Prisma rectangular completo menos un hueco rectangular que atraviesa la profundidad.",
          "missing_information": [], "observations": ["Ancho total: 13 cm", "Altura total: 15 cm", "Profundidad: 8 cm",
@@ -109,6 +113,37 @@ def test_visual_json_fence_numeric_value_and_missing_unused_prose_are_accepted_w
     result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers).json()
     assert result["proposal"]["answers"] == SOLID["answers"] and result["verified"] is False
     assert result["provider_calls"] == 2
+
+
+def test_equivalent_visual_fraction_is_checked_against_calculation_and_remains_unverified(client, demo_headers, ollama):
+    calls, response = ollama
+    response["visual_draft"] = {**SOLID,
+        "answers": [{"field_key": "answer", "value": r"$\frac{2992}{2}$", "unit": " cm^3 "}]}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers)
+    assert result.status_code == 200
+    body = result.json()
+    assert body["proposal"]["status"] == "proposed"
+    assert body["proposal"]["answers"] == [{"field_key": "answer", "value": "1496/1", "unit": "cm^3"}]
+    assert "13*15*8 - 8*(15-7-7)*8 = 1496/1 cm^3" in body["proposal"]["explanation"]
+    assert body["provider"] == "ollama" and body["verified"] is False and body["verification"] == "none"
+    assert body["provider_calls"] == 2
+    chats = [json.loads(call.content) for call in calls if call.url.path == "/api/chat"]
+    assert len(chats) == 2
+    candidate = json.loads(chats[1]["messages"][1]["content"])["candidate"]
+    assert candidate["answers"] == body["proposal"]["answers"]
+
+
+def test_normalized_visual_fraction_cannot_bypass_calculation_mismatch(client, demo_headers, ollama):
+    calls, response = ollama
+    response["visual_draft"] = {**SOLID,
+        "answers": [{"field_key": "answer", "value": r"$\frac{360}{2}$", "unit": "cm^3"}]}
+    result = client.post("/assist", json={"context": VISUAL_CONTEXT, "image": IMAGE}, headers=demo_headers)
+    assert result.status_code == 200
+    body = result.json()
+    assert body["proposal"]["status"] == "unable_to_solve" and body["proposal"]["answers"] == []
+    assert "no coincide con el cálculo propuesto" in body["proposal"]["explanation"]
+    assert body["verified"] is False and body["verification"] == "none" and body["provider_calls"] == 1
+    assert sum(call.url.path == "/api/chat" for call in calls) == 1
 
 
 @pytest.mark.parametrize("payload,reason", [
@@ -442,6 +477,89 @@ def test_model_cannot_claim_independent_box_verification():
                      verified=True, verification="independent_boxes")
 
 
+@pytest.mark.parametrize("route", ["/assist", "/assist/jobs"])
+@pytest.mark.parametrize("include_image", [False, True])
+def test_spinner_regression_returns_15_over_64_without_ollama(client, demo_headers, monkeypatch, route, include_image):
+    # La ruta pide configuración, pero este cálculo no llama al servicio local
+    # ni exige un modelo instalado o en ejecución.
+    monkeypatch.setattr(settings, "ai_provider", "ollama")
+    monkeypatch.setattr(settings, "ai_model", "not-installed")
+    def unexpected_network(**kwargs):
+        pytest.fail("El comprobador de ruleta no debe consultar servicios externos")
+    monkeypatch.setattr(httpx, "AsyncClient", unexpected_network)
+    context = {**CONTEXT, "statement": SPINNER, "can_fill_integer": False}
+    request = {"context": context}
+    if include_image:
+        request["image"] = IMAGE
+    result = client.post(route, json=request, headers=demo_headers)
+    if route.endswith("jobs"):
+        assert result.status_code == 202
+        path = route + "/" + result.json()["id"]
+        for _ in range(20):
+            result = client.get(path, headers=demo_headers)
+            if result.json()["status"] != "pending": break
+        body = result.json()["result"]
+    else:
+        assert result.status_code == 200
+        body = result.json()
+    assert body["provider"] == "deterministic" and body["provider_calls"] == 0
+    assert body["verified"] is True and body["verification"] == "independent_spins"
+    assert body["proposal"]["status"] == "proposed"
+    assert body["proposal"]["answers"] == [{"field_key": "answer", "value": "15/64", "unit": ""}]
+    assert "(3/8) × (5/8) = 15/64" in body["proposal"]["explanation"]
+
+
+@pytest.mark.parametrize("statement", [
+    SPINNER.replace("8 secciones", "9 secciones"),
+    SPINNER.replace("de igual tamaño", "de tamaños distintos"),
+    SPINNER.replace("y que en el segundo", "o que en el segundo"),
+    SPINNER + " El segundo giro depende del primero.",
+])
+def test_spinner_extra_or_inconsistent_conditions_fall_back_without_verification(client, demo_headers, ollama, statement):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({"status": "needs_context", "answers": [],
+        "explanation": "No se conoce una distribución suficiente.", "missing_information": ["Probabilidades de los sectores"]})
+    result = client.post("/assist", json={"context": {**CONTEXT, "statement": statement}}, headers=demo_headers).json()
+    assert result["provider"] == "ollama" and result["provider_calls"] == 1
+    assert result["verified"] is False and result["verification"] == "none"
+    assert result["proposal"]["status"] == "needs_context" and result["proposal"]["answers"] == []
+    assert sum(call.url.path == "/api/chat" for call in calls) == 1
+
+
+def test_spinner_checker_preserves_a_required_diagram(client, demo_headers, ollama):
+    calls, response = ollama
+    response["visual_draft"] = {"status": "needs_context", "answers": [], "explanation": "Falta interpretar el dibujo.",
+        "missing_information": ["Contenido del dibujo"], "observations": [], "calculations": []}
+    context = {**CONTEXT, "statement": SPINNER, "diagram_required": True}
+    without = client.post("/assist", json={"context": context}, headers=demo_headers).json()
+    assert without["verified"] is False and without["proposal"]["status"] == "needs_context"
+    assert without["provider_calls"] == 0 and not calls
+    with_image = client.post("/assist", json={"context": context, "image": IMAGE}, headers=demo_headers).json()
+    assert with_image["provider"] == "ollama" and with_image["provider_calls"] == 1
+    assert with_image["verified"] is False and with_image["verification"] == "none"
+    assert with_image["proposal"]["status"] == "needs_context" and with_image["proposal"]["answers"] == []
+
+
+def test_model_cannot_claim_independent_spinner_verification():
+    with pytest.raises(ValueError):
+        AssistResult(fingerprint="a" * 64, proposal=AssistProposal.model_validate(PROPOSAL), model="test", provider_calls=1,
+                     verified=True, verification="independent_spins")
+
+
+@pytest.mark.parametrize("value", ["15 / 64", "30/128", r"$\frac{15}{64}$"])
+def test_equivalent_model_fractions_are_normalized_without_verification_or_retry(client, demo_headers, ollama, value):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({**PROPOSAL,
+        "answers": [{"field_key": "answer", "value": value, "unit": ""}]})
+    result = client.post("/assist", json={"context": CONTEXT}, headers=demo_headers)
+    assert result.status_code == 200
+    body = result.json()
+    assert body["proposal"]["answers"] == [{"field_key": "answer", "value": "15/64", "unit": ""}]
+    assert body["provider"] == "ollama" and body["provider_calls"] == 1
+    assert body["verified"] is False and body["verification"] == "none"
+    assert sum(call.url.path == "/api/chat" for call in calls) == 1
+
+
 @pytest.mark.parametrize("denial", ["Ninguna", "No se requiere información adicional.",
     "No se requiere información adicional, ya que los datos son suficientes para calcular la probabilidad."])
 def test_missing_context_denial_is_not_reported_as_a_missing_mathematical_fact(denial):
@@ -512,4 +630,4 @@ def test_structured_answers_and_a_real_missing_fact_are_still_rejected():
 
 
 def test_health_reports_the_backend_revision_that_is_actually_running(client):
-    assert client.get("/health").json()["version"] == "0.4.1"
+    assert client.get("/health").json()["version"] == "0.4.2"

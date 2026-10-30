@@ -2,13 +2,19 @@ import React, { useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { BACKEND, ALEKS_ACTIVITY, ALEKS_ORIGINS,type AssistView,type Run, type Exercise, type Solution, type Detection } from './shared';
 import './ui.css';
-import { proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
+import { proposalFillBlockers,proposalFillMessages } from './assist-readiness';
 import { prepareAssistImage } from './assist-image';
 import type { AutomationView } from './aleks-automation';
 
 type Tab = {id:number;title:string;url:string};
 type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution;automation?:AutomationView;nativeKeyboard?:boolean};
 type Health = {status:string;version?:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
+const verifiedResultLabels={
+  none:'Resultado comprobado',
+  ordered_prizes:'Resultado comprobado · premios por puestos',
+  independent_boxes:'Resultado comprobado · probabilidad de dos cajas',
+  independent_spins:'Resultado comprobado · probabilidad de dos giros'
+};
 async function rpc(type:string,data:Record<string,unknown>={}) {
   const r=await chrome.runtime.sendMessage({scope:'ui',type,...data});
   if(!r?.ok) throw Error(r?.error || 'La extensión no respondió');return r.data;
@@ -171,7 +177,7 @@ function App() {
       })}>Resolver con IA local</button>
       {assistActive && <button className="danger" onClick={()=>void rpc('cancelAssist',{tabId:selected}).catch(error=>setError(error.message))}>Cancelar operación de IA</button>}
       {health?.ai_provider!=='ollama' && <p className="small">Activa Ollama en .env para habilitar esta función. Consulta docs/IA_GENERAL.md.</p>}
-      {assist && <div className="inset"><p><strong>{assist.result.verified?(assist.result.verification==='independent_boxes'?'Resultado comprobado · probabilidad de dos cajas':'Resultado comprobado · premios por puestos'):assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':assist.result.proposal.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}</strong></p>
+      {assist && <div className="inset"><p><strong>{assist.result.verified?verifiedResultLabels[assist.result.verification]:assist.result.proposal.status==='proposed'?'Propuesta de IA · sin verificar':assist.result.proposal.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}</strong></p>
         {assist.result.proposal.answers.map(answer=><p key={answer.field_key}>{assist.context.fields.find(field=>field.key===answer.field_key)?.label || answer.field_key}: <strong>{answer.value} {answer.unit}</strong></p>)}
         <p>{assist.result.proposal.explanation}</p>{assist.result.proposal.missing_information.map((item,i)=><p key={i}>{item}</p>)}
         {canFill ? <><button disabled={working} onClick={()=>void attempt(async()=>{
@@ -180,7 +186,7 @@ function App() {
             await rpc('assistFill',{tabId:selected,proposalId:proposal.id});
             setView(await rpc('status',{tabId:selected}));setNotice('Respuesta reflejada en el recuadro. No se pulsó Verificar; revisa el contenido antes de entregarlo.');
           }finally{setAssistActive(false);}
-        })}>Introducir respuesta en el recuadro</button><button disabled={working || diagramRequired || hasImage} onClick={()=>void startAutomation(assist.id)}>Responder, verificar y continuar</button></>:assist.result.proposal.status==='proposed' && <><p className="small">Escritura asistida no disponible:</p><ul>{fillBlockers.map(blocker=><li key={blocker}>{fillBlockerMessages[blocker]}</li>)}</ul></>}
+        })}>Introducir respuesta en el recuadro</button><button disabled={working || diagramRequired || hasImage} onClick={()=>void startAutomation(assist.id)}>Responder, verificar y continuar</button></>:assist.result.proposal.status==='proposed' && <><p className="small">Escritura asistida no disponible:</p><ul>{proposalFillMessages(assist).map((message,index)=><li key={index}>{message}</li>)}</ul></>}
       </div>}
     </section>}
     {aleks && <section aria-label="Diagnóstico de controles ALEKS">
@@ -215,7 +221,9 @@ function App() {
       {resultVisible && !automation?.canContinue && !automation?.active && <p className="small">ALEKS muestra una respuesta correcta anterior. Pulsa Siguiente en ALEKS y después Leer actividad seleccionada para iniciar otro recorrido.</p>}
       {(diagramRequired || hasImage) && <p className="small">Usa la consulta individual para este ejercicio con imagen. El recorrido de texto requiere desmarcar la captura y retirar la imagen adjunta.</p>}
       <button className="danger" disabled={!automation?.active} onClick={()=>void rpc('automationStop',{tabId:selected}).then(setAutomation).catch(e=>setError(e.message))}>Detener recorrido</button>
-      {automation && <div role="status"><strong>{automation.phase}</strong><p>{automation.message}</p>
+      {automation && <div role="status"><strong>{assist && !automation.active?'Recorrido anterior · ':''}{automation.phase}</strong>
+        {assist && !automation.active && <p className="small">La consulta nueva se muestra arriba; su resultado no pertenece a este recorrido.</p>}
+        <p>{automation.message}</p>
         {automation.answer && <p>Respuesta propuesta: <strong>{automation.answer}</strong></p>}
         <p>{automation.accepted} correctas confirmadas por ALEKS · {automation.aiCalls} llamadas IA</p>
       </div>}

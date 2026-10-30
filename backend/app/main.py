@@ -23,7 +23,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Asistente matemático — MVP", lifespan=lifespan)
-BACKEND_VERSION = "0.4.1"
+BACKEND_VERSION = "0.4.2"
 app.add_middleware(CORSMiddleware,
     allow_origins=["http://127.0.0.1:8000"] + [f"chrome-extension://{v}" for v in settings.extension_ids],
     allow_methods=["GET", "POST", "DELETE"], allow_headers=["Authorization", "Content-Type"])

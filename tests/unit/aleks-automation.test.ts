@@ -30,10 +30,18 @@ describe('recorrido ALEKS por fases',()=>{
     expect(deps.submit).not.toHaveBeenCalled();
   });
 
-  it('acepta una fracción reducida sólo con capacidad del editor confirmada',async()=>{
-    const candidate=proposal();candidate.context.can_fill_fraction=true;candidate.result.proposal.answers[0].value='1/5';
+  it.each(['1/5','15/64'])('acepta la fracción reducida %s con capacidad del editor confirmada',async value=>{
+    const candidate=proposal();candidate.context.can_fill_fraction=true;candidate.result.proposal.answers[0].value=value;
     const {run,deps}=harness({maxExercises:1},candidate);await run.step();
     expect(run.view).toMatchObject({accepted:1,phase:'COMPLETADO'});expect(deps.submit).toHaveBeenCalledWith(candidate);
+  });
+  it('informa qué valor rechazó y no envía ni avanza al fallar el formato',async()=>{
+    const candidate=proposal();candidate.context.can_fill_fraction=true;candidate.result.proposal.answers[0].value='30/128';
+    const {run,deps}=harness();deps.solve=vi.fn(async()=>candidate);
+    await run.step();await run.step();
+    expect(run.view).toMatchObject({phase:'DETENIDO',accepted:0,aiCalls:1});
+    expect(run.view.message).toContain('El valor recibido "30/128"');
+    expect(deps.submit).not.toHaveBeenCalled();expect(deps.next).not.toHaveBeenCalled();
   });
   it('resuelve, entrega y avanza solo después de Correcta, hasta el límite',async()=>{
     const {run,deps,saved}=harness();

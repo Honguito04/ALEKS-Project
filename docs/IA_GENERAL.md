@@ -2,9 +2,13 @@
 
 El objetivo es ampliar la cobertura por interpretación del contenido, sin programar una regla para cada enunciado. Una IA multimodal puede trabajar con texto, fórmulas y diagramas. La extensión puede introducir respuestas y pulsar controles, pero necesita comprobar lo que la interfaz registró. Ningún modelo garantiza resolver todos los ejercicios ni manejar cualquier editor.
 
-## Actualizar a 0.4.1 en Windows
+## Actualizar a 0.4.2 en Windows
 
-Esta revisión une dos mejoras. Un recorrido que alcanza su máximo conserva la respuesta aceptada y permite **Continuar desde la respuesta correcta** después de aumentar los límites. Un error al intentar iniciar otro recorrido sobre esa respuesta ya no borra la confirmación ni la sustituye por «No se pudo iniciar». El panel explica que **1** o **01** termina tras la primera respuesta; para avanzar entre ejercicios debe haber al menos dos autorizadas.
+El usuario confirmó que la detención ocurrió antes de la propuesta de **15/64**. Esa fracción sí cumple el formato admitido; la captura no muestra el valor que rechazó el intento anterior. Ahora el panel identifica ese estado como **Recorrido anterior · DETENIDO** al mostrar una consulta nueva. Si una propuesta se rechaza, indica si sobran respuestas, no corresponde el campo, lleva unidad o tiene un valor incompatible.
+
+El backend convierte respuestas completas como `15 / 64`, `30/128` y `\frac{15}{64}` en `15/64`. Solo cambia su representación: no convierte una propuesta del modelo en resultado comprobado. La plantilla completa de dos giros de una ruleta con secciones iguales sí tiene cálculo exacto propio; para 3 grises y 5 azules de 8 secciones obtiene `(3/8) × (5/8) = 15/64`, sin llamadas a Ollama. Se conservan las restricciones de escritura, las unidades y la dependencia de diagramas.
+
+Un recorrido que alcanza su máximo conserva la respuesta aceptada y permite **Continuar desde la respuesta correcta** después de aumentar los límites. Un error al intentar iniciar otro recorrido sobre esa respuesta no borra la confirmación. **1** o **01** termina tras la primera respuesta; para avanzar entre ejercicios debe haber al menos dos autorizadas.
 
 En interpretación, el problema completo de las dos cajas se calcula como `4/5 × 3/12 = 1/5`, sin Ollama. Ahora acepta separaciones de frases y variantes equivalentes de la redacción, manteniendo el rechazo de condiciones adicionales. Para otras consultas, una respuesta ya estructurada con estado equivocado y sin datos faltantes se normaliza como propuesta sin verificar. Si el modelo omite los campos de respuesta y no identifica ningún dato ausente, se pide una única corrección con el problema original. Se contabilizan ambas llamadas y nunca se extrae un número de la explicación libre. Si vuelve a fallar, el recorrido se detiene.
 
@@ -17,7 +21,7 @@ En interpretación, el problema completo de las dos cajas se calcula como `4/5 �
    (Get-Content .\dist\manifest.json -Raw | ConvertFrom-Json).version
    ```
 
-   La segunda línea debe mostrar **0.4.1**.
+   La segunda línea debe mostrar **0.4.2**.
 4. Arranca el backend actualizado en esa misma carpeta:
 
    ```powershell
@@ -26,11 +30,13 @@ En interpretación, el problema completo de las dos cajas se calcula como `4/5 �
    .\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
    ```
 
-   Déjalo abierto. En Chrome, `http://127.0.0.1:8000/health` debe mostrar `"version":"0.4.1"`. El panel también muestra esa versión al conectar. Si no aparece, sigue ejecutándose un backend anterior o arrancaste desde otra carpeta.
-5. En `chrome://extensions`, recarga el asistente y comprueba **0.4.1**. Pulsa **F5** en ALEKS, abre el panel y lee la actividad. Activa de nuevo **Usar teclado de Chrome para esta pestaña** y cierra DevTools. Ollama puede seguir abierto.
-6. Si ALEKS conserva «Correcta» de antes de actualizar, pulsa **Siguiente** manualmente una vez y lee el ejercicio nuevo. Si estás en el problema de las cajas con el recuadro vacío, puedes empezar directamente. El nuevo recorrido necesita un único recuadro vacío y un ejercicio de texto compatible.
+   Déjalo abierto. En Chrome, `http://127.0.0.1:8000/health` debe mostrar `"version":"0.4.2"`. El panel también muestra esa versión al conectar. Si no aparece, sigue ejecutándose un backend anterior o arrancaste desde otra carpeta.
+5. En `chrome://extensions`, recarga el asistente y comprueba **0.4.2**. Pulsa **F5** en ALEKS, abre el panel y lee la actividad. Activa de nuevo **Usar teclado de Chrome para esta pestaña** y cierra DevTools. Ollama puede seguir abierto.
+6. Si ALEKS conserva «Correcta» de antes de actualizar, pulsa **Siguiente** manualmente una vez y lee el ejercicio nuevo. Si estás en el problema de la ruleta con el recuadro vacío, puedes empezar directamente. El nuevo recorrido necesita un único recuadro vacío y un ejercicio de texto compatible.
 7. Configura, por ejemplo, **10 respuestas, 15 minutos y 20 llamadas IA**. Deja la captura desmarcada si el problema no necesita imagen. Pulsa **Iniciar recorrido automático** y mantén activa la pestaña ALEKS y abierto el panel. Tras cada devolución nueva de **Correcta**, avanza mediante **Siguiente** o **Siguiente tema** mientras queden límites.
 8. Cuando alcance el límite conservando una respuesta correcta, puedes aumentar el máximo total y pulsar **Continuar desde la respuesta correcta**. Por ejemplo, después de una correcta con máximo 1, máximo 10 permite hasta 9 respuestas adicionales. El contador de llamadas se conserva; el tiempo empieza de nuevo por esta acción. No se reenvía la respuesta ya aceptada.
+
+También puedes pulsar **Resolver con IA local** primero. En la ruleta de la captura debe mostrar **Resultado comprobado · probabilidad de dos giros** y **15/64**. Con el recuadro todavía vacío, pulsa **Responder, verificar y continuar** para usar esa propuesta. **Introducir respuesta en el recuadro** solo escribe: no verifica ni inicia el recorrido.
 
 El usuario confirmó la introducción, envío y aceptación de **12** con 0.4.0. Las mejoras de continuación y clasificación se prueban en un entorno local con respuestas simuladas; no garantizan aciertos en todos los problemas. El recorrido se detiene ante rechazo, datos insuficientes, diagramas o formatos incompatibles. Los apartados siguientes conservan instrucciones históricas; para actualizar utiliza esta sección.
 
@@ -93,7 +99,7 @@ Para instalar 0.3.0:
 
 No hay acceso desde este entorno al Chrome autenticado del usuario. Los permisos del sitio permiten interactuar con controles de la pestaña; no aseguran compatibilidad con todos los editores, diagramas o actividades. El recorrido sigue limitado a los formatos descritos.
 
-Los apartados siguientes documentan el comportamiento anterior de 0.2.0 y la instalación inicial; para actualizar usa los pasos de 0.4.0 al principio de esta guía.
+Los apartados siguientes documentan el comportamiento anterior de 0.2.0 y la instalación inicial; para actualizar usa los pasos de 0.4.2 al principio de esta guía.
 
 ## Estado actual
 

@@ -24,7 +24,7 @@ export function requireAssistImage(context:AssistContext,required:boolean):Assis
 }
 
 export function captureFillPolicy(context:AssistContext,result:AssistResult,includeImage:boolean):AssistContext {
-  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes'].includes(result.verification) && !context.diagram_required;
+  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes','independent_spins'].includes(result.verification) && !context.diagram_required;
   if(!includeImage || textVerified)return context;
   return {...context,can_fill_integer:false,can_fill_fraction:false,fill_blockers:[...new Set([...context.fill_blockers,'image_based_proposal' as const])]};
 }
@@ -39,4 +39,25 @@ export function proposalFillBlockers(view:AssistView):FillBlocker[] {
     !parseSupportedAnswer(proposal.answers[0].value))blockers.push('answer_format');
   else if(parseSupportedAnswer(proposal.answers[0].value)?.kind==='fraction' && !view.context.can_fill_fraction)blockers.push('fraction_control');
   return [...new Set(blockers)];
+}
+
+/** Acota el diagnóstico y hace visibles los caracteres de control/formato. */
+function quotedDiagnostic(value:string):string {
+  const bounded=value.length>80?`${value.slice(0,80)}…`:value;
+  return JSON.stringify(bounded).replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu,char=>`\\u${char.codePointAt(0)!.toString(16).padStart(4,'0')}`);
+}
+
+function answerFormatMessage(view:AssistView):string {
+  const answers=view.result.proposal.answers;
+  if(answers.length!==1)return `Se recibieron ${answers.length} respuestas; la escritura necesita una sola respuesta asociada al recuadro.`;
+  const answer=answers[0],reasons:string[]=[];
+  if(answer.field_key!=='answer')reasons.push(`El campo recibido es ${quotedDiagnostic(answer.field_key)}; no corresponde al recuadro «answer».`);
+  if(answer.unit!=='')reasons.push(`La respuesta incluye la unidad ${quotedDiagnostic(answer.unit)}; la escritura actual admite respuestas sin unidad.`);
+  if(!parseSupportedAnswer(answer.value))reasons.push(`El valor recibido ${quotedDiagnostic(answer.value)} no tiene el formato admitido: entero o fracción reducida no negativa (por ejemplo, 15/64), hasta doce dígitos por componente.`);
+  return reasons.join(' ') || fillBlockerMessages.answer_format;
+}
+
+/** Mismos motivos concretos en el panel, la escritura y el recorrido. */
+export function proposalFillMessages(view:AssistView):string[] {
+  return proposalFillBlockers(view).map(blocker=>blocker==='answer_format'?answerFormatMessage(view):fillBlockerMessages[blocker]);
 }

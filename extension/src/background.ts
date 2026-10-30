@@ -2,7 +2,7 @@ import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limit
 import { typeNativeAnswer } from './native-keyboard';
 import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
-import { captureFillPolicy,requireAssistImage,proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
+import { captureFillPolicy,requireAssistImage,proposalFillMessages } from './assist-readiness';
 
 type Auth = {token:string;mode:'demo'|'google'};
 type Consent = {origin:string;activity:string;limits:ReturnType<typeof limitsSchema.parse>};
@@ -311,8 +311,8 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       const t=await tab(m.tabId),proposal=assistProposals.get(t.id);
       assistProposals.delete(t.id);
       if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth() || !proposal || proposal.id!==m.proposalId)throw Error('No hay una propuesta vigente que se pueda introducir.');
-      const blockers=proposalFillBlockers(proposal);
-      if(blockers.length)throw Error(blockers.map(blocker=>fillBlockerMessages[blocker]).join(' '));
+      const blockers=proposalFillMessages(proposal);
+      if(blockers.length)throw Error(blockers.join(' '));
       const answers=proposal.result.proposal.answers;
       if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !parseSupportedAnswer(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero o fracción sin unidad.');
       assistWriters.add(t.id);

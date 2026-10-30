@@ -2,6 +2,19 @@
 
 Actualización: 30 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
+## Revisión 0.4.2: fracciones y ruleta (30 de octubre)
+
+- Backend: suite completa de **279 pruebas pasadas** y **2 regresiones visuales adicionales pasadas** después de la revisión, sin cambios posteriores de producción. Cubren equivalencia exacta, límites de formato, unidades conservadas, ruleta con cero llamadas IA, formatos ambiguos y dependencia de diagramas. Se mantiene la advertencia de deprecación Starlette/httpx.
+- `npm run check`: compilación, TypeScript y **175 pruebas unitarias pasadas**. Worker, coordinador y panel comparten el diagnóstico y admiten `15/64` sin atribuir verificación matemática al modelo.
+- **126 pruebas de navegador afectadas pasadas**: contexto/escritura, fracciones, contenido, entrega, siguiente, panel, recorrido y teclado nativo. Incluyen la nueva propuesta después de un recorrido detenido, escritura y aceptación de `15/64` seguida de otro ejercicio, y nueve casos de teclado mediante CDP.
+- Manifest, backend y archivo local de extensión identifican **0.4.2**. Sin permisos ni dependencias nuevas.
+
+El usuario aclaró que el aviso genérico ocurrió antes de obtener la propuesta válida de `15/64`; todavía no había probado su botón. No se observó el valor que rechazó el intento anterior, por lo que no se atribuye ese rechazo a una variante concreta de formato. El panel ahora distingue el recorrido anterior y conserva sus contadores. La normalización admite representaciones completas equivalentes sin extraer números de una explicación. El cálculo exacto de la plantilla de ruleta utiliza `(3/8) × (5/8) = 15/64`. Se corrigió además una normalización de texto que podía convertir superíndices en dígitos ordinarios.
+
+Las pruebas visuales adicionales comprueban que una fracción normalizada sigue pasando por contraste aritmético y revisión visual, y que una contradicción se descarta antes de la revisión. La salida del modelo sigue sin verificación independiente.
+
+Las APIs de extensión, el editor y el feedback de ALEKS están simulados; en la prueba nativa, Chromium entrega teclas reales mediante CDP a ese editor de prueba. No se cargó la extensión en el navegador administrado, ni se operó una cuenta ALEKS, ni se ejecutó Qwen desde este entorno. El siguiente paso es actualizar backend y extensión en el equipo del usuario y comprobar el recorrido real. Los apartados siguientes conservan resultados históricos.
+
 ## Revisión 0.4.1: continuación e interpretación (30 de octubre)
 
 - **181 pruebas del backend pasadas**, incluidas variantes de la plantilla de dos cajas, rechazo de condiciones no equivalentes, clasificación de datos faltantes, una corrección de formato contabilizada por `/assist` y `/assist/jobs`, y versión de `/health`. Permanece la advertencia de deprecación Starlette/httpx.

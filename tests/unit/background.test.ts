@@ -146,6 +146,21 @@ it('acepta la fracción comprobada de dos cajas y mantiene sus capacidades fuera
   expect(filled.ok).toBe(true);
   expect(tabsSend.mock.calls.at(-1)?.[1]).toMatchObject({type:'assistFill',value:'1/5'});
 });
+it('introduce 15/64 desde la propuesta nueva sin marcar al modelo como verificado',async()=>{
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'15/64',unit:''}]}});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,data:message.type==='assistContext'?{...assistContext,can_fill_fraction:true}:{written:true}}));
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(response.ok).toBe(true);expect(response.data.result.verified).toBe(false);
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id})).ok).toBe(true);
+  expect(tabsSend.mock.calls.at(-1)?.[1]).toMatchObject({type:'assistFill',value:'15/64'});
+});
+it('explica el valor o unidad incompatible antes de pedir escritura al adaptador',async()=>{
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'15/64',unit:'cm'}]}});
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false}),calls=tabsSend.mock.calls.length;
+  const blocked=await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id});
+  expect(blocked.ok).toBe(false);expect(blocked.error).toContain('La respuesta incluye la unidad "cm"');
+  expect(tabsSend).toHaveBeenCalledTimes(calls);
+});
 function prepareAssist(result=assistResult) {
   url=ALEKS_ACTIVITY+'/exercise-fixture';
   tabsSend.mockResolvedValue({ok:true,data:assistContext});

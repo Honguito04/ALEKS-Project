@@ -1,5 +1,13 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.4.2: fracciones y ruletas
+
+`AssistAnswer` normaliza únicamente representaciones numéricas completas: enteros y fracciones de hasta doce dígitos por componente, barras ordinarias o de fracción, y `frac`/`dfrac`/`tfrac` con argumentos enteros no negativos. Admite envolturas matemáticas completas `$…$`, `\(…\)` y `\[…\]`. Reduce exactamente con `Fraction`; no interpreta prosa, expresiones ni decimales aproximados. Un denominador nulo o formato no admitido se conserva para diagnóstico, sin habilitar escritura. Las unidades solo pierden espacio exterior. La salida de Ollama sigue con `verified:false`.
+
+`independent_spins` exige la plantilla textual completa, dos colores conocidos distintos, secciones iguales, total coherente y dos giros en orden. Asocia los colores solicitados y calcula el producto con fracciones exactas; usa `verification:independent_spins` y cero llamadas IA. La presencia de un diagrama requerido mantiene el flujo visual. La normalización de los comprobadores de probabilidad quita tildes mediante NFD, sin convertir superíndices en dígitos.
+
+El contrato cerrado de `parseSupportedAnswer` permanece igual. `proposalFillMessages` distingue cantidad, asociación de campo, unidad y valor incompatible en panel, worker y coordinador; acota y escapa los valores del diagnóstico. Si se consulta después de terminar un recorrido, el panel identifica el estado conservado como anterior. Iniciar o continuar con éxito descarta la consulta individual antes de mostrar el nuevo progreso. La escritura y entrega conservan las comprobaciones visuales y la aceptación nueva de ALEKS.
+
 ## Ampliación 0.4.1: continuación e interpretación
 
 `AleksAutomation.view.canContinue` solo se activa al completar un límite conservando una entrega aceptada pendiente de avance. `continue(limits)` exige una acción del panel y límites totales suficientes; conserva `id`, huellas ya enviadas, respuestas aceptadas y llamadas consumidas, y renueva el plazo de tiempo. Guarda el estado antes de pasar a `CORRECTA`; el siguiente paso usa `AleksSubmission.next()` y revalida los mismos nodos de enunciado, feedback y botón. No resetea el contenido ni vuelve a entregar. Detener y perder el worker invalidan esa posibilidad; el estado persistido no recupera evidencia de aceptación.

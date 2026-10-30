@@ -8,9 +8,9 @@ import { PendingAleksAdapter } from '../../extension/src/adapters';
 import { assistResultSchema,type AssistView } from '../../extension/src/shared';
 
 declare global {interface Window {
-  automationTest:{fraction:boolean;holdSolve:boolean;feedback:'correct'|'incorrect';solves:number;submits:number;nexts:number;releaseSolve?:()=>void};
+  automationTest:{fraction:boolean;fractionValue:string;holdSolve:boolean;feedback:'correct'|'incorrect';solves:number;submits:number;nexts:number;releaseSolve?:()=>void};
 }}
-const metrics=window.automationTest={fraction:false,holdSolve:false,feedback:'correct' as 'correct'|'incorrect',solves:0,submits:0,nexts:0,releaseSolve:undefined as undefined|(()=>void)};
+const metrics=window.automationTest={fraction:false,fractionValue:'1/5',holdSolve:false,feedback:'correct' as 'correct'|'incorrect',solves:0,submits:0,nexts:0,releaseSolve:undefined as undefined|(()=>void)};
 const adapter=new PendingAleksAdapter(),submission=new AleksSubmission(document,800);
 let automation:AleksAutomation|undefined,abort=new AbortController(),proposal:AssistView|undefined;
 const status=async()=>({detection:{...await adapter.detect(),origin:'https://latam-awu.aleks.com'},automation:automation?.view});
@@ -19,7 +19,7 @@ async function solve():Promise<AssistView> {
   const context=await assistContext(document);
   if(metrics.holdSolve)await new Promise<void>(resolve=>{metrics.releaseSolve=resolve;});
   return {id:crypto.randomUUID(),context,result:assistResultSchema.parse({fingerprint:context.fingerprint,provider:'ollama',provider_calls:1,
-    model:'synthetic-model',verified:false,verification:'none',proposal:{status:'proposed',answers:[{field_key:'answer',value:metrics.fraction?'1/5':metrics.nexts?'20':'12',unit:''}],
+    model:'synthetic-model',verified:false,verification:'none',proposal:{status:'proposed',answers:[{field_key:'answer',value:metrics.fraction?metrics.fractionValue:metrics.nexts?'20':'12',unit:''}],
       explanation:'Propuesta sintética para comprobar el recorrido del panel.',missing_information:[]}})};
 }
 const input=document.querySelector<HTMLInputElement>('input.ansed_input')!,verify=document.querySelector<HTMLButtonElement>('.checkAnswer')!;
@@ -27,7 +27,8 @@ input.addEventListener('input',()=>{
   const glyph=document.createElement('span');glyph.className='AnsedObject';glyph.textContent=input.value;
   glyph.style.cssText='position:absolute;font:18px serif;left:2px;top:3px;height:24px';
   if(metrics.fraction){
-    const denominator=glyph.cloneNode(true) as HTMLElement;glyph.textContent='1';denominator.textContent='5';denominator.style.top='32px';
+    const [numeratorText,denominatorText]=input.value.split('/');
+    const denominator=glyph.cloneNode(true) as HTMLElement;glyph.textContent=numeratorText;denominator.textContent=denominatorText;denominator.style.top='32px';
     document.querySelector<HTMLElement>('.ansed_root')!.style.height='65px';document.querySelector<HTMLElement>('.ansed_tree')!.style.height='65px';
     document.querySelector('.ansed_tree')!.replaceChildren(glyph,denominator);
   }else document.querySelector('.ansed_tree')!.replaceChildren(glyph);input.value='';

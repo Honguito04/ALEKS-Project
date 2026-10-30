@@ -25,7 +25,7 @@ test('el editor que exige eventos confiables ignora la escritura sintética',asy
   expect(result.error).toContain('no reflejó');expect(result.written).toBeUndefined();
 });
 
-for(const value of ['12','1/5']) {
+for(const value of ['12','1/5','15/64']) {
   test(`Chromium entrega teclas confiables y el lector confirma ${value}`,async({page})=>{
     const result=await page.evaluate(value=>window.nativeEditor.run(value,true),value) as any;
     expect(result).toMatchObject({attached:1,detached:1,buffer:value,syntheticInputs:0,clicks:0,error:'',

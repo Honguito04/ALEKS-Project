@@ -15,7 +15,8 @@ from pydantic import Field, PrivateAttr, ValidationError, model_validator, field
 from .config import settings
 from .models import Strict
 from .counting import ordered_prizes
-from .probability import independent_boxes
+from .probability import independent_boxes, independent_spins
+from .answer_text import normalize_numeric_answer
 from .assist_checks import VisualCalculation, check_calculations
 
 OLLAMA = "http://127.0.0.1:11434"
@@ -131,6 +132,16 @@ class AssistAnswer(Strict):
             return format(value, "f")
         return value
 
+    @field_validator("value")
+    @classmethod
+    def numeric_representation(cls, value):
+        return normalize_numeric_answer(value)
+
+    @field_validator("unit")
+    @classmethod
+    def trim_unit(cls, value):
+        return value.strip()
+
 
 def no_missing_data(text: str) -> bool:
     """Reconoce únicamente negaciones completas; nunca adivina el dato omitido."""
@@ -184,7 +195,7 @@ class AssistResult(Strict):
     provider: Literal["ollama", "deterministic"] = "ollama"
     provider_calls: int = Field(ge=0, le=2)
     verified: bool = False
-    verification: Literal["none", "ordered_prizes", "independent_boxes"] = "none"
+    verification: Literal["none", "ordered_prizes", "independent_boxes", "independent_spins"] = "none"
 
     @model_validator(mode="after")
     def verification_source(self):
@@ -414,7 +425,8 @@ async def consult_local(body: AssistRequest) -> AssistResult:
     # La comprobación usa el texto del ejercicio, nunca la explicación de la IA.
     # Solo los formatos completos reconocidos y un campo pueden acreditarla.
     if not body.context.diagram_required and len(body.context.fields) == 1 and body.context.fields[0].key == "answer":
-        for checker, verification in ((ordered_prizes, "ordered_prizes"), (independent_boxes, "independent_boxes")):
+        for checker, verification in ((ordered_prizes, "ordered_prizes"), (independent_boxes, "independent_boxes"),
+                                      (independent_spins, "independent_spins")):
             exact = checker(body.context.statement)
             if exact is not None:
                 return AssistResult(fingerprint=body.context.fingerprint, model="", provider="deterministic", provider_calls=0,

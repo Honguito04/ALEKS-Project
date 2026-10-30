@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { assistContextSchema,assistResultSchema,type AssistView } from './shared';
-import { proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
+import { proposalFillMessages } from './assist-readiness';
 
 export const automationLimitsSchema=z.object({
   maxExercises:z.number().int().min(1).max(100),
@@ -53,8 +53,8 @@ export class AleksAutomation {
       const detail=proposal.result.proposal;
       throw Error(`${detail.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}: ${detail.explanation} ${detail.missing_information.join(' ')}`.trim());
     }
-    const blockers=proposalFillBlockers(proposal);
-    if(blockers.length)throw Error(blockers.map(blocker=>fillBlockerMessages[blocker]).join(' '));
+    const blockers=proposalFillMessages(proposal);
+    if(blockers.length)throw Error(blockers.join(' '));
     this.proposal=proposal;
     this.state.phase='LISTO';this.state.answer=proposal.result.proposal.answers[0].value;
     this.state.message='Respuesta preparada. El siguiente paso la escribirá y pulsará Verificar o Entregar.';

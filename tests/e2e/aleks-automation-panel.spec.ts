@@ -24,6 +24,20 @@ test('escribe una fracción, pulsa Verificar y confirma Correcta',async({page})=
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
 });
 
+test('la propuesta 15/64 se escribe, verifica y continúa después de Correcta',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{window.automationTest.fraction=true;window.automationTest.fractionValue='15/64';});
+  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByRole('button',{name:'Resolver con IA local'}).click();
+  await expect(page.getByText('Respuesta del ejercicio: 15/64')).toBeVisible();
+  await page.getByRole('button',{name:'Responder, verificar y continuar'}).click();
+  const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
+  await expect(status).toContainText('COMPLETADO',{timeout:15000});
+  await expect(status).toContainText('2 correctas confirmadas por ALEKS');
+  expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
+  await expect(page.locator('.ansed_tree .AnsedObject')).toHaveText(['15','64']);
+});
+
 test('prepara diagnóstico desde el panel sin enviar respuestas',async({page})=>{
   await openPanel(page);await page.getByRole('button',{name:'Preparar diagnóstico del editor'}).click();
   const report=JSON.parse(await page.getByLabel('Diagnóstico del editor',{exact:true}).inputValue());
