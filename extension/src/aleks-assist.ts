@@ -45,9 +45,10 @@ export async function assistContext(document:Document,allowImage=false):Promise<
  * Se solicita esa escritura una vez y se exige su representación visual.
  * Los eventos sintéticos deben comprobarse en cada instalación de ALEKS.
  */
-export async function fillAssistAnswer(document:Document,fingerprint:string,value:string,signal:AbortSignal) {
+export type NativeInput=(guard:()=>Promise<void>)=>Promise<void>;
+export async function fillAssistAnswer(document:Document,fingerprint:string,value:string,signal:AbortSignal,nativeInput?:NativeInput) {
   if(!parseSupportedAnswer(value))throw Error('La respuesta debe ser un entero o una fracción reducida no negativa, sin unidad.');
-  return fillScalar(document,fingerprint,value,signal);
+  return fillScalar(document,fingerprint,value,signal,nativeInput);
 }
 
 /** Una sola tentativa, iniciada desde el panel, en un recuadro vacío.
@@ -59,7 +60,7 @@ export async function fillAssistInteger(document:Document,fingerprint:string,val
   return fillScalar(document,fingerprint,value,signal);
 }
 
-async function fillScalar(document:Document,fingerprint:string,value:string,signal:AbortSignal) {
+async function fillScalar(document:Document,fingerprint:string,value:string,signal:AbortSignal,nativeInput?:NativeInput) {
   signal.throwIfAborted();
   const before=await assistContext(document);
   if(before.fingerprint!==fingerprint || !before.can_fill_integer)throw Error('El ejercicio o el recuadro cambió. Vuelve a consultar a la IA.');
@@ -71,18 +72,33 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
   input.focus();
   const focused=await assistContext(document);signal.throwIfAborted();
   if(!root.isConnected || focused.fingerprint!==fingerprint || !focused.can_fill_integer)throw Error('La página cambió al enfocar el editor.');
-  const intent=new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:value});
-  const proceed=input.dispatchEvent(intent);
-  signal.throwIfAborted();
-  const afterIntent=await readAleksPrompt(document);
-  signal.throwIfAborted();
-  if(afterIntent.fingerprint!==promptBefore.fingerprint || !root.isConnected)throw Error('El enunciado cambió antes de escribir.');
-  if(proceed) {
-    const stillEmpty=inspectAleksEditor(document).singleEditor.readback.status==='empty';
-    if(!stillEmpty)throw Error('El editor cambió durante la preparación. Revisa el recuadro.');
-    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);
-    input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));
-    input.dispatchEvent(new Event('change',{bubbles:true}));
+  if(nativeInput) {
+    const guard=async()=>{
+      signal.throwIfAborted();
+      const current=await readAleksPrompt(document);signal.throwIfAborted();
+      const editor=inspectAleksEditor(document);
+      if(current.fingerprint!==promptBefore.fingerprint || !root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root ||
+        document.activeElement!==input || disabled(input) || input.readOnly || !visible(root) ||
+        editor.singleEditor.status!=='observed' || editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('Cambió el ejercicio o el foco del editor. El teclado de Chrome se detuvo.');
+    };
+    // El panel lateral puede tener el foco de Chrome. CDP dirige las teclas a
+    // la pestaña validada por el worker y enfoca su render widget. Aquí importa
+    // conservar el input activo del documento, no document.hasFocus().
+    await guard();await nativeInput(guard);signal.throwIfAborted();
+  } else {
+    const intent=new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:value});
+    const proceed=input.dispatchEvent(intent);
+    signal.throwIfAborted();
+    const afterIntent=await readAleksPrompt(document);
+    signal.throwIfAborted();
+    if(afterIntent.fingerprint!==promptBefore.fingerprint || !root.isConnected)throw Error('El enunciado cambió antes de escribir.');
+    if(proceed) {
+      const stillEmpty=inspectAleksEditor(document).singleEditor.readback.status==='empty';
+      if(!stillEmpty)throw Error('El editor cambió durante la preparación. Revisa el recuadro.');
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);
+      input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));
+      input.dispatchEvent(new Event('change',{bubbles:true}));
+    }
   }
   const deadline=Date.now()+1600;
   while(Date.now()<deadline) {
@@ -97,5 +113,5 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     await new Promise(resolve=>setTimeout(resolve,50));
   }
   if(root.isConnected && inspectAleksEditor(document).singleEditor.readback.status==='empty')Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,previousBuffer);
-  throw Error(`ALEKS no reflejó ${value.includes('/')?'la fracción vertical':'el entero'} en su árbol visual. No se envió ninguna respuesta; usa Preparar diagnóstico del editor para revisar su estructura.`);
+  throw Error(`ALEKS no reflejó ${value.includes('/')?'la fracción vertical':'el entero'} en su árbol visual. No se envió ninguna respuesta; ${nativeInput?'usa Preparar diagnóstico del editor para revisar su estructura':'activa Usar teclado de Chrome para esta pestaña y vuelve a consultar con el recuadro vacío'}.`);
 }

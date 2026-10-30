@@ -1,4 +1,4 @@
-import { assistContext,fillAssistAnswer } from './aleks-assist';
+import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist';
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
 import { visible,disabled } from './aleks-dom';
@@ -55,7 +55,7 @@ export class AleksSubmission {
     if(messages.length!==1)return undefined;
     return {feedback:feedback[0],next};
   }
-  async submit(fingerprint:string,value:string,signal:AbortSignal):Promise<{status:'accepted'}> {
+  async submit(fingerprint:string,value:string,signal:AbortSignal,nativeInput?:NativeInput):Promise<{status:'accepted'}> {
     if(this.phase!=='idle')throw Error('Esta entrega ya fue iniciada; no se vuelve a pulsar Verificar.');
     this.phase='submitting';const generation=this.generation;
     let feedbackObserver:MutationObserver|undefined;
@@ -72,7 +72,7 @@ export class AleksSubmission {
       const roots=[...this.document.querySelectorAll<HTMLElement>('.ansed_root')].filter(root=>visible(root) && !root.closest('#algoPrompt') && root.querySelector('input.ansed_input[aria-label="Answer Editor"]'));
       if(roots.length!==1)throw Error('No hay un único recuadro reconocido para esta entrega.');
       const root=roots[0];
-      await fillAssistAnswer(this.document,fingerprint,value,signal);this.check(signal,generation);
+      await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
       const editor=inspectAleksEditor(this.document);
       const freshTargets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));

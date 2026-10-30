@@ -3,7 +3,7 @@ import { SimulatorAdapter, PendingAleksAdapter } from './adapters';
 import { simulatorURL, type Limits, type Run, limitsSchema } from './shared';
 import { AleksSubmission } from './aleks-submission';
 import { editorDiagnostics } from './editor-diagnostics';
-import { assistContext,fillAssistAnswer } from './aleks-assist';
+import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist';
 
 declare global { interface Window { __mathAssistantLoaded?:boolean } }
 if(!window.__mathAssistantLoaded) {
@@ -25,6 +25,15 @@ if(!window.__mathAssistantLoaded) {
   let busy=false;
   let assistAbort:AbortController|undefined;
   let automationId:string|undefined;
+  let nativeGuard:{id:string;check:()=>Promise<void>}|undefined;
+  function nativeWriter(id:unknown):NativeInput|undefined {
+    if(id===undefined)return;
+    if(typeof id!=='string')throw Error('Escritura de teclado inválida');
+    return async check=>{
+      nativeGuard={id,check};
+      try{await rpc('nativeType',{writeId:id});}finally{nativeGuard=undefined;}
+    };
+  }
   const initialized=(async()=>{
     if(simulatorURL(location.href)) {
       const saved:Run|undefined=await rpc('load');
@@ -35,11 +44,15 @@ if(!window.__mathAssistantLoaded) {
     if(sender.id!==chrome.runtime.id || message?.scope!=='adapter') return;
     void (async()=>{
       await initialized;
+      if(message.type==='nativeGuard') {
+        if(!nativeGuard || nativeGuard.id!==message.writeId)throw Error('No hay una escritura de teclado vigente.');
+        await nativeGuard.check();return true;
+      }
       if(message.type==='status') return {detection:await adapter.detect(),run:controller.run,exercise:controller.exercise,solution:controller.solution};
       if(message.type==='editorDiagnostics' && !simulatorURL(location.href))return editorDiagnostics(document);
       if(message.type==='assistContext' && !simulatorURL(location.href))return assistContext(document,message.allowImage===true);
-      if(message.type==='pause') {automationId=undefined;assistAbort?.abort();submission.reset();await controller.pause();return true;}
-      if(message.type==='stop') {automationId=undefined;assistAbort?.abort();submission.reset();await controller.stop();return true;}
+      if(message.type==='pause') {automationId=undefined;nativeGuard=undefined;assistAbort?.abort();submission.reset();await controller.pause();return true;}
+      if(message.type==='stop') {automationId=undefined;nativeGuard=undefined;assistAbort?.abort();submission.reset();await controller.stop();return true;}
       if(busy) throw Error('Ya hay una operación en curso');
       busy=true;
       try {
@@ -50,7 +63,7 @@ if(!window.__mathAssistantLoaded) {
         if(message.type==='automationSubmit' && !simulatorURL(location.href)) {
           if(!automationId || message.runId!==automationId)throw Error('Recorrido detenido o reemplazado.');
           if(typeof message.fingerprint!=='string' || typeof message.value!=='string')throw Error('Propuesta inválida');
-          assistAbort=new AbortController();return await submission.submit(message.fingerprint,message.value,assistAbort.signal);
+          assistAbort=new AbortController();return await submission.submit(message.fingerprint,message.value,assistAbort.signal,nativeWriter(message.nativeWriteId));
         }
         if(message.type==='automationNext' && !simulatorURL(location.href)) {
           if(!automationId || message.runId!==automationId)throw Error('Recorrido detenido o reemplazado.');
@@ -58,7 +71,7 @@ if(!window.__mathAssistantLoaded) {
         }
         if(message.type==='assistFill' && !simulatorURL(location.href)) {
           if(typeof message.fingerprint!=='string' || typeof message.value!=='string')throw Error('Propuesta inválida');
-          assistAbort=new AbortController();return await fillAssistAnswer(document,message.fingerprint,message.value,assistAbort.signal);
+          assistAbort=new AbortController();return await fillAssistAnswer(document,message.fingerprint,message.value,assistAbort.signal,nativeWriter(message.nativeWriteId));
         }
         else if(message.type==='start') await controller.start(limitsSchema.parse(message.limits) as Limits,message.authorization);
         else if(message.type==='resume') await controller.resume();

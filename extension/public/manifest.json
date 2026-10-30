@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Asistente Matem\u00e1tico \u2014 MVP",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Asistente local: escribe enteros y fracciones, verifica y avanza tras Correcta.",
   "minimum_chrome_version": "116",
   "permissions": [
@@ -9,7 +9,8 @@
     "scripting",
     "sidePanel",
     "activeTab",
-    "identity"
+    "identity",
+    "debugger"
   ],
   "optional_host_permissions": [
     "http://127.0.0.1:8000/*",

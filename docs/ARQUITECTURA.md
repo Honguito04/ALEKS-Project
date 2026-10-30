@@ -1,5 +1,15 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.4.0: teclado de Chrome
+
+`native-keyboard.ts` envía únicamente `Input.dispatchKeyEvent` (keyDown/keyUp) para los dígitos y la barra de una respuesta admitida. Abre `chrome.debugger` por pestaña y se desconecta en `finally`; no usa Enter, comandos Runtime, código del modelo ni funciones internas de ALEKS. Chrome exige declarar `debugger` como permiso requerido y muestra un aviso de conexión. La elección por pestaña del panel es un control de la aplicación; no reduce el alcance que Chrome concede al permiso.
+
+El worker conserva esa elección en memoria y crea una operación efímera de un uso, ligada a la respuesta guardada y la URL. El contenido solo solicita su identificador; no determina las teclas ni el destino. Antes de cada evento se comprueban origen, permiso, sesión, pestaña activa y ventana enfocada. La cancelación invalida también las operaciones que esperaban una comprobación asíncrona. El contenido responde a `nativeGuard` durante la escritura para comprobar enunciado, editor y foco del input. El lector visual decide si se escribió la respuesta; una propuesta o un buffer modificado no acreditan éxito.
+
+`fillAssistAnswer` recibe el escritor nativo opcional tanto para introducción individual como para `AleksSubmission.submit`. Sin la elección expresa se conserva el escritor sintético anterior. No se cambia de estrategia ni se reintenta en mitad de una escritura. La entrega y el avance mantienen su asociación con una devolución nueva de ALEKS. Los apartados siguientes conservan la evolución de versiones anteriores.
+
+El guard exige `document.activeElement === input`, sin exigir `document.hasFocus()`: el panel lateral puede conservar el foco exterior cuando inicia la operación. [`InputHandler` de Chromium](https://github.com/chromium/chromium/blob/main/content/browser/devtools/protocol/input_handler.cc) dirige el evento al render widget de la pestaña conectada y lo enfoca antes de entregarlo. La comprobación de pestaña activa y ventana enfocada permanece en el worker; no se activa otra pestaña para continuar.
+
 ## Ampliación 0.3.0
 
 `answer-format.ts` define una gramática cerrada de enteros no negativos y fracciones reducidas, con doce dígitos por componente. `fillAssistAnswer` solicita escritura de `a/b`; `aleks-single-editor` comprueba dos filas alineadas, dentro del editor, con denominador positivo y fracción reducida. El usuario confirmó conversión manual automática de este formato. No se usa código generado, funciones internas ni permisos adicionales.

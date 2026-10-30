@@ -1,4 +1,5 @@
 import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
+import { typeNativeAnswer } from './native-keyboard';
 import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { captureFillPolicy,requireAssistImage,proposalFillBlockers,fillBlockerMessages } from './assist-readiness';
@@ -11,8 +12,29 @@ const assistWriters=new Set<number>();
 const assistRemoteJobs=new Map<number,string>();
 const automations=new Map<number,AleksAutomation>();
 const automationStarting=new Map<number,AbortController>();
+const nativeTabs=new Set<number>();
+let nativeEpoch=0;
+const nativeTabEpoch=new Map<number,number>();
+function cancelNative(id:number) {nativeTabEpoch.set(id,(nativeTabEpoch.get(id)||0)+1);nativeWrites.get(id)?.abort.abort();}
+type NativeWrite={id:string;url:string;value:string;used:boolean;abort:AbortController;current:()=>boolean};
+const nativeWrites=new Map<number,NativeWrite>();
+async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,current=()=>true) {
+  if(!nativeTabs.has(id))return send(id,type,data,current);
+  const epoch=nativeEpoch,tabEpoch=nativeTabEpoch.get(id)||0;
+  const allowed=()=>current() && nativeTabs.has(id) && epoch===nativeEpoch && tabEpoch===(nativeTabEpoch.get(id)||0);
+  const t=await tab(id);
+  if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof data.value!=='string' || !parseSupportedAnswer(data.value))throw Error('Respuesta no admitida por el teclado de Chrome.');
+  if(!allowed() || nativeWrites.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
+  if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión 0.4.0 y concede el permiso de depuración de Chrome.');
+  if(!allowed())throw Error('Escritura cancelada.');
+  const write:NativeWrite={id:crypto.randomUUID(),url:t.url,value:data.value,used:false,abort:new AbortController(),current:allowed};
+  nativeWrites.set(id,write);
+  try{return await send(id,type,{...data,nativeWriteId:write.id},()=>allowed() && !write.abort.signal.aborted);}
+  finally {write.abort.abort();if(nativeWrites.get(id)===write)nativeWrites.delete(id);}
+}
 const automationKey=(id:number)=>`aleksAutomation:${id}`;
 async function cancelTabAssist(id:number) {
+  cancelNative(id);
   automationStarting.get(id)?.abort();
   assistJobs.delete(id);assistProposals.delete(id);
   const remote=assistRemoteJobs.get(id);assistRemoteJobs.delete(id);
@@ -78,6 +100,7 @@ async function attach(id:unknown) {
   return {...await send(t.id,'status'),tab:{id:t.id,title:t.title || 'Actividad matemática',url:t.url}};
 }
 async function stopAll() {
+  nativeEpoch++;nativeTabs.clear();for(const write of nativeWrites.values())write.abort.abort();
   for(const starting of automationStarting.values())starting.abort();
   await Promise.allSettled([...automations.values()].map(run=>run.stop('Recorrido detenido por cambio de sesión o permisos.')));
   const activeAssist=[...assistWriters];
@@ -131,8 +154,18 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       await chrome.permissions.remove({origins:[`${BACKEND}/*`,...ALEKS_ORIGINS.map(origin=>`${origin}/*`)]});return true;
     }
     case 'tabs': return (await chrome.tabs.query({})).filter(t=>t.id && t.url && allowedTab(t.url)).map(t=>({id:t.id,title:t.title,url:t.url}));
-    case 'attach': {const result=await attach(m.tabId);return {...result,automation:await automationStatus(result.tab.id)};}
-    case 'status': {const t=await tab(m.tabId);return {...await send(t.id,'status'),automation:await automationStatus(t.id)};}
+    case 'attach': {const result=await attach(m.tabId);return {...result,nativeKeyboard:nativeTabs.has(result.tab.id),automation:await automationStatus(result.tab.id)};}
+    case 'status': {const t=await tab(m.tabId);return {...await send(t.id,'status'),nativeKeyboard:nativeTabs.has(t.id),automation:await automationStatus(t.id)};}
+    case 'nativeKeyboard': {
+      const t=await tab(m.tabId);
+      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof m.enabled!=='boolean')throw Error('Selecciona una pestaña ALEKS.');
+      if(assistWriters.has(t.id) || automations.get(t.id)?.view.active || automationStarting.has(t.id))throw Error('Detén la operación antes de cambiar el método de escritura.');
+      if(m.enabled) {
+        if(!await auth() || !await chrome.permissions.contains({permissions:['debugger']}))throw Error('Inicia sesión en el asistente y recarga la extensión con el permiso de depuración.');
+        nativeTabs.add(t.id);
+      }else nativeTabs.delete(t.id);
+      return nativeTabs.has(t.id);
+    }
     case 'automationStart': {
       const t=await tab(m.tabId);
       if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth())throw Error('Selecciona ALEKS e inicia sesión en el asistente.');
@@ -152,7 +185,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           solve:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return handleUI({type:'assist',tabId:t.id,includeImage:false},true,()=>run.view.active);},
           submit:async proposal=>{
             await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');assistProposals.delete(t.id);assistWriters.add(t.id);
-            try{return await send(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:proposal.result.proposal.answers[0].value,runId:run.view.id},()=>run.view.active);}
+            try{return await deliverAnswer(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:proposal.result.proposal.answers[0].value,runId:run.view.id},()=>run.view.active);}
             finally{assistWriters.delete(t.id);}
           },
           next:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return send(t.id,'automationNext',{runId:run.view.id},()=>run.view.active);},
@@ -258,7 +291,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       const answers=proposal.result.proposal.answers;
       if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !parseSupportedAnswer(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero o fracción sin unidad.');
       assistWriters.add(t.id);
-      try{return await send(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answers[0].value});}
+      try{return await deliverAnswer(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answers[0].value});}
       finally{assistWriters.delete(t.id);}
     }
     case 'start': {
@@ -273,7 +306,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       return send(t.id,'start',{limits,authorization:consent});
     }
     case 'pause': case 'resume': case 'stop': case 'cancelAssist': {
-      const t=await tab(m.tabId);await automations.get(t.id)?.stop();assistProposals.delete(t.id);assistJobs.delete(t.id);
+      const t=await tab(m.tabId);cancelNative(t.id);await automations.get(t.id)?.stop();assistProposals.delete(t.id);assistJobs.delete(t.id);
       const remote=assistRemoteJobs.get(t.id);assistRemoteJobs.delete(t.id);
       if(remote)await api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});
       return send(t.id,m.type==='cancelAssist'?'stop':String(m.type));
@@ -284,6 +317,23 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
 async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.MessageSender) {
   if(!sender.tab?.id || sender.frameId!==0) throw Error('Marco no autorizado');
   const t=await tab(sender.tab.id);
+  if(m.type==='nativeType') {
+    const write=nativeWrites.get(t.id);
+    if(!write || write.used || m.writeId!==write.id || !nativeTabs.has(t.id) || sender.url!==write.url || t.url!==write.url || !ALEKS_ORIGINS.includes(new URL(t.url).origin))throw Error('No hay una escritura de teclado autorizada para esta pestaña.');
+    write.used=true;
+    const check=async()=>{
+      write.abort.signal.throwIfAborted();
+      const current=await tab(t.id);
+      const active=await chrome.tabs.query({active:true,windowId:current.windowId});
+      const window=await chrome.windows.get(current.windowId);
+      if(nativeWrites.get(t.id)!==write || !write.current() || !nativeTabs.has(t.id) || current.url!==write.url ||
+        active.length!==1 || active[0].id!==t.id || !window.focused || !await auth() || !await chrome.permissions.contains({permissions:['debugger']}))throw Error('Activa la pestaña ALEKS y conserva el foco en el editor. Se detuvo la escritura.');
+      write.abort.signal.throwIfAborted();
+    };
+    await typeNativeAnswer(t.id,write.value,{signal:write.abort.signal,check,
+      guard:async()=>{await send(t.id,'nativeGuard',{writeId:write.id},()=>!write.abort.signal.aborted && write.current());}});
+    return true;
+  }
   if(!sender.url || new URL(sender.url).origin!==new URL(t.url).origin || !simulatorURL(t.url)) throw Error('Origen del adaptador no autorizado');
   const key=`run:${t.id}`,consentKey=`consent:${t.id}`;
   const entries=await chrome.storage.local.get([key,consentKey]);
@@ -321,6 +371,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
 });
 chrome.permissions.onRemoved.addListener(()=>{void stopAll();});
 chrome.tabs.onRemoved.addListener(id=>{
+  nativeTabs.delete(id);cancelNative(id);
   void automations.get(id)?.stop('La pestaña se cerró.').finally(()=>chrome.storage.session.remove(automationKey(id)));automations.delete(id);
   assistProposals.delete(id);assistJobs.delete(id);assistWriters.delete(id);
   const remote=assistRemoteJobs.get(id);assistRemoteJobs.delete(id);if(remote)void api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});

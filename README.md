@@ -2,7 +2,9 @@
 
 Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 
-**La versión 0.3.0 añade un recorrido ALEKS: resolver, escribir, verificar y avanzar después de una confirmación nueva de «Correcta».** Actualmente admite ejercicios de texto con un entero no negativo o una fracción reducida, sin unidad, en un único recuadro vacío compatible (doce dígitos por componente). Diagramas, unidades y varios recuadros requieren intervención manual. La integración utiliza controles aportados por el usuario y pruebas sintéticas; falta comprobar el recorrido en ALEKS real. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
+**La versión 0.4.0 añade escritura mediante el teclado de Chrome para el editor que ignora los eventos sintéticos.** El recorrido ALEKS resuelve, escribe, verifica y avanza después de una confirmación nueva de «Correcta». Admite ejercicios de texto con un entero no negativo o una fracción reducida, sin unidad, en un único recuadro vacío compatible (doce dígitos por componente). Diagramas, unidades y varios recuadros requieren intervención manual. Se probaron teclas reales de Chromium contra un editor de prueba; falta comprobar el recorrido en ALEKS real. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
+
+Para usar el nuevo método, actualiza la extensión y marca **Usar teclado de Chrome para esta pestaña**. La versión declara el permiso `debugger`, que Chrome exige para enviar esas teclas y que puede mostrar un aviso al actualizar. La conexión se abre al escribir y se cierra al terminar; Chrome muestra un aviso de depuración mientras está conectada. El código restringe la operación a la respuesta numérica de la pestaña ALEKS seleccionada. Sigue [los pasos de actualización y prueba para Windows](docs/IA_GENERAL.md#actualizar-a-040-en-windows).
 
 ¿Es tu primera instalación y no tienes experiencia en programación? Sigue la [guía desde cero para Windows](docs/GUIA_DESDE_CERO.md): incluye descarga, instalación, primera prueba y lectura en ALEKS.
 
@@ -119,18 +121,18 @@ Las pruebas del navegador ejecutan **el adaptador y controlador de producción c
 
 Consulta [docs/VALIDACION.md](docs/VALIDACION.md) para los resultados ejecutados y pendientes, y [docs/PLAN.md](docs/PLAN.md) para criterios y decisiones.
 
-## Recorrido ALEKS 0.3.0
+## Recorrido ALEKS 0.4.0
 
 El ejercicio de dos cajas se comprueba exactamente: `4/(1+4) × 3/(9+3) = 1/5`. Este comprobador reconoce la plantilla completa y variantes numéricas, sin llamar a Ollama. Otros problemas siguen usando el modelo. El lector y el escritor admiten fracciones reducidas `a/b`: el usuario confirmó que ALEKS convierte ese texto en una fracción vertical. La extensión exige leer ambos componentes antes de verificar; un `input.value` o el texto literal `1/5` sin conversión no acreditan escritura.
 
 Cuando el modelo no devuelve una respuesta, el recorrido muestra su motivo concreto. **Preparar diagnóstico del editor** y **Copiar diagnóstico** producen un informe acotado de símbolos, posiciones y botones conocidos, sin HTML completo, enlaces de sesión o datos de cuenta. No se otorga acceso genérico a funciones internas de ALEKS.
 
 
-Si ya tienes Ollama y el backend funcionando, sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md). Se actualizan `backend`, `extension/src` y `extension/public`, se reinicia el backend, se ejecuta `npm.cmd run build`, se recarga la extensión en `chrome://extensions` y se actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`.
+Si ya tienes la versión 0.3.0, sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md#actualizar-a-040-en-windows). Esta corrección cambia únicamente la extensión: actualiza `extension/src` y `extension/public`, ejecuta `npm.cmd run build`, recarga la extensión en `chrome://extensions` y actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`; el backend puede seguir funcionando.
 
 1. Abre el ejercicio en `https://latam-awu.aleks.com` y deja vacío su recuadro. En el panel pulsa **Autorizar sitio ALEKS**, selecciona esa pestaña y pulsa **Leer actividad seleccionada**.
 2. Comprueba que el backend y Ollama estén disponibles. Entra en demostración o inicia sesión en el asistente; ALEKS utiliza tu sesión propia en su pestaña.
-3. En **RECORRIDO AUTOMÁTICO ALEKS**, configura el máximo de respuestas, minutos y llamadas IA. Para la primera comprobación puedes elegir una respuesta, cinco minutos y dos llamadas.
+3. Marca **Usar teclado de Chrome para esta pestaña**, cierra DevTools y mantén ALEKS como pestaña activa. En **RECORRIDO AUTOMÁTICO ALEKS**, configura el máximo de respuestas, minutos y llamadas IA. Para la primera comprobación puedes elegir una respuesta, cinco minutos y dos llamadas.
 4. Pulsa **Iniciar recorrido automático**. Si ya obtuviste una propuesta compatible con **Resolver con IA local**, puedes comenzar desde ella con **Responder, verificar y continuar**.
 5. Mantén abiertos Chrome, la pestaña y el panel. **Detener recorrido** cancela las operaciones pendientes. El panel muestra cuántas respuestas confirmó ALEKS como correctas y el motivo de cualquier detención.
 
@@ -144,6 +146,6 @@ Cada consulta reserva dos llamadas IA antes de empezar y devuelve al presupuesto
 
 Los fragmentos históricos del cilindro, círculo y premios aportaron `#algoPrompt`, los inputs `Answer Editor`, los árboles visuales y los botones completos. `input.value` no acredita la respuesta del editor: se exige su representación visual aunque el input tenga `opacity:0`. «Pregunta 12» no es un requisito. La lectura del círculo puede reconocer fracciones, pi y unidades en sus dos campos, pero esa observación no habilita su escritura automática.
 
-Las pruebas de entrega y avance usan esos fragmentos sin datos personales y respuestas DOM simuladas. No equivalen a una ejecución autenticada en ALEKS ni a una inferencia real de Qwen. Sigue pendiente comprobar en el equipo del usuario que ALEKS acepte los eventos de escritura. Si los ignora, la extensión detiene el recorrido y explica que el valor no apareció; no declara una entrega aceptada.
+Las pruebas de entrega y avance usan esos fragmentos sin datos personales y respuestas DOM simuladas. La prueba de teclado utiliza eventos confiables de Chromium (`isTrusted`) en un editor que rechaza los eventos sintéticos; simula el puente `chrome.debugger`. No equivale a cargar la extensión ni a una ejecución autenticada en ALEKS o una inferencia real de Qwen. Sigue pendiente comprobar en el equipo del usuario que ALEKS registre esas teclas. Si no refleja la respuesta, la extensión detiene el recorrido antes de entregar.
 
 Referencias: [permisos Chrome](https://developer.chrome.com/docs/extensions/develop/concepts/declare-permissions), [content scripts](https://developer.chrome.com/docs/extensions/develop/concepts/content-scripts), [Identity](https://developer.chrome.com/docs/extensions/reference/api/identity), [panel lateral](https://developer.chrome.com/docs/extensions/reference/api/sidePanel), [ciclo MV3](https://developer.chrome.com/docs/extensions/develop/concepts/service-workers/lifecycle), [OIDC Google](https://developers.google.com/identity/openid-connect/openid-connect), [verificación de tokens](https://developers.google.com/identity/gsi/web/guides/verify-google-id-token), [SDK oficial OpenAI](https://github.com/openai/openai-python/blob/main/helpers.md). Las páginas de documentación web devolvieron 403 desde esta red; se consultaron las fuentes oficiales accesibles de OpenAI y google-auth en GitHub.

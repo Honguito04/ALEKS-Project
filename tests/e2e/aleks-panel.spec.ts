@@ -154,3 +154,31 @@ test('una propuesta visual incoherente se presenta descartada y sin respuesta di
   await expect(page.getByText('Respuesta del ejercicio:',{exact:false})).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Introducir respuesta en el recuadro'})).toHaveCount(0);
 });
+
+test('la elección de teclado se envía para la pestaña seleccionada y sigue el estado del worker',async({page})=>{
+  await openPanel(page);
+  const keyboard=page.getByLabel('Usar teclado de Chrome para esta pestaña');
+  await expect(keyboard).not.toBeChecked();await keyboard.check();
+  await expect(keyboard).toBeChecked();
+  await expect(page.getByText('Teclado de Chrome activado para esta pestaña.',{exact:false})).toBeVisible();
+  expect(await page.evaluate(()=>window.testPanelMessages.filter(message=>message.type==='nativeKeyboard')))
+    .toEqual([{scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true}]);
+  // Un reinicio del worker pierde la elección en memoria: el sondeo debe
+  // reflejarlo y no dejar una casilla que prometa el teclado aún habilitado.
+  await page.evaluate(()=>{window.testNativeKeyboard=false;});
+  await expect(keyboard).not.toBeChecked();
+  await expect(page.getByText('Teclado de Chrome activado para esta pestaña.',{exact:false})).toHaveCount(0);
+  await keyboard.check();await keyboard.uncheck();
+  expect(await page.evaluate(()=>window.testPanelMessages.filter(message=>message.type==='nativeKeyboard').at(-1)))
+    .toEqual({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:false});
+});
+
+test('un rechazo al activar el teclado mantiene la casilla desmarcada y explica el fallo',async({page})=>{
+  await openPanel(page);
+  await page.evaluate(()=>{window.testNativeKeyboardError='Recarga la extensión con el permiso de depuración.';});
+  const keyboard=page.getByLabel('Usar teclado de Chrome para esta pestaña');
+  await keyboard.click();
+  await expect(page.getByRole('alert')).toContainText('Recarga la extensión con el permiso de depuración.');
+  await expect(keyboard).not.toBeChecked();await expect(keyboard).toBeEnabled();
+  await expect(page.getByText('Teclado de Chrome activado para esta pestaña.',{exact:false})).toHaveCount(0);
+});

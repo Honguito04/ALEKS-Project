@@ -7,7 +7,7 @@ import { prepareAssistImage } from './assist-image';
 import type { AutomationView } from './aleks-automation';
 
 type Tab = {id:number;title:string;url:string};
-type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution;automation?:AutomationView};
+type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution;automation?:AutomationView;nativeKeyboard?:boolean};
 type Health = {status:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
 async function rpc(type:string,data:Record<string,unknown>={}) {
   const r=await chrome.runtime.sendMessage({scope:'ui',type,...data});
@@ -174,6 +174,11 @@ function App() {
     </section>}
     {aleks && <section aria-label="Diagnóstico de controles ALEKS">
       <div className="section-label">CONTROLES DEL EJERCICIO</div>
+      <label className="check"><input type="checkbox" checked={view.nativeKeyboard===true} disabled={working || !mode} onChange={event=>{
+        const enabled=event.target.checked;void attempt(async()=>{const value=await rpc('nativeKeyboard',{tabId:selected,enabled});setView(previous=>({...previous,nativeKeyboard:value}));});
+      }}/>Usar teclado de Chrome para esta pestaña</label>
+      <p className="small">Si el recuadro sigue vacío al escribir, activa esta opción. Usa el permiso de depuración de Chrome para teclear únicamente la respuesta en ALEKS y se desconecta al terminar. Chrome mostrará un aviso de depuración. Mantén activa esta pestaña y cierra sus herramientas de desarrollador; no cambies el foco durante la escritura.</p>
+      {view.nativeKeyboard && <p className="small">Teclado de Chrome activado para esta pestaña. Se comprueba lo escrito antes de verificar.</p>}
       <p className="small">Puedes copiar un diagnóstico del editor y sus botones para revisar formatos que todavía fallan. Incluye símbolos matemáticos y disposición de controles; excluye datos de cuenta, enlaces y el contenido de otros menús.</p>
       <button className="secondary" disabled={working} onClick={()=>void attempt(async()=>{setEditorReport(JSON.stringify(await rpc('editorDiagnostics',{tabId:selected}),null,2));})}>Preparar diagnóstico del editor</button>
       {editorReport && <><textarea aria-label="Diagnóstico del editor" value={editorReport} readOnly rows={8}/>

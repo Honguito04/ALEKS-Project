@@ -2,7 +2,39 @@
 
 El objetivo es ampliar la cobertura por interpretación del contenido, sin programar una regla para cada enunciado. Una IA multimodal puede trabajar con texto, fórmulas y diagramas. La extensión puede introducir respuestas y pulsar controles, pero necesita comprobar lo que la interfaz registró. Ningún modelo garantiza resolver todos los ejercicios ni manejar cualquier editor.
 
-## Actualización 0.3.0: fracciones y diagnóstico
+## Actualizar a 0.4.0 en Windows
+
+El diagnóstico recibido muestra un editor visible y habilitado, con input transparente y árbol visual vacío. La transparencia forma parte de su representación; el fallo es que ALEKS no registró la escritura sintética. La versión 0.4.0 ofrece **Usar teclado de Chrome para esta pestaña** para enviar teclas por la API de depuración. Conserva la lectura visual antes de entregar y la confirmación nueva de **Correcta** antes de avanzar.
+
+Si ya tienes 0.3.0 y el backend funcionando:
+
+1. Detén cualquier recorrido. Descarga [el ZIP actualizado de main](https://github.com/Honguito04/ALEKS-Project/archive/refs/heads/main.zip) y extráelo en una carpeta temporal.
+2. Copia la carpeta **extension** de esa descarga dentro de tu proyecto original y acepta reemplazar los archivos. Conserva `.env`, `.venv` y `node_modules`. Esta corrección no cambia el backend ni las dependencias.
+3. Abre PowerShell en la carpeta principal de tu proyecto original, donde está `package.json`, y ejecuta:
+
+   ```powershell
+   npm.cmd run build
+   ```
+
+4. Abre `chrome://extensions`, pulsa **Recargar** en el asistente y comprueba que indique **0.4.0**. Esta versión añade el permiso de depuración (`debugger`). Si Chrome desactiva la extensión por el nuevo permiso, revisa el aviso y vuelve a habilitarla para usar la función. Chrome no permite solicitar este permiso como opcional.
+5. Pulsa **F5** en ALEKS. Abre el panel con el icono del asistente, entra en demostración si perdió la sesión y pulsa **Leer actividad seleccionada**. Puedes dejar el backend y Ollama funcionando.
+6. En **CONTROLES DEL EJERCICIO**, marca **Usar teclado de Chrome para esta pestaña**. Esta elección se reinicia al cerrar sesión o reiniciarse el worker de la extensión. Cierra DevTools si está abierto; mantén ALEKS como pestaña activa y Chrome en primer plano.
+7. Abre un ejercicio de texto con **un solo recuadro vacío**, cuya respuesta sea un entero no negativo o una fracción reducida sin unidad. Deja la captura desmarcada y pulsa **Resolver con IA local**. Para comprobar únicamente la escritura, pulsa **Introducir respuesta en el recuadro**: debe aparecer en ALEKS y la extensión debe confirmar que la leyó. Ese botón no verifica ni avanza.
+8. Para probar el recorrido completo, parte de un recuadro vacío y vuelve a consultar si cambió su contenido. Configura **1 respuesta**, **5 minutos** y **2 llamadas IA**. Pulsa **Responder, verificar y continuar** desde la propuesta o **Iniciar recorrido automático** para consultar primero. No cambies de pestaña ni escribas mientras introduce la respuesta. Con un límite de una respuesta, termina mostrando la respuesta aceptada; con un límite mayor, avanza después de **Correcta**.
+
+Chrome muestra un aviso mientras la conexión de depuración está activa. La aplicación la usa solo para las teclas de la respuesta guardada, comprueba pestaña, enunciado y campo, y se desconecta al terminar o fallar. Si se interrumpe a mitad, revisa el recuadro y vacíalo antes de una nueva consulta; no se reintenta automáticamente. No se ha comprobado aún esta escritura en la cuenta ALEKS del usuario: las pruebas envían teclas reales de Chromium a un editor de prueba.
+
+Si el backend se detuvo, abre otra ventana de PowerShell en la carpeta principal y ejecuta:
+
+```powershell
+$env:AI_PROVIDER = "ollama"
+$env:AI_MODEL = "qwen3-vl:4b"
+.\.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000
+```
+
+Deja esa ventana abierta y comprueba `http://127.0.0.1:8000/health`. Si tu versión es anterior a 0.3.0, actualiza también **backend**, reinícialo y sigue los pasos de compilación y recarga anteriores.
+
+## Historial 0.3.0: fracciones y diagnóstico
 
 La escritura admite un entero no negativo o una fracción reducida `a/b`, con hasta doce dígitos por componente, denominador positivo, sin unidad y en un único recuadro vacío. El usuario confirmó que escribir `1/5` crea una fracción vertical en su editor. El escritor solicita esa conversión una vez y comprueba numerador y denominador en dos filas antes de pulsar Verificar. No vuelve a intentarlo con otra estrategia si falla. Las pruebas de eventos son sintéticas: falta comprobar la aceptación de esos eventos en Chrome del usuario.
 
@@ -29,7 +61,7 @@ Para instalar 0.3.0:
 
 No hay acceso desde este entorno al Chrome autenticado del usuario. Los permisos del sitio permiten interactuar con controles de la pestaña; no aseguran compatibilidad con todos los editores, diagramas o actividades. El recorrido sigue limitado a los formatos descritos.
 
-Los apartados siguientes documentan el comportamiento anterior de 0.2.0 y la instalación inicial; para actualizar usa los pasos de 0.3.0 anteriores.
+Los apartados siguientes documentan el comportamiento anterior de 0.2.0 y la instalación inicial; para actualizar usa los pasos de 0.4.0 al principio de esta guía.
 
 ## Estado actual
 

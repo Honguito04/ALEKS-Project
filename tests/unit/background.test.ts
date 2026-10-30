@@ -10,6 +10,8 @@ let local:Record<string,unknown>,session:Record<string,unknown>;
 let url:string,permitted:boolean;
 let tabsSend:ReturnType<typeof vi.fn>;
 let fetchMock:ReturnType<typeof vi.fn>;
+let nativeAttach:ReturnType<typeof vi.fn>,nativeCommand:ReturnType<typeof vi.fn>,nativeDetach:ReturnType<typeof vi.fn>;
+let nativeFocused:boolean,nativeActiveTab:number;
 const limits={maxExercises:10,maxMinutes:10,maxAICalls:0,preview:false};
 const exercise:Exercise={source:'simulator',activity_id:'activity',fingerprint:'a'.repeat(64),statement:'1+1',math:{family:'arithmetic',expression:'1+1'},fields:[{id:'answer',kind:'text'}],choices:[],domain:'real',units:'',format:'exact',decimal_places:2,evidence:['test'],ambiguities:[]};
 const run=(authorizedLimits:Limits=limits):Run=>({id:'00000000-0000-4000-8000-000000000001',origin:BACKEND,activity:'activity',state:'INACTIVO',limits:authorizedLimits,started:Date.now(),count:0,aiCalls:0,message:'Autorización de sesión registrada',operations:{},events:[]});
@@ -21,12 +23,15 @@ beforeEach(async()=>{
   vi.resetModules();local={};session={auth:{token:'not-exposed-to-content',mode:'demo'}};url=BACKEND+'/simulator/';permitted=true;
   tabsSend=vi.fn(async()=>({ok:true,data:{detection:{origin:BACKEND,activity:'activity',session:true,supported:true}}}));
   fetchMock=vi.fn(async()=>Response.json({status:'ok',mode:'demo'}));vi.stubGlobal('fetch',fetchMock);
+  nativeAttach=vi.fn(async()=>{});nativeCommand=vi.fn(async()=>{});nativeDetach=vi.fn(async()=>{});nativeFocused=true;nativeActiveTab=7;
   vi.stubGlobal('chrome',{
     runtime:{id,getURL:(p:string)=>ext+p,onMessage:{addListener:(fn:Listener)=>{listener=fn;}},onInstalled:{addListener:vi.fn()}},
     sidePanel:{setPanelBehavior:vi.fn(async()=>{}),open:vi.fn(async()=>{})},
     action:{onClicked:{addListener:(fn:typeof actionClick)=>{actionClick=fn;}}},storage:{local:store(local),session:store(session)},
     permissions:{contains:async()=>permitted,remove:vi.fn(async()=>true),onRemoved:{addListener:vi.fn()}},
-    tabs:{get:async(id:number)=>({id,url,title:'Simulador'}),query:async()=>[{id:7,url}],sendMessage:tabsSend,onRemoved:{addListener:vi.fn()}},
+    debugger:{attach:nativeAttach,sendCommand:nativeCommand,detach:nativeDetach,onDetach:{addListener:vi.fn(),removeListener:vi.fn()}},
+    windows:{get:async()=>({id:1,focused:nativeFocused})},
+    tabs:{get:async(id:number)=>({id,url,title:'Simulador',windowId:1,active:id===nativeActiveTab}),query:async()=>[{id:nativeActiveTab,url}],sendMessage:tabsSend,onRemoved:{addListener:vi.fn()}},
     scripting:{executeScript:async()=>{}}
   });
   await import('../../extension/src/background');
@@ -499,4 +504,80 @@ it('Detener sigue disponible si la pestaña salió de ALEKS o perdió el permiso
   expect(stopped).toMatchObject({ok:true,data:{active:false,phase:'DETENIDO'}});
   expect(adapterCalls('stop')).toHaveLength(1);
   expect(adapterCalls('automationSubmit')).toHaveLength(0);
+});
+
+async function nativeProposal() {
+  prepareAssist();
+  expect((await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true})).ok).toBe(true);
+  return (await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+}
+const nativeFill=(proposalId:string)=>send({scope:'ui',type:'assistFill',tabId:7,proposalId});
+
+it('el teclado nativo necesita elección del panel y una operación pendiente',async()=>{
+  prepareAssist();
+  expect((await send({scope:'content',type:'nativeKeyboard',tabId:7,enabled:true},content())).ok).toBe(false);
+  expect((await send({scope:'content',type:'nativeType',writeId:'inventado',value:'12'},content())).ok).toBe(false);
+  expect((await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true})).ok).toBe(true);
+  expect((await send({scope:'content',type:'nativeType',writeId:'inventado',value:'12'},content())).ok).toBe(false);
+  expect(nativeAttach).not.toHaveBeenCalled();
+});
+
+it('el teclado usa la respuesta guardada por el worker y consume el identificador una vez',async()=>{
+  const proposal=await nativeProposal();let writeId='';
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistFill') {
+      writeId=String(message.nativeWriteId);
+      const response=await send({scope:'content',type:'nativeType',writeId,value:'999',commands:['Runtime.evaluate']},content());
+      return response.ok?{ok:true,data:{written:true}}:response;
+    }
+    return {ok:true,data:true};
+  });
+  expect((await nativeFill(proposal.id)).ok).toBe(true);
+  expect(nativeAttach).toHaveBeenCalledExactlyOnceWith({tabId:7},'1.3');
+  expect(nativeCommand.mock.calls.map(call=>call[2].text).filter(Boolean)).toEqual(['1','2']);
+  expect(nativeCommand.mock.calls.every(call=>call[1]==='Input.dispatchKeyEvent')).toBe(true);
+  expect(nativeDetach).toHaveBeenCalledExactlyOnceWith({tabId:7});
+  expect((await send({scope:'content',type:'nativeType',writeId},content())).ok).toBe(false);
+  expect(nativeAttach).toHaveBeenCalledTimes(1);
+});
+
+it.each(['frame','tab','url','permission','auth','active-tab','focused-window'] as const)('no teclea si cambia la frontera %s',async reason=>{
+  const proposal=await nativeProposal();
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type!=='assistFill')return {ok:true,data:true};
+    const sender=content();
+    if(reason==='frame')sender.frameId=1;
+    if(reason==='tab')sender.tab={...sender.tab!,id:8};
+    if(reason==='url')sender.url=ALEKS_ACTIVITY+'/other-document';
+    if(reason==='permission')permitted=false;
+    if(reason==='auth')delete session.auth;
+    if(reason==='active-tab')nativeActiveTab=8;
+    if(reason==='focused-window')nativeFocused=false;
+    return send({scope:'content',type:'nativeType',writeId:message.nativeWriteId},sender);
+  });
+  expect((await nativeFill(proposal.id)).ok).toBe(false);
+  expect(nativeCommand).not.toHaveBeenCalled();
+});
+
+it('detener antes de la solicitud de teclado invalida la operación pendiente',async()=>{
+  const proposal=await nativeProposal();let release!:()=>void,entered!:()=>void;
+  const notified=new Promise<void>(resolve=>{entered=resolve;}),waiting=new Promise<void>(resolve=>{release=resolve;});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistFill') {entered();await waiting;return send({scope:'content',type:'nativeType',writeId:message.nativeWriteId},content());}
+    return {ok:true,data:true};
+  });
+  const filling=nativeFill(proposal.id);await notified;
+  await send({scope:'ui',type:'cancelAssist',tabId:7});release();
+  expect((await filling).ok).toBe(false);expect(nativeAttach).not.toHaveBeenCalled();
+});
+
+it('detener durante una tecla evita enviar el resto de la respuesta y desconecta',async()=>{
+  const proposal=await nativeProposal();let release!:()=>void,entered!:()=>void;
+  const notified=new Promise<void>(resolve=>{entered=resolve;});
+  nativeCommand.mockImplementation(()=>new Promise<void>(resolve=>{release=resolve;entered();}));
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>message.type==='assistFill'
+    ?send({scope:'content',type:'nativeType',writeId:message.nativeWriteId},content()):{ok:true,data:true});
+  const filling=nativeFill(proposal.id);await notified;
+  await send({scope:'ui',type:'cancelAssist',tabId:7});release();
+  expect((await filling).ok).toBe(false);expect(nativeCommand).toHaveBeenCalledTimes(1);expect(nativeDetach).toHaveBeenCalledTimes(1);
 });

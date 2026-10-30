@@ -1,6 +1,18 @@
 # Validación ejecutada
 
-Actualización: 28 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+Actualización: 29 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+
+## Revisión 0.4.0: teclado de Chrome (29 de octubre)
+
+- Compilación y TypeScript correctos; **151 pruebas unitarias pasadas**. Las 37 nuevas cubren el escritor nativo y su coordinación con el worker: teclas acotadas, permiso/sesión/origen, pestaña activa, ventana enfocada, token de un uso, cancelación y desconexión. Los avisos de Rollup sobre anotaciones de Zod no impiden compilar.
+- **107 pruebas de navegador afectadas pasadas**: contexto y escritura, fracciones, entrega/avance, contenido, panel y teclado. Ocho casos de teclado usan CDP real de Chromium; seis nuevas regresiones comprueban el intercambio de mensajes del contenido y la elección del panel.
+- Backend sin cambios; no se repitió su suite en esta revisión. La última ejecución registrada conserva **164 pruebas pasadas**.
+
+El nuevo editor de prueba rechaza eventos sintéticos y acepta únicamente teclas con `isTrusted`. Se reprodujo el árbol vacío con el escritor anterior y se confirmó lectura de `12` y `1/5` con las teclas de Chromium. Los cambios de campo, enunciado y la cancelación interrumpen una respuesta parcial sin entregar. Se simula un documento sin foco de ventana para comprobar que iniciar desde el panel no exige `document.hasFocus()`; se conserva la comprobación de `activeElement` y la selección de pestaña/ventana en el worker.
+
+El permiso requerido `debugger` se añade al manifest 0.4.0. El código solo envía `Input.dispatchKeyEvent`, no Enter ni comandos de ejecución. La elección por pestaña se activa desde el panel y no se conserva al reiniciar el worker. Chrome no admite declarar este permiso como opcional. La conexión se libera al terminar o ante un error, sin desconectar una sesión ajena si `attach` fue rechazado.
+
+**Límite de la evidencia:** el navegador administrado no permite cargar la extensión. Las pruebas simulan `chrome.debugger` con un puente a CDP de Playwright; las teclas son reales, pero el editor y el feedback son fixtures. No se ejecutó en ALEKS autenticado, no se probó el aviso nativo de permisos ni una inferencia real de Ollama. Falta la comprobación del usuario con la extensión recargada y un recuadro vacío. Los apartados siguientes conservan resultados históricos.
 
 ## Revisión 0.3.0: fracciones (28 de octubre)
 
