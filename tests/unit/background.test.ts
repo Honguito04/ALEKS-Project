@@ -511,6 +511,52 @@ async function nativeProposal() {
   expect((await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true})).ok).toBe(true);
   return (await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
 }
+
+it('un inicio inválido conserva Correcta y la continuación avanza en el mismo recorrido sin reenviar',async()=>{
+  const state=prepareAutomation();
+  const started=await automationStart({limits:{...automationLimits,maxExercises:1}}),runId=started.data.id;
+  await automationStep(runId);await automationStep(runId);
+  const completed=(await send({scope:'ui',type:'status',tabId:7})).data.automation;
+  expect(completed).toMatchObject({phase:'COMPLETADO',canContinue:true,accepted:1});
+  expect((await automationStart({limits:{...automationLimits,maxExercises:0}})).ok).toBe(false);
+  state.contextChange={can_fill_integer:false,fill_blockers:['editor_not_empty','result_present']};
+  const wrongStart=await automationStart();
+  expect(wrongStart.ok).toBe(false);expect(wrongStart.error).toContain('Continuar desde la respuesta correcta');
+  expect((await send({scope:'ui',type:'status',tabId:7})).data.automation).toEqual(completed);
+  expect(adapterCalls('stop')).toHaveLength(0);expect(adapterCalls('automationReset')).toHaveLength(1);
+  const continueMessage={scope:'ui',type:'automationContinue',tabId:7,runId,limits:automationLimits};
+  expect((await send({...continueMessage,limits:{...automationLimits,maxExercises:1}})).ok).toBe(false);
+  expect((await send(continueMessage)).data).toMatchObject({id:runId,phase:'CORRECTA',accepted:1,active:true});
+  expect(adapterCalls('automationNext')).toHaveLength(0);expect(adapterCalls('automationSubmit')).toHaveLength(1);
+  state.contextChange={};
+  await automationStep(runId);await automationStep(runId);await automationStep(runId);
+  expect(adapterCalls('automationReset')).toHaveLength(1);expect(adapterCalls('automationNext')).toHaveLength(1);
+  expect(adapterCalls('automationSubmit')).toHaveLength(2);
+  expect((await send({scope:'ui',type:'status',tabId:7})).data.automation).toMatchObject({phase:'COMPLETADO',accepted:2,canContinue:true});
+});
+
+it('no permite continuar desde contenido, otro runId, sin sesión o después de Detener',async()=>{
+  prepareAutomation();const started=await automationStart({limits:{...automationLimits,maxExercises:1}});
+  await automationStep(started.data.id);await automationStep(started.data.id);
+  const message={scope:'ui',type:'automationContinue',tabId:7,runId:started.data.id,limits:automationLimits};
+  expect((await send({...message,scope:'content'},content())).ok).toBe(false);
+  expect((await send({...message,runId:'foreign'})).ok).toBe(false);
+  delete session.auth;expect((await send(message)).ok).toBe(false);
+  session.auth={token:'not-exposed-to-content',mode:'demo'};
+  await automationStop();expect((await send(message)).ok).toBe(false);
+  expect(adapterCalls('automationNext')).toHaveLength(0);expect(adapterCalls('automationSubmit')).toHaveLength(1);
+});
+
+it('un contador persistido tras reiniciar no recupera la evidencia para continuar',async()=>{
+  prepareAutomation();
+  session['aleksAutomation:7']={id:'prior-run',phase:'COMPLETADO',active:false,busy:false,canContinue:true,
+    accepted:1,aiCalls:0,started:Date.now(),limits:automationLimits,message:'Correcta'};
+  const status=(await send({scope:'ui',type:'status',tabId:7})).data.automation;
+  expect(status).toMatchObject({phase:'COMPLETADO',accepted:1,active:false,canContinue:false});
+  expect(status.message).toContain('Pulsa Siguiente');
+  expect((await send({scope:'ui',type:'automationContinue',tabId:7,runId:'prior-run',limits:automationLimits})).ok).toBe(false);
+  expect(adapterCalls('automationNext')).toHaveLength(0);expect(fetchMock).not.toHaveBeenCalled();
+});
 const nativeFill=(proposalId:string)=>send({scope:'ui',type:'assistFill',tabId:7,proposalId});
 
 it('el teclado nativo necesita elección del panel y una operación pendiente',async()=>{

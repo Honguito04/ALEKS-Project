@@ -1,5 +1,15 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.4.1: continuación e interpretación
+
+`AleksAutomation.view.canContinue` solo se activa al completar un límite conservando una entrega aceptada pendiente de avance. `continue(limits)` exige una acción del panel y límites totales suficientes; conserva `id`, huellas ya enviadas, respuestas aceptadas y llamadas consumidas, y renueva el plazo de tiempo. Guarda el estado antes de pasar a `CORRECTA`; el siguiente paso usa `AleksSubmission.next()` y revalida los mismos nodos de enunciado, feedback y botón. No resetea el contenido ni vuelve a entregar. Detener y perder el worker invalidan esa posibilidad; el estado persistido no recupera evidencia de aceptación.
+
+`automationStart` valida límites y contexto antes de reemplazar el recorrido previo. Un intento de inicio sobre un resultado visible conserva su estado y explica cómo continuar. Si el usuario avanzó manualmente, el panel habilita el inicio desde el nuevo recuadro. La falta de llamadas disponibles se comprueba antes de avanzar, dejando visible la respuesta correcta hasta ampliar el presupuesto.
+
+En el backend, `independent_boxes` mantiene el reconocimiento del enunciado completo, con normalización de separadores y variantes explícitas de elección de un artículo de cada caja. No acepta condiciones adicionales, unión de sucesos, extracción de una sola caja ni cantidades incompatibles. `AssistProposal` elimina negaciones completas de falta de datos de `missing_information`; una respuesta estructurada ya presente y sin carencias puede normalizar su estado a `proposed`, siempre sin verificación independiente. Si faltan respuestas estructuradas y ningún dato concreto se identifica, solicita una única corrección de formato al modelo con el problema original y una plantilla JSON. No extrae soluciones de la prosa, no reintenta fallos de red y cuenta hasta dos llamadas dentro de un máximo compartido de 210 segundos. Un fallo repetido conserva `unable_to_solve`.
+
+`/health.version` y el panel muestran la revisión del backend que realmente está ejecutándose. La actualización 0.4.1 requiere reemplazar ambas carpetas y reiniciar el proceso; recargar solo la extensión no cambia el comprobador del servidor.
+
 ## Ampliación 0.4.0: teclado de Chrome
 
 `native-keyboard.ts` envía únicamente `Input.dispatchKeyEvent` (keyDown/keyUp) para los dígitos y la barra de una respuesta admitida. Abre `chrome.debugger` por pestaña y se desconecta en `finally`; no usa Enter, comandos Runtime, código del modelo ni funciones internas de ALEKS. Chrome exige declarar `debugger` como permiso requerido y muestra un aviso de conexión. La elección por pestaña del panel es un control de la aplicación; no reduce el alcance que Chrome concede al permiso.

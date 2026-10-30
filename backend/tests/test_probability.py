@@ -17,6 +17,11 @@ BOXES = ("En una caja hay 1 lápiz y 4 bolígrafos. En una segunda caja hay 9 ma
     (BOXES.replace("1 lápiz", "0 lápices").replace("9 marcadores", "0 marcadores"), "1/1"),
     (BOXES.replace("bolígrafos", "fichas").replace("un bolígrafo", "una ficha"), "1/5"),
     (BOXES.upper().replace(" ", "\u00a0 \n"), "1/5"),
+    (BOXES.replace(". ", " .").replace("? ", " ?").replace("¿Cuál", "¿ Cuál"), "1/5"),
+    (BOXES.replace("En una caja", "En la primera caja").replace("En una segunda caja", "En la segunda caja"), "1/5"),
+    (BOXES.replace("En una segunda caja", "En otra caja").replace("de cada una de las cajas", "de cada caja"), "1/5"),
+    (BOXES.replace("Se elige", "Se selecciona").replace("se elija un bolígrafo", "se seleccione un bolígrafo")
+     .replace("se seleccione un crayón", "se elija un crayón"), "1/5"),
 ])
 def test_independent_box_probabilities_use_exact_reduced_fractions(statement, expected):
     result = independent_boxes(statement)
@@ -40,6 +45,9 @@ def test_independent_box_probabilities_use_exact_reduced_fractions(statement, ex
     BOXES.replace("marcadores", "objetos"),
     BOXES.replace("en forma reducida", "redondeada a dos decimales"),
     BOXES.replace("y que de la segunda", "o que de la segunda"),
+    BOXES.replace("de cada una de las cajas", "de la primera caja"),
+    BOXES.replace("artículo de cada una", "artículo sin reemplazo de cada una"),
+    BOXES.replace("se elija un bolígrafo", "no se elija un bolígrafo"),
 ])
 def test_unobserved_or_ambiguous_conditions_do_not_receive_verification(statement):
     assert independent_boxes(statement) is None

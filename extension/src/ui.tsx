@@ -8,7 +8,7 @@ import type { AutomationView } from './aleks-automation';
 
 type Tab = {id:number;title:string;url:string};
 type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution;automation?:AutomationView;nativeKeyboard?:boolean};
-type Health = {status:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
+type Health = {status:string;version?:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
 async function rpc(type:string,data:Record<string,unknown>={}) {
   const r=await chrome.runtime.sendMessage({scope:'ui',type,...data});
   if(!r?.ok) throw Error(r?.error || 'La extensión no respondió');return r.data;
@@ -75,6 +75,14 @@ function App() {
       setAssist(undefined);setAutomation(state);
     });
   }
+  async function continueAutomation() {
+    await attempt(async()=>{
+      if(!automation?.canContinue)throw Error('No hay una respuesta confirmada disponible para continuar.');
+      const state=await rpc('automationContinue',{tabId:selected,runId:automation.id,
+        limits:{maxExercises:autoExercises,maxMinutes:autoMinutes,maxAICalls:autoCalls}});
+      setAssist(undefined);setAutomation(state);
+    });
+  }
   async function login(type:'google'|'demo') {await attempt(async()=>{setMode((await rpc(type)).mode);});}
   async function attach() {setAssist(undefined);await attempt(async()=>{const result=await rpc('attach',{tabId:selected});setView(result);setAutomation(result.automation);});}
   async function command(type:string) {await attempt(async()=>{
@@ -93,11 +101,14 @@ function App() {
   const hasImage=includeImage || Boolean(imageFile);
   const fillBlockers=assist?proposalFillBlockers(assist):[];
   const canFill=Boolean(assist && fillBlockers.length===0);
+  const resultVisible=aleks && view.detection?.editorObservation?.resultMarker.status==='positive_marker';
+  const canContinueHere=Boolean(automation?.canContinue && resultVisible);
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">ALEKS · Recorrido automático para enteros y fracciones en un recuadro. Se avanza cuando ALEKS confirma «Correcta».</div>
     <section><div className="section-label">01 / CONEXIÓN</div>
       <div className="status"><span className={health?'dot on':'dot'}/><strong>{health?'Backend conectado · SymPy disponible':'Backend sin comprobar'}</strong></div>
+      {health && <p className="small">{health.version?`Versión del backend: ${health.version}`:'El backend no informa su versión. Actualiza también la carpeta backend y reinícialo para cargar los comprobadores actuales.'}</p>}
       <p className="small">IA: {health?.ai_configured?'configurada':'opcional, sin configurar'} · Google: {health?.google_configured?'configurado':'pendiente de configuración'}</p>
       <button disabled={working} onClick={()=>void connectBackend()}>Conectar backend y simulador</button>
       <p className="small">Acceso limitado a {BACKEND}. Lee ejercicios y escribe o envía respuestas en la actividad que autorices.</p>
@@ -189,11 +200,19 @@ function App() {
       <p>Resuelve, escribe, pulsa «Verificar» o «Entregar» y espera la confirmación de ALEKS. Después de «Correcta», pulsa «Siguiente» o «Siguiente tema» y continúa.</p>
       <p className="small">Admite enteros y fracciones reducidas no negativas, sin unidad, en un único recuadro vacío. Escribe a/b y comprueba que ALEKS lo represente como fracción vertical. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas o formatos que aún no reconoce. Mantén el panel abierto durante el recorrido.</p>
       <div className="limits">
-        <label>Máximo de respuestas<input aria-label="Máximo de respuestas ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))}/></label>
-        <label>Máximo de minutos<input aria-label="Máximo de minutos ALEKS" type="number" min="1" max="120" disabled={working} value={autoMinutes} onChange={e=>setAutoMinutes(Number(e.target.value))}/></label>
-        <label>Máximo de llamadas IA<input aria-label="Máximo de llamadas IA ALEKS" type="number" min="2" max="100" disabled={working} value={autoCalls} onChange={e=>setAutoCalls(Number(e.target.value))}/></label>
+        <label>Máximo de respuestas<input aria-label="Máximo de respuestas ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoExercises);}}/></label>
+        <label>Máximo de minutos<input aria-label="Máximo de minutos ALEKS" type="number" min="1" max="120" disabled={working} value={autoMinutes} onChange={e=>setAutoMinutes(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoMinutes);}}/></label>
+        <label>Máximo de llamadas IA<input aria-label="Máximo de llamadas IA ALEKS" type="number" min="2" max="100" disabled={working} value={autoCalls} onChange={e=>setAutoCalls(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoCalls);}}/></label>
       </div>
-      <button disabled={working || !mode || !health || diagramRequired || hasImage || view.detection?.promptObservation?.status!=='readable'} onClick={()=>void startAutomation()}>Iniciar recorrido automático</button>
+      <p className="small" aria-label="Alcance del recorrido">{autoExercises===1?
+        'Con este límite se completará 1 respuesta y no avanzará después de Correcta. Para avanzar automáticamente, elige 2 o más respuestas.':
+        `Se completarán hasta ${autoExercises} respuestas correctas. Se pulsará Siguiente o Siguiente tema entre ejercicios mientras queden tiempo y llamadas IA.`}</p>
+      <button disabled={working || !mode || !health || diagramRequired || hasImage || resultVisible || view.detection?.promptObservation?.status!=='readable'} onClick={()=>void startAutomation()}>Iniciar recorrido automático</button>
+      {canContinueHere && <>
+        <p className="small">Puedes continuar desde la respuesta confirmada. El máximo de respuestas y de llamadas IA incluye las ya contabilizadas; aumenta los límites necesarios. El tiempo vuelve a empezar al continuar.</p>
+        <button disabled={working || !mode || !health || diagramRequired || hasImage} onClick={()=>void continueAutomation()}>Continuar desde la respuesta correcta</button>
+      </>}
+      {resultVisible && !automation?.canContinue && !automation?.active && <p className="small">ALEKS muestra una respuesta correcta anterior. Pulsa Siguiente en ALEKS y después Leer actividad seleccionada para iniciar otro recorrido.</p>}
       {(diagramRequired || hasImage) && <p className="small">Usa la consulta individual para este ejercicio con imagen. El recorrido de texto requiere desmarcar la captura y retirar la imagen adjunta.</p>}
       <button className="danger" disabled={!automation?.active} onClick={()=>void rpc('automationStop',{tabId:selected}).then(setAutomation).catch(e=>setError(e.message))}>Detener recorrido</button>
       {automation && <div role="status"><strong>{automation.phase}</strong><p>{automation.message}</p>

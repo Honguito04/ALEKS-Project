@@ -98,3 +98,46 @@ test('el guard rechaza un cambio de enunciado antes de escribir',async({page})=>
   expect(result).toMatchObject({ok:false,error:'Cambió el ejercicio o el foco del editor. El teclado de Chrome se detuvo.'});
   await expect(page.locator('.ansed_tree')).toHaveText('');
 });
+
+test('conserva Correcta en el mismo recorrido y avanza una vez con Siguiente tema antes de otra respuesta',async({page})=>{
+  await openContent(page);
+  const result=await page.evaluate(async()=>{
+    const input=document.querySelector<HTMLInputElement>('input.ansed_input')!;
+    const submit=document.querySelector<HTMLButtonElement>('.checkAnswer')!;
+    let submits=0,nexts=0;
+    input.addEventListener('input',()=>{
+      const span=document.createElement('span');span.className='AnsedObject';span.textContent=input.value;
+      span.style.cssText='position:absolute;left:2px;top:3px;font:18px serif;height:24px';
+      document.querySelector('.ansed_tree')!.replaceChildren(span);input.value='';
+    });
+    submit.addEventListener('click',()=>{
+      submits++;submit.remove();
+      const feedback=document.createElement('div');feedback.id='result_feedback_alert';feedback.setAttribute('aria-live','polite');
+      feedback.style.cssText='display:inline-block;border:1px solid rgb(57,108,41)';
+      feedback.innerHTML='<div style="display:inline-block;color:rgb(57,108,41)">Correcta</div>';
+      const next=document.createElement('button');next.type='button';next.id='smt_bottomnav_button_input_learningCorrect';next.className='learningCorrect';
+      next.innerHTML='<div class="textContent">Siguiente tema</div>';
+      next.addEventListener('click',()=>{
+        nexts++;document.querySelector('#algoPrompt')!.textContent='Calcular 2 + 3.';
+        document.querySelector('.ansed_tree')!.replaceChildren();feedback.remove();next.remove();document.body.append(submit);
+      });
+      document.body.append(feedback,next);
+    });
+    await window.contentRPC('automationReset',{runId:'same-run'});
+    const first=await window.contentRPC('assistContext');
+    const accepted=await window.contentRPC('automationSubmit',{runId:'same-run',fingerprint:first.data.fingerprint,value:'12'});
+    // Completar por límite no resetea el contenido. El sondeo del panel tampoco
+    // debe consumir la confirmación mientras el usuario amplía sus límites.
+    await window.contentRPC('status');await window.contentRPC('status');
+    const before={submits,nexts};
+    const [advanced,duplicate]=await Promise.all([
+      window.contentRPC('automationNext',{runId:'same-run'}),
+      window.contentRPC('automationNext',{runId:'same-run'})
+    ]);
+    const second=await window.contentRPC('assistContext');
+    const acceptedAgain=await window.contentRPC('automationSubmit',{runId:'same-run',fingerprint:second.data.fingerprint,value:'5'});
+    return {accepted,before,advanced,duplicate,acceptedAgain,submits,nexts};
+  });
+  expect(result).toMatchObject({accepted:{ok:true,data:{status:'accepted'}},before:{submits:1,nexts:0},
+    advanced:{ok:true},duplicate:{ok:false},acceptedAgain:{ok:true,data:{status:'accepted'}},submits:2,nexts:1});
+});

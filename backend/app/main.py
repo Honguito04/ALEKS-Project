@@ -23,6 +23,7 @@ async def lifespan(app):
 
 
 app = FastAPI(title="Asistente matemático — MVP", lifespan=lifespan)
+BACKEND_VERSION = "0.4.1"
 app.add_middleware(CORSMiddleware,
     allow_origins=["http://127.0.0.1:8000"] + [f"chrome-extension://{v}" for v in settings.extension_ids],
     allow_methods=["GET", "POST", "DELETE"], allow_headers=["Authorization", "Content-Type"])
@@ -56,7 +57,7 @@ app.include_router(router)
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "engine": "sympy", "google_configured": settings.google_ready,
+    return {"status": "ok", "version": BACKEND_VERSION, "engine": "sympy", "google_configured": settings.google_ready,
             "ai_configured": settings.ai_ready or settings.local_ai_ready, "ai_provider": settings.ai_provider,
             "aleks_validated": False, "demo_enabled": settings.enable_demo}
 

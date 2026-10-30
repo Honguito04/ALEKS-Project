@@ -44,6 +44,8 @@ def ollama(monkeypatch):
             return httpx.Response(200, json={"message": {"content": json.dumps(response_body.get("visual_draft", SOLID))}})
         if "issues" in properties:
             return httpx.Response(200, json={"message": {"content": json.dumps(response_body.get("visual_review", {"status": "consistent", "issues": [], "missing_information": []}))}})
+        if response_body.get("text_outputs"):
+            return httpx.Response(200, json={"message": {"content": json.dumps(response_body["text_outputs"].pop(0))}})
         return httpx.Response(200, json=response_body)
     original = httpx.AsyncClient
     monkeypatch.setattr(httpx, "AsyncClient", lambda **kwargs: original(transport=httpx.MockTransport(handler), **kwargs))
@@ -438,3 +440,76 @@ def test_model_cannot_claim_independent_box_verification():
     with pytest.raises(ValueError):
         AssistResult(fingerprint="a" * 64, proposal=AssistProposal.model_validate(PROPOSAL), model="test", provider_calls=1,
                      verified=True, verification="independent_boxes")
+
+
+@pytest.mark.parametrize("denial", ["Ninguna", "No se requiere información adicional.",
+    "No se requiere información adicional, ya que los datos son suficientes para calcular la probabilidad."])
+def test_missing_context_denial_is_not_reported_as_a_missing_mathematical_fact(denial):
+    result = AssistProposal.model_validate({"status": "needs_context", "answers": [],
+        "explanation": "Una respuesta escondida en la prosa: 1/5.", "missing_information": [denial]})
+    assert result.status == "unable_to_solve" and result.answers == [] and result.missing_information == []
+    assert "1/5" not in result.explanation and result._format_repair_needed
+    assert "_format_repair_needed" not in result.model_dump()
+
+
+def test_structured_answer_with_wrong_context_status_is_normalized_without_promoting_verification(client, demo_headers, ollama):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({**PROPOSAL, "status": "needs_context", "missing_information": ["Ninguna"]})
+    result = client.post("/assist", json={"context": CONTEXT}, headers=demo_headers).json()
+    assert result["proposal"] == PROPOSAL and result["verified"] is False and result["provider_calls"] == 1
+    assert len([call for call in calls if call.url.path == "/api/chat"]) == 1
+
+
+@pytest.mark.parametrize("route", ["/assist", "/assist/jobs"])
+def test_text_format_repair_requests_one_structured_solution_from_the_original_problem(client, demo_headers, ollama, route):
+    calls, response = ollama
+    repaired = {**PROPOSAL, "answers": [{"field_key": "answer", "value": "1/5", "unit": ""}],
+                "explanation": "Un artículo favorable de cinco: 1/5."}
+    response["text_outputs"] = [
+        {"status": "needs_context", "answers": [], "explanation": "PRIVATE_PREVIOUS_PROSE 1/5", "missing_information": ["No falta información"]},
+        repaired]
+    context = {**CONTEXT, "statement": "Hay cinco fichas y solo una es azul. Se extrae una al azar. ¿Probabilidad de azul?"}
+    result = client.post(route, json={"context": context}, headers=demo_headers)
+    if route.endswith("jobs"):
+        path = route + "/" + result.json()["id"]
+        for _ in range(20):
+            result = client.get(path, headers=demo_headers)
+            if result.json()["status"] != "pending": break
+        body = result.json()["result"]
+    else:
+        body = result.json()
+    assert body["proposal"] == repaired and body["provider_calls"] == 2 and body["verified"] is False
+    chats = [json.loads(call.content) for call in calls if call.url.path == "/api/chat"]
+    assert len(chats) == 2
+    assert chats[0]["messages"][1] == chats[1]["messages"][1]
+    assert "PRIVATE_PREVIOUS_PROSE" not in json.dumps(chats)
+    assert "Tu salida anterior" in chats[1]["messages"][0]["content"]
+
+
+def test_failed_format_repair_stops_after_two_calls_and_does_not_extract_prose(client, demo_headers, ollama):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({"status": "needs_context", "answers": [],
+        "explanation": "El resultado es 1/5, no falta información.", "missing_information": ["Ninguna"]})
+    result = client.post("/assist", json={"context": CONTEXT}, headers=demo_headers).json()
+    assert result["proposal"]["status"] == "unable_to_solve" and result["proposal"]["answers"] == []
+    assert result["provider_calls"] == 2
+    assert len([call for call in calls if call.url.path == "/api/chat"]) == 2
+
+
+def test_real_missing_context_is_preserved_without_format_retry(client, demo_headers, ollama):
+    calls, response = ollama
+    response["message"]["content"] = json.dumps({"status": "needs_context", "answers": [],
+        "explanation": "El diámetro no aparece.", "missing_information": ["Ninguna medida del diámetro es legible"]})
+    result = client.post("/assist", json={"context": CONTEXT}, headers=demo_headers).json()
+    assert result["proposal"]["status"] == "needs_context" and result["provider_calls"] == 1
+    assert result["proposal"]["missing_information"] == ["Ninguna medida del diámetro es legible"]
+    assert len([call for call in calls if call.url.path == "/api/chat"]) == 1
+
+
+def test_structured_answers_and_a_real_missing_fact_are_still_rejected():
+    with pytest.raises(ValueError):
+        AssistProposal.model_validate({**PROPOSAL, "status": "needs_context", "missing_information": ["Altura del prisma"]})
+
+
+def test_health_reports_the_backend_revision_that_is_actually_running(client):
+    assert client.get("/health").json()["version"] == "0.4.1"

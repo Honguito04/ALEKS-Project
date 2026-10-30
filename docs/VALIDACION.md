@@ -1,6 +1,19 @@
 # Validación ejecutada
 
-Actualización: 29 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+Actualización: 30 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+
+## Revisión 0.4.1: continuación e interpretación (30 de octubre)
+
+- **181 pruebas del backend pasadas**, incluidas variantes de la plantilla de dos cajas, rechazo de condiciones no equivalentes, clasificación de datos faltantes, una corrección de formato contabilizada por `/assist` y `/assist/jobs`, y versión de `/health`. Permanece la advertencia de deprecación Starlette/httpx.
+- **162 pruebas unitarias pasadas**: continuación tras el límite, totales acumulados, conservación de Correcta ante un inicio inválido, guardado/cancelación concurrentes y rechazo de recuperación a partir de un contador persistido. Se conservan las 26 regresiones del teclado nativo.
+- **115 casos de navegador comprobados** entre las ejecuciones afectadas. La primera pasada tuvo 113/114: el fixture nuevo de Siguiente tema omitía el borde del alert observado; se corrigió el fixture, manteniendo las comprobaciones de producción. La repetición de 34 casos de contenido y panel pasó completa e incorporó un caso adicional de avance manual. No quedan fallos pendientes.
+- Compilación y TypeScript correctos; manifest y backend identifican **0.4.1**, sin dependencias ni permisos nuevos.
+
+La captura del usuario confirma una entrega real de **12**, devolución **Correcta** y contador de una aceptada. El máximo visible era **01**, que autoriza una sola respuesta: no debía avanzar después. Se corrigió el intento posterior de inicio, que borraba el estado completado al fallar el requisito de recuadro vacío. La continuación explícita mantiene la evidencia del mismo recorrido; las pruebas rechazan botones/feedback sustituidos, duplicados y cancelaciones, y comprueban una segunda entrega después de Siguiente tema.
+
+El segundo reporte muestra una llamada a IA y «Falta información» pese a que la explicación calcula **1/5**. El texto completo mostrado sí se reconoce en el backend actual con cero llamadas. No se comprobó qué versión de backend ejecutaba el usuario ni el texto exacto enviado; `/health` y el panel ahora permiten distinguir la revisión cargada. El comprobador se amplió a separaciones y redacciones equivalentes acotadas. Para texto general, las pruebas verifican que la corrección de formato usa el enunciado original, no copia la prosa previa, consume como máximo dos llamadas y no convierte la propuesta del modelo en verificación matemática.
+
+La escritura aceptada en ALEKS fue reportada por el usuario; el agente no operó su cuenta. La continuación y las salidas de Ollama se probaron con fixtures y transporte simulado. La prueba de teclado sí entrega eventos confiables de Chromium mediante CDP, conservando el puente de extensión simulado descrito debajo. Los apartados siguientes mantienen los resultados históricos.
 
 ## Revisión 0.4.0: teclado de Chrome (29 de octubre)
 

@@ -2,9 +2,9 @@
 
 Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 
-**La versión 0.4.0 añade escritura mediante el teclado de Chrome para el editor que ignora los eventos sintéticos.** El recorrido ALEKS resuelve, escribe, verifica y avanza después de una confirmación nueva de «Correcta». Admite ejercicios de texto con un entero no negativo o una fracción reducida, sin unidad, en un único recuadro vacío compatible (doce dígitos por componente). Diagramas, unidades y varios recuadros requieren intervención manual. Se probaron teclas reales de Chromium contra un editor de prueba; falta comprobar el recorrido en ALEKS real. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
+**La versión 0.4.1 permite continuar desde una respuesta correcta al ampliar los límites y corrige salidas del modelo que confunden una solución con datos faltantes.** Conserva la escritura mediante el teclado de Chrome de 0.4.0. El recorrido ALEKS resuelve, escribe, verifica y avanza después de una confirmación nueva de «Correcta». Admite ejercicios de texto con un entero no negativo o una fracción reducida, sin unidad, en un único recuadro vacío compatible (doce dígitos por componente). Diagramas, unidades y varios recuadros requieren intervención manual. El usuario confirmó la escritura, entrega y aceptación de **12** en ALEKS; el recorrido completo entre temas se prueba aquí con fixtures. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
 
-Para usar el nuevo método, actualiza la extensión y marca **Usar teclado de Chrome para esta pestaña**. La versión declara el permiso `debugger`, que Chrome exige para enviar esas teclas y que puede mostrar un aviso al actualizar. La conexión se abre al escribir y se cierra al terminar; Chrome muestra un aviso de depuración mientras está conectada. El código restringe la operación a la respuesta numérica de la pestaña ALEKS seleccionada. Sigue [los pasos de actualización y prueba para Windows](docs/IA_GENERAL.md#actualizar-a-040-en-windows).
+Para usar el teclado, marca **Usar teclado de Chrome para esta pestaña**. El permiso `debugger`, añadido en 0.4.0, permite enviar esas teclas; la conexión se abre al escribir y se cierra al terminar. Chrome muestra un aviso de depuración mientras está conectada. El código restringe la operación a la respuesta numérica de la pestaña ALEKS seleccionada. **Esta actualización requiere copiar tanto backend como extension y reiniciar el backend.** Sigue [los pasos para Windows](docs/IA_GENERAL.md#actualizar-a-041-en-windows).
 
 ¿Es tu primera instalación y no tienes experiencia en programación? Sigue la [guía desde cero para Windows](docs/GUIA_DESDE_CERO.md): incluye descarga, instalación, primera prueba y lectura en ALEKS.
 
@@ -121,14 +121,14 @@ Las pruebas del navegador ejecutan **el adaptador y controlador de producción c
 
 Consulta [docs/VALIDACION.md](docs/VALIDACION.md) para los resultados ejecutados y pendientes, y [docs/PLAN.md](docs/PLAN.md) para criterios y decisiones.
 
-## Recorrido ALEKS 0.4.0
+## Recorrido ALEKS 0.4.1
 
 El ejercicio de dos cajas se comprueba exactamente: `4/(1+4) × 3/(9+3) = 1/5`. Este comprobador reconoce la plantilla completa y variantes numéricas, sin llamar a Ollama. Otros problemas siguen usando el modelo. El lector y el escritor admiten fracciones reducidas `a/b`: el usuario confirmó que ALEKS convierte ese texto en una fracción vertical. La extensión exige leer ambos componentes antes de verificar; un `input.value` o el texto literal `1/5` sin conversión no acreditan escritura.
 
 Cuando el modelo no devuelve una respuesta, el recorrido muestra su motivo concreto. **Preparar diagnóstico del editor** y **Copiar diagnóstico** producen un informe acotado de símbolos, posiciones y botones conocidos, sin HTML completo, enlaces de sesión o datos de cuenta. No se otorga acceso genérico a funciones internas de ALEKS.
 
 
-Si ya tienes la versión 0.3.0, sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md#actualizar-a-040-en-windows). Esta corrección cambia únicamente la extensión: actualiza `extension/src` y `extension/public`, ejecuta `npm.cmd run build`, recarga la extensión en `chrome://extensions` y actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`; el backend puede seguir funcionando.
+Sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md#actualizar-a-041-en-windows). Copia **backend** y **extension**, reinicia el backend, ejecuta `npm.cmd run build`, recarga la extensión en `chrome://extensions` y actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`. El panel y `/health` identifican el backend en ejecución como **0.4.1**; actualizar solo la extensión no carga los comprobadores nuevos del servidor.
 
 1. Abre el ejercicio en `https://latam-awu.aleks.com` y deja vacío su recuadro. En el panel pulsa **Autorizar sitio ALEKS**, selecciona esa pestaña y pulsa **Leer actividad seleccionada**.
 2. Comprueba que el backend y Ollama estén disponibles. Entra en demostración o inicia sesión en el asistente; ALEKS utiliza tu sesión propia en su pestaña.
@@ -140,7 +140,9 @@ El recorrido comprueba que el enunciado y el editor correspondan a la propuesta,
 
 Después de aceptar, pulsa **Siguiente** o **Siguiente tema** y espera un enunciado nuevo con un editor vacío. Siguiente tema puede cambiar de tema; el recorrido vuelve a comprobar el formato del ejercicio que aparezca. Al alcanzar el máximo de respuestas, deja visible la última respuesta correcta. Una respuesta incorrecta, una entrega sin confirmación, un editor incompatible, un diagrama, un fallo de escritura o un cambio inesperado detienen el recorrido. No se ensaya otra respuesta ni se repite la entrega automáticamente. Un reinicio de la extensión tampoco reanuda entregas pendientes.
 
-Cada consulta reserva dos llamadas IA antes de empezar y devuelve al presupuesto las no utilizadas cuando recibe un resultado válido. Es un límite conservador del proveedor: el formato textual reconocido de premios utiliza cero llamadas, otras consultas textuales usan una y el contrato permite hasta dos. Con menos de dos disponibles no empieza otra consulta. Comenzar con una propuesta ya obtenida no hace una nueva llamada al modelo.
+El límite **1** (incluso escrito **01**) significa una respuesta y ningún avance posterior. Para seguir al llegar al límite, aumenta el máximo total y pulsa **Continuar desde la respuesta correcta**. Conserva el contador, las llamadas ya usadas y la evidencia de la entrega; renueva el tiempo y comprueba Siguiente antes del clic. Una validación fallida de límites no borra la respuesta confirmada. Si avanzaste manualmente a un ejercicio vacío, puedes iniciar otro recorrido. Tras recargar la extensión o detener el recorrido se requiere ese avance manual: un contador guardado no recupera la confirmación de una entrega.
+
+Cada consulta reserva dos llamadas IA antes de empezar y devuelve al presupuesto las no utilizadas cuando recibe un resultado válido. Los formatos textuales reconocidos de premios y dos cajas utilizan cero llamadas; el texto general usa una, o dos si necesita una corrección del formato de salida. Con menos de dos disponibles se conserva la respuesta correcta sin avanzar al siguiente ejercicio. Comenzar con una propuesta ya obtenida no hace una nueva llamada al modelo.
 
 `/assist` y las tareas de consulta local alimentan este recorrido. `/solve` y el controlador automático original siguen limitados al simulador. Los diagnósticos de lectura de `adapters.ts` continúan separados de la ejecución ALEKS; **Leer actividad seleccionada** por sí solo inspecciona, mientras que los botones del recorrido autorizan escribir, entregar y avanzar.
 

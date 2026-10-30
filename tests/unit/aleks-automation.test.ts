@@ -55,6 +55,68 @@ describe('recorrido ALEKS por fases',()=>{
     expect(deps.solve).not.toHaveBeenCalled();expect(deps.submit).toHaveBeenCalledTimes(1);
   });
 
+  it('el límite de una respuesta conserva Correcta y la continuación avanza sin reenviar',async()=>{
+    const {run,deps,setTime}=harness({maxExercises:1});const id=run.view.id;
+    await run.step();await run.step();await run.step();
+    expect(run.view).toMatchObject({id,phase:'COMPLETADO',active:false,canContinue:true,accepted:1,aiCalls:1});
+    expect(run.view.message).toContain('(1/1)');expect(deps.next).not.toHaveBeenCalled();
+    setTime(3_600_000);
+    const resumed=await run.continue({...limits,maxExercises:2,maxMinutes:2,maxAICalls:4});
+    expect(resumed).toMatchObject({id,phase:'CORRECTA',active:true,busy:false,canContinue:false,accepted:1,aiCalls:1,started:3_600_000});
+    expect(deps.next).not.toHaveBeenCalled();expect(deps.submit).toHaveBeenCalledTimes(1);
+    await run.step();await run.step();await run.step();await run.step();
+    expect(run.view).toMatchObject({phase:'COMPLETADO',canContinue:true,accepted:2,aiCalls:2});
+    expect(deps.next).toHaveBeenCalledTimes(1);expect(deps.submit).toHaveBeenCalledTimes(2);expect(deps.solve).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([{maxExercises:1},{maxExercises:0},{maxAICalls:2}])('una ampliación inválida conserva el resultado y no consume el avance: %j',async change=>{
+    const {run,deps,saved}=harness({maxExercises:1});await run.step();await run.step();
+    const before=run.view,saves=saved.length;
+    await expect(run.continue({...limits,maxExercises:2,...change})).rejects.toThrow();
+    expect(run.view).toEqual(before);expect(saved).toHaveLength(saves);
+    expect(deps.next).not.toHaveBeenCalled();expect(deps.cancel).not.toHaveBeenCalled();
+    await run.continue({...limits,maxExercises:2});await run.step();
+    expect(deps.next).toHaveBeenCalledTimes(1);
+  });
+
+  it('no continúa un recorrido detenido ni uno nuevo sin evidencia de una entrega',async()=>{
+    const {run,deps}=harness({maxExercises:1},proposal());await run.step();await run.stop();
+    expect(run.view.canContinue).toBe(false);
+    await expect(run.continue(limits)).rejects.toThrow('No hay una respuesta confirmada');
+    const fresh=harness();await expect(fresh.run.continue(limits)).rejects.toThrow('No hay una respuesta confirmada');
+    expect(deps.next).not.toHaveBeenCalled();expect(fresh.deps.next).not.toHaveBeenCalled();
+  });
+
+  it('una continuación pendiente bloquea otra continuación y Detener invalida su guardado tardío',async()=>{
+    const {run,deps}=harness({maxExercises:1},proposal());await run.step();
+    const entered=deferred<void>(),pending=deferred<void>(),states:AutomationView[]=[];let writes=0;
+    deps.save=vi.fn(async view=>{if(++writes===1){entered.resolve();await pending.promise;}states.push(structuredClone(view));});
+    const continuing=run.continue(limits);await entered.promise;
+    await expect(run.continue(limits)).rejects.toThrow('No hay una respuesta confirmada');
+    expect((await run.step()).busy).toBe(true);expect(deps.next).not.toHaveBeenCalled();
+    const stopping=run.stop();pending.resolve();await Promise.all([continuing,stopping]);
+    expect(run.view).toMatchObject({phase:'DETENIDO',active:false,busy:false,canContinue:false});
+    expect(states.at(-1)).toMatchObject({phase:'DETENIDO',active:false,busy:false,canContinue:false});
+    await run.step();expect(deps.next).not.toHaveBeenCalled();expect(deps.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('un fallo al guardar la continuación la detiene antes de avanzar',async()=>{
+    const {run,deps}=harness({maxExercises:1},proposal());await run.step();
+    deps.save=vi.fn(async()=>{throw Error('Sin almacenamiento');});
+    await run.continue(limits);await run.step();
+    expect(run.view).toMatchObject({phase:'DETENIDO',active:false,busy:false,canContinue:false});
+    expect(deps.next).not.toHaveBeenCalled();expect(deps.submit).toHaveBeenCalledTimes(1);
+  });
+
+  it('la continuación conserva las huellas enviadas y detiene un ejercicio repetido',async()=>{
+    const {run,deps}=harness({maxExercises:1},proposal());await run.step();
+    deps.solve=vi.fn(async()=>proposal());
+    await run.continue(limits);await run.step();await run.step();await run.step();
+    expect(run.view).toMatchObject({phase:'DETENIDO',canContinue:false,accepted:1});
+    expect(run.view.message).toContain('ya se envió');
+    expect(deps.next).toHaveBeenCalledTimes(1);expect(deps.submit).toHaveBeenCalledTimes(1);
+  });
+
   it.each([{status:'rejected'},{status:'unknown'},undefined,true])('no avanza sin aceptación de la entrega: %j',async result=>{
     const {run,deps}=harness({},proposal());deps.submit=vi.fn(async()=>result);
     await run.step();await run.step();
@@ -97,12 +159,15 @@ describe('recorrido ALEKS por fases',()=>{
     await run.step();expect(saved.find(view=>view.phase==='RESOLVIENDO')?.aiCalls).toBe(2);
     expect(run.view.aiCalls).toBe(1);
     await run.step();await run.step();await run.step();
-    expect(run.view).toMatchObject({phase:'COMPLETADO',accepted:1,aiCalls:1});expect(deps.solve).toHaveBeenCalledTimes(1);
+    expect(run.view).toMatchObject({phase:'COMPLETADO',canContinue:true,accepted:1,aiCalls:1});expect(deps.solve).toHaveBeenCalledTimes(1);
+    expect(deps.next).not.toHaveBeenCalled();
+    await run.continue({...limits,maxAICalls:3});await run.step();await run.step();await run.step();
+    expect(run.view).toMatchObject({phase:'CORRECTA',accepted:2,aiCalls:2});expect(deps.next).toHaveBeenCalledTimes(1);
   });
 
   it('una sola llamada disponible no autoriza una consulta que podría necesitar dos',async()=>{
     const {run,deps}=harness({maxAICalls:1});await run.step();
-    expect(run.view.phase).toBe('COMPLETADO');expect(deps.solve).not.toHaveBeenCalled();expect(deps.submit).not.toHaveBeenCalled();
+    expect(run.view).toMatchObject({phase:'COMPLETADO',canContinue:false});expect(deps.solve).not.toHaveBeenCalled();expect(deps.submit).not.toHaveBeenCalled();
   });
 
   it('si la respuesta del proveedor no llega conserva la reserva y se detiene',async()=>{

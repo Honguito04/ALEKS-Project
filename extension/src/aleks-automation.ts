@@ -10,7 +10,7 @@ export const automationLimitsSchema=z.object({
 export type AutomationLimits=z.infer<typeof automationLimitsSchema>;
 export type AutomationPhase='LEYENDO'|'RESOLVIENDO'|'LISTO'|'ENVIANDO'|'CORRECTA'|'AVANZANDO'|'DETENIDO'|'COMPLETADO';
 export interface AutomationView {
-  id:string;phase:AutomationPhase;active:boolean;busy:boolean;accepted:number;aiCalls:number;
+  id:string;phase:AutomationPhase;active:boolean;busy:boolean;canContinue:boolean;accepted:number;aiCalls:number;
   started:number;limits:AutomationLimits;message:string;answer?:string;
 }
 export interface AutomationDependencies {
@@ -37,7 +37,7 @@ export class AleksAutomation {
 
   constructor(limits:AutomationLimits,private deps:AutomationDependencies,seed?:AssistView) {
     const parsed=automationLimitsSchema.parse(limits);
-    this.state={id:crypto.randomUUID(),phase:'LEYENDO',active:true,busy:false,accepted:0,aiCalls:0,
+    this.state={id:crypto.randomUUID(),phase:'LEYENDO',active:true,busy:false,canContinue:false,accepted:0,aiCalls:0,
       started:deps.now(),limits:parsed,message:'Preparado para resolver el ejercicio actual.'};
     // La propuesta ya obtenida no consume una consulta nueva de esta sesión.
     if(seed)this.acceptProposal(seed);
@@ -80,16 +80,47 @@ export class AleksAutomation {
   }
 
   async stop(message='Recorrido detenido. No se iniciarán más entregas.'):Promise<AutomationView> {
-    this.state.active=false;this.state.phase='DETENIDO';this.state.message=message;
+    this.state.active=false;this.state.canContinue=false;this.state.phase='DETENIDO';this.state.message=message;
     this.proposal=undefined;
     await Promise.allSettled([Promise.resolve().then(()=>this.deps.cancel()),this.persist()]);
     return this.view;
   }
 
-  private async complete(message:string) {
-    this.state.active=false;this.state.phase='COMPLETADO';this.state.message=message;
+  private async complete(message:string,canContinue=false) {
+    this.state.active=false;this.state.canContinue=canContinue;this.state.phase='COMPLETADO';this.state.message=message;
     this.proposal=undefined;
     await this.persist();
+  }
+
+  /** Amplía un recorrido vivo que conservó una entrega aceptada sin avanzar.
+   * Los máximos de respuestas y llamadas siguen siendo totales del recorrido;
+   * el tiempo se renueva por esta acción explícita. No recupera estados de
+   * storage ni una entrega cancelada: next() revalida la evidencia del DOM.
+   */
+  async continue(limits:AutomationLimits):Promise<AutomationView> {
+    if(this.locked || this.state.busy || this.state.active || this.state.phase!=='COMPLETADO' || !this.state.canContinue) {
+      throw Error('No hay una respuesta confirmada disponible para continuar este recorrido.');
+    }
+    const parsed=automationLimitsSchema.parse(limits);
+    if(parsed.maxExercises<=this.state.accepted)throw Error(`Aumenta el máximo de respuestas por encima de ${this.state.accepted} para continuar.`);
+    if(parsed.maxAICalls<this.state.aiCalls+2)throw Error(`Aumenta el máximo de llamadas IA a ${this.state.aiCalls+2} o más para consultar el siguiente ejercicio.`);
+    // La validación anterior no altera la finalización ni consume su avance.
+    this.locked=true;this.state.busy=true;
+    this.state.limits=parsed;this.state.started=this.deps.now();
+    this.state.active=true;this.state.canContinue=false;this.state.phase='CORRECTA';
+    this.state.message='Continuación preparada desde la respuesta confirmada. Se comprobará Siguiente antes de avanzar.';
+    try {
+      await this.persist();this.guard();
+    } catch(error) {
+      if(this.state.active)await this.stop(error instanceof Error?error.message:'No se pudo preparar la continuación.');
+    } finally {
+      this.state.busy=false;
+      try {await this.persist();} catch {
+        if(this.state.active)await this.stop('No se pudo guardar la continuación. Se detuvo sin avanzar.');
+      }
+      this.locked=false;
+    }
+    return this.view;
   }
 
   async step():Promise<AutomationView> {
@@ -122,13 +153,18 @@ export class AleksAutomation {
           throw Error('ALEKS no confirmó que la entrega fuera correcta. No se avanzará ni se repetirá la respuesta.');
         }
         this.state.accepted++;
-        if(this.state.accepted>=this.state.limits.maxExercises)await this.complete('Límite de ejercicios alcanzado. ALEKS confirmó la última respuesta como correcta.');
+        if(this.state.accepted>=this.state.limits.maxExercises)await this.complete(`Límite de respuestas alcanzado (${this.state.accepted}/${this.state.limits.maxExercises}). ALEKS confirmó «Correcta». Aumenta el máximo y pulsa Continuar desde la respuesta correcta para seguir.`,true);
         else await this.phase('CORRECTA','ALEKS confirmó «Correcta» para esta entrega. Preparado para avanzar.');
       } else if(this.state.phase==='CORRECTA') {
-        await this.phase('AVANZANDO','Abriendo el siguiente ejercicio…');
-        await this.deps.next();this.guard();
-        delete this.state.answer;
-        await this.phase('LEYENDO','Nuevo ejercicio reconocido. Preparado para resolver.');
+        if(this.state.aiCalls+2>this.state.limits.maxAICalls) {
+          await this.complete('Límite de consultas alcanzado. Se conserva la respuesta correcta: aumenta el máximo de llamadas IA y pulsa Continuar desde la respuesta correcta.',true);
+        } else {
+          this.state.canContinue=false;
+          await this.phase('AVANZANDO','Abriendo el siguiente ejercicio…');
+          await this.deps.next();this.guard();
+          delete this.state.answer;
+          await this.phase('LEYENDO','Nuevo ejercicio reconocido. Preparado para resolver.');
+        }
       } else throw Error('La operación anterior no terminó. No se repetirá automáticamente.');
     } catch(error) {
       if(this.state.active)await this.stop(error instanceof Error?error.message:'No se pudo completar el recorrido. Revisa la pestaña.');

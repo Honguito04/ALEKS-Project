@@ -61,14 +61,21 @@ Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
       else if(message.type==='assist')data=proposal=await solve();
       else if(message.type==='automationStart') {
         if(automation?.view.active)throw Error('Ya existe un recorrido activo.');
+        const limits=automationLimitsSchema.parse(message.limits),context=await assistContext(document);
+        if(!context.can_fill_integer && !context.can_fill_fraction)throw Error('Abre otro ejercicio vacío antes de iniciar.');
         submission.reset();abort=new AbortController();
-        automation=new AleksAutomation(automationLimitsSchema.parse(message.limits),{
+        automation=new AleksAutomation(limits,{
           now:Date.now,solve,
           submit:proposal=>submission.submit(proposal.context.fingerprint,proposal.result.proposal.answers[0].value,abort.signal),
           next:()=>submission.next(abort.signal),
           cancel:async()=>{abort.abort();submission.reset();},save:async()=>{}
         },message.proposalId===proposal?.id?proposal:undefined);
         data=automation.view;
+      } else if(message.type==='automationContinue') {
+        if(!automation || automation.view.id!==message.runId)throw Error('Recorrido no vigente.');
+        // Conserva la entrega confirmada en AleksSubmission: continuar no
+        // equivale a reiniciar ni a reconstruir evidencia desde un alert.
+        data=await automation.continue(automationLimitsSchema.parse(message.limits));
       } else if(message.type==='automationStep') {
         if(!automation || automation.view.id!==message.runId)throw Error('Recorrido no vigente.');
         data=await automation.step();

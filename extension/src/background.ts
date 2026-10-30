@@ -25,7 +25,7 @@ async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,c
   const t=await tab(id);
   if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof data.value!=='string' || !parseSupportedAnswer(data.value))throw Error('Respuesta no admitida por el teclado de Chrome.');
   if(!allowed() || nativeWrites.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
-  if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión 0.4.0 y concede el permiso de depuración de Chrome.');
+  if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión actualizada y concede el permiso de depuración de Chrome.');
   if(!allowed())throw Error('Escritura cancelada.');
   const write:NativeWrite={id:crypto.randomUUID(),url:t.url,value:data.value,used:false,abort:new AbortController(),current:allowed};
   nativeWrites.set(id,write);
@@ -47,13 +47,17 @@ async function automationStatus(id:number):Promise<AutomationView|undefined> {
   const live=automations.get(id);if(live)return live.view;
   const stored=(await chrome.storage.session.get(automationKey(id)))[automationKey(id)] as AutomationView|undefined;
   if(!stored)return;
-  if(stored.active) {
+  if(stored.active || stored.canContinue) {
     // No repetir una entrega cuyo resultado se perdió al reiniciar el worker.
-    const interrupted={...stored,active:false,busy:false,phase:'DETENIDO' as const,message:'La extensión se reinició. Revisa ALEKS antes de iniciar otro recorrido.'};
+    // La confirmación necesaria para continuar vive en la instancia anterior,
+    // no se reconstruye a partir del contador guardado o un Correcta visible.
+    const interrupted={...stored,active:false,busy:false,canContinue:false,phase:stored.active?'DETENIDO' as const:stored.phase,
+      message:stored.active?'La extensión se reinició. Revisa ALEKS antes de iniciar otro recorrido.':
+        'La extensión se reinició después de la respuesta correcta. Pulsa Siguiente en ALEKS y lee el nuevo ejercicio para iniciar otro recorrido.'};
     await chrome.storage.session.set({[automationKey(id)]:interrupted});
     await cancelTabAssist(id);return interrupted;
   }
-  return stored;
+  return {...stored,canContinue:false};
 }
 // El modo automático de panel omite activeTab en Chromium. El clic de action
 // concede el permiso antes de este evento. Abrir de forma directa conserva su
@@ -171,12 +175,18 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth())throw Error('Selecciona ALEKS e inicia sesión en el asistente.');
       if(automationStarting.has(t.id) || (automations.get(t.id)?.view.active || automations.get(t.id)?.view.busy) || assistJobs.has(t.id) || assistWriters.has(t.id))throw Error('Ya hay una operación en curso en esta pestaña.');
       const starting=new AbortController();automationStarting.set(t.id,starting);
+      let resetRequested=false;
       try {
         const limits=automationLimitsSchema.parse(m.limits);
         await automationStatus(t.id);starting.signal.throwIfAborted();
         const context=assistContextSchema.parse(await send(t.id,'assistContext'));
         starting.signal.throwIfAborted();
-        if(!context.can_fill_integer && !context.can_fill_fraction)throw Error('El recorrido necesita un único recuadro vacío para un entero o fracción y un enunciado sin diagramas.');
+        if(!context.can_fill_integer && !context.can_fill_fraction) {
+          if(context.fill_blockers.includes('result_present'))throw Error(automations.get(t.id)?.view.canContinue?
+            'La respuesta anterior ya fue confirmada. Aumenta el máximo de respuestas y pulsa Continuar desde la respuesta correcta.':
+            'ALEKS muestra un resultado anterior. Pulsa Siguiente en ALEKS y lee el nuevo ejercicio antes de iniciar otro recorrido.');
+          throw Error('El recorrido necesita un único recuadro vacío para un entero o fracción y un enunciado sin diagramas.');
+        }
         const seed=m.proposalId===undefined?undefined:assistProposals.get(t.id);
         if(m.proposalId!==undefined && (!seed || seed.id!==m.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta cambió; vuelve a consultar.');
         const ensureTab=async()=>{const current=await tab(t.id);if(current.url!==t.url || !await auth())throw Error('La pestaña o la sesión cambió. Se detuvo el recorrido.');};
@@ -197,12 +207,27 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           }
         },seed);
         await ensureTab();starting.signal.throwIfAborted();
+        // El inicio nuevo solo reemplaza el anterior después de validar todos
+        // los datos. Un error de límites/editor no borra una aceptación previa.
+        resetRequested=true;automations.set(t.id,run);
         await send(t.id,'automationReset',{runId:run.view.id},()=>!starting.signal.aborted);starting.signal.throwIfAborted();
-        automations.set(t.id,run);assistProposals.delete(t.id);
+        assistProposals.delete(t.id);
         const {answer,...progress}=run.view;await chrome.storage.session.set({[automationKey(t.id)]:progress});
         return run.view;
-      }catch(error){await automations.get(t.id)?.stop('No se pudo iniciar el recorrido.');await cancelTabAssist(t.id);throw error;}
+      }catch(error){
+        if(resetRequested)await automations.get(t.id)?.stop(error instanceof Error?error.message:'No se pudo iniciar el recorrido.');
+        throw error;
+      }
       finally{automationStarting.delete(t.id);}
+    }
+    case 'automationContinue': {
+      const t=await tab(m.tabId),run=automations.get(t.id);
+      if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth())throw Error('Selecciona ALEKS e inicia sesión en el asistente.');
+      if(!run || run.view.id!==m.runId)throw Error('No queda una confirmación vigente para continuar. Pulsa Siguiente en ALEKS y lee el nuevo ejercicio.');
+      if(automationStarting.has(t.id) || run.view.active || run.view.busy || assistJobs.has(t.id) || assistWriters.has(t.id))throw Error('Ya hay una operación en curso en esta pestaña.');
+      // Mantener runId y la evidencia pendiente en content.ts. next() vuelve a
+      // comprobar el enunciado, Correcta y el botón antes de hacer un solo clic.
+      return run.continue(automationLimitsSchema.parse(m.limits));
     }
     case 'automationStep': {
       const t=await tab(m.tabId),run=automations.get(t.id);

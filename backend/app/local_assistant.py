@@ -5,12 +5,13 @@ import re
 import asyncio
 import time
 import uuid
+import unicodedata
 from dataclasses import dataclass
 from decimal import Decimal
 from typing import Literal
 
 import httpx
-from pydantic import Field, ValidationError, model_validator, field_validator
+from pydantic import Field, PrivateAttr, ValidationError, model_validator, field_validator
 from .config import settings
 from .models import Strict
 from .counting import ordered_prizes
@@ -131,14 +132,34 @@ class AssistAnswer(Strict):
         return value
 
 
+def no_missing_data(text: str) -> bool:
+    """Reconoce únicamente negaciones completas; nunca adivina el dato omitido."""
+    normalized = "".join(char for char in unicodedata.normalize("NFKD", text).casefold()
+                         if not unicodedata.combining(char))
+    normalized = " ".join(normalized.split()).strip(" .")
+    return bool(re.fullmatch(
+        r"(?:ningun[oa]|ninguna informacion(?: adicional)?|no falta(?: informacion| ningun dato)|"
+        r"no se requiere informacion(?: adicional)?|no se requieren datos(?: adicionales)?|"
+        r"(?:todos )?los datos son suficientes|no hay datos faltantes)"
+        r"(?:, (?:ya que|porque) (?:todos )?los datos son suficientes(?: para (?:calcular la probabilidad|resolver el problema))?)?",
+        normalized))
+
+
 class AssistProposal(Strict):
     status: Literal["proposed", "needs_context", "unable_to_solve"]
     answers: list[AssistAnswer] = Field(max_length=12)
     explanation: str = Field(min_length=1, max_length=4000)
     missing_information: list[str] = Field(max_length=10)
+    _format_repair_needed: bool = PrivateAttr(default=False)
 
     @model_validator(mode="after")
     def coherent(self):
+        if self.status == "needs_context":
+            self.missing_information = [item for item in self.missing_information if not no_missing_data(item)]
+            # Conservar respuestas ya estructuradas, sin extraer números de la
+            # explicación ni atribuir verificación matemática al proveedor.
+            if self.answers and not self.missing_information:
+                self.status = "proposed"
         if (self.status == "proposed") != bool(self.answers):
             raise ValueError("Propuesta sin respuestas o información faltante con respuestas")
         if len({answer.field_key for answer in self.answers}) != len(self.answers):
@@ -151,6 +172,7 @@ class AssistProposal(Strict):
             # No presentar una solución escondida en explanation como un dato
             # faltante: no hay respuestas estructuradas utilizables en este caso.
             self.status = "unable_to_solve"
+            self._format_repair_needed = True
             self.explanation = "El modelo no produjo respuestas estructuradas utilizables ni identificó qué dato falta. No se ha obtenido una solución; revisa el ejercicio o prueba otro modelo."
         return self
 
@@ -416,15 +438,33 @@ async def consult_local(body: AssistRequest) -> AssistResult:
         "Usa needs_context solo si falta un dato específico: detállalo en missing_information y deja answers vacío. "
         "Si tienes los datos pero no consigues una solución, usa unable_to_solve con ambas listas vacías. "
         "Para proposed incluye todos los campos solicitados y missing_information vacío. "
+        "Si obtuviste la solución, ponla en answers: una explicación con el resultado pero answers vacío no es una propuesta. "
+        "No escribas 'ninguna' ni 'no se requiere información adicional' dentro de missing_information; usa una lista vacía. "
         "La propuesta no está verificada independientemente."
     )
     if body.image:
         return await consult_visual(body, instructions)
     message = {"role": "user", "content": body.context.model_dump_json(exclude={"fingerprint", "can_fill_integer"})}
-    async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds, trust_env=False) as client:
-        proposal = await local_chat(client, [{"role": "system", "content": instructions}, message], AssistProposal)
+    template = {"status": "proposed", "answers": [{"field_key": field.key, "value": "resultado calculado", "unit": ""}
+                for field in body.context.fields], "explanation": "Cálculo y justificación", "missing_information": []}
+    messages = [{"role": "system", "content": instructions + " Plantilla de salida: " + json.dumps(template, ensure_ascii=False)}, message]
+    calls = 1
+    # Una única corrección de formato, usando de nuevo el problema original.
+    # No se convierte la prosa anterior en una respuesta ni se reintenta un
+    # fallo de red. Ambas peticiones comparten el presupuesto temporal.
+    async with asyncio.timeout(min(settings.ai_timeout_seconds * 2, 210)):
+        async with httpx.AsyncClient(timeout=settings.ai_timeout_seconds, trust_env=False) as client:
+            proposal = await local_chat(client, messages, AssistProposal)
+            if proposal._format_repair_needed:
+                calls = 2
+                messages[0]["content"] += (
+                    " Tu salida anterior marcó falta de datos sin identificar ninguno y omitió answers. "
+                    "Resuelve de nuevo el enunciado original y entrega los valores en answers con status proposed. "
+                    "Si realmente falta un dato matemático, nómbralo; si no puedes resolverlo, usa unable_to_solve."
+                )
+                proposal = await local_chat(client, messages, AssistProposal)
     expected = {field.key for field in body.context.fields}
     received = {answer.field_key for answer in proposal.answers}
     if proposal.status == "proposed" and received != expected:
         raise ValueError("La propuesta no corresponde a los campos actuales")
-    return AssistResult(fingerprint=body.context.fingerprint, proposal=proposal, model=settings.ai_model, provider_calls=1)
+    return AssistResult(fingerprint=body.context.fingerprint, proposal=proposal, model=settings.ai_model, provider_calls=calls)

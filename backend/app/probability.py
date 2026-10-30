@@ -34,13 +34,18 @@ def independent_boxes(statement: str) -> IndependentBoxes | None:
     text = "".join(char for char in unicodedata.normalize("NFKD", statement).casefold()
                    if not unicodedata.combining(char))
     text = " ".join(text.split())
+    # Saltos y espacios de los fragmentos DOM no alteran los datos. Solo
+    # normalizar separadores de frases; no borrar condiciones ni palabras.
+    text = re.sub(r"\s+([.?!])", r"\1", text)
+    text = re.sub(r"([.?!])(?=[a-z¿])", r"\1 ", text)
+    text = re.sub(r"¿\s+", "¿", text)
     number, noun = r"(0|[1-9]\d{0,4})", r"([a-z]{1,30})"
     match = re.fullmatch(
-        rf"en una caja hay {number} {noun} y {number} {noun}\. "
-        rf"en una segunda caja hay {number} {noun} y {number} {noun}\. "
-        r"se elige al azar un articulo de cada una de las cajas\. "
-        rf"¿?cual es la probabilidad de que de la primera caja se elija (?:un|una) {noun} "
-        rf"y (?:que )?de la segunda caja se seleccione (?:un|una) {noun}\? "
+        rf"en (?:una|la primera) caja hay {number} {noun} y {number} {noun}\. "
+        rf"en (?:una segunda|la segunda|otra) caja hay {number} {noun} y {number} {noun}\. "
+        r"se (?:elige|selecciona) al azar un articulo de cada (?:una de las cajas|caja)\. "
+        rf"¿?cual es la probabilidad de que de la primera caja se (?:elija|seleccione) (?:un|una) {noun} "
+        rf"y (?:que )?de la segunda caja se (?:seleccione|elija) (?:un|una) {noun}\? "
         r"escribir la respuesta como una fraccion en forma reducida\.", text)
     if not match:
         return None

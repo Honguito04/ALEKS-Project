@@ -13,7 +13,8 @@ test.beforeEach(async({page})=>{
 });
 
 for(const mode of ['correct','topic','assess','incorrect','timeout','next-only','plain-correct','stale','disabled','duplicate-button',
-  'prompt-change','changed-on-submit','abort','abort-on-submit','stop-on-submit','replace-before-submit','no-next-change','next-disabled','abort-next','next-prompt-changed','hidden-stale','reused-updated'] as const) {
+  'prompt-change','changed-on-submit','abort','abort-on-submit','stop-on-submit','replace-before-submit','no-next-change','next-disabled','abort-next','next-prompt-changed',
+  'next-button-replaced','next-feedback-replaced','next-feedback-rejected','hidden-stale','reused-updated'] as const) {
   test(`entrega sintética: ${mode}`,async({page})=>{
     const result=await page.evaluate(async mode=>{
       // Este editor refleja eventos públicos solamente para comprobar el flujo.
@@ -69,6 +70,13 @@ for(const mode of ['correct','topic','assess','incorrect','timeout','next-only',
         if(mode==='next-disabled')document.querySelector<HTMLButtonElement>('.learningCorrect')!.disabled=true;
         if(mode==='abort-next')abort.abort();
         if(mode==='next-prompt-changed')document.querySelector('#algoPrompt')!.textContent='Modificado';
+        if(mode==='next-button-replaced') {
+          const next=document.querySelector('.learningCorrect')!;next.replaceWith(next.cloneNode(true));
+        }
+        if(mode==='next-feedback-replaced') {
+          const feedback=document.querySelector('#result_feedback_alert')!;feedback.replaceWith(feedback.cloneNode(true));
+        }
+        if(mode==='next-feedback-rejected')document.querySelector('#result_feedback_alert > div')!.textContent='Incorrecta';
         await driver.next(abort.signal);
         try{await driver.next(abort.signal);}catch(e){duplicateNext=(e as Error).message;}
       }catch(e){error=(e as Error).message;}
@@ -81,7 +89,8 @@ for(const mode of ['correct','topic','assess','incorrect','timeout','next-only',
       expect(result.error).not.toBe('');
       expect(result.nexts).toBe(mode==='no-next-change'?1:0);
       expect(result.submits).toBe(['stale','disabled','duplicate-button','prompt-change','abort','replace-before-submit'].includes(mode)?0:1);
-      expect(result.accepted).toBe(['no-next-change','next-disabled','abort-next','next-prompt-changed'].includes(mode));
+      expect(result.accepted).toBe(['no-next-change','next-disabled','abort-next','next-prompt-changed',
+        'next-button-replaced','next-feedback-replaced','next-feedback-rejected'].includes(mode));
     }
   });
 }
