@@ -47,6 +47,16 @@ export class AleksSubmission {
     if(matches.length!==1 || disabled(matches[0]))return undefined;
     return matches[0];
   }
+  /** Pantalla de cierre de tema: el botón puede no usar los selectores
+   * learningCorrect de los ejercicios normales, así que se reconoce por su
+   * etiqueta visible exacta y por ser un único botón habilitado. */
+  private routeButton() {
+    const matches=[...this.document.querySelectorAll<HTMLButtonElement>('button')]
+      .filter(button=>visible(button) && !disabled(button) &&
+        button.querySelectorAll('div.textContent').length===1 &&
+        button.querySelector('div.textContent')?.textContent?.trim()==='Continuar en Mi ruta');
+    return matches.length===1?matches[0]:undefined;
+  }
   private positiveFeedback() {
     const feedback=alerts(this.document),editor=inspectAleksEditor(this.document),next=this.nextButton();
     if(feedback.length!==1 || feedback[0].getAttribute('aria-live')!=='polite' || !next || editor.resultMarker.status!=='positive_marker')return undefined;
@@ -122,16 +132,26 @@ export class AleksSubmission {
       if(!positive || positive.feedback!==pending.feedback || positive.next!==pending.next)throw Error('La confirmación o el botón Siguiente cambiaron; se detuvo el avance.');
       this.check(signal,generation);pending.next.click();
       const deadline=Date.now()+this.timeout;
+      let routeClicked=false;
       while(Date.now()<deadline) {
         this.check(signal,generation);
+        // Al terminar una unidad ALEKS muestra una pantalla intermedia con
+        // «Temas restantes» y «Continuar en Mi ruta». Ese botón inicia el
+        // siguiente tema; se pulsa como máximo una vez por transición.
+        const route=this.routeButton();
+        if(route && !routeClicked) {
+          this.check(signal,generation);
+          if(this.promptNode()!==pending.prompt)throw Error('La pantalla cambió antes de continuar en Mi ruta.');
+          route.click();routeClicked=true;
+          await delay();this.check(signal,generation);
+          continue;
+        }
         const prompt=await readAleksPrompt(this.document);this.check(signal,generation);
         if(prompt.status==='readable' && prompt.fingerprint && prompt.fingerprint!==pending.fingerprint && !alerts(this.document).length) {
           const context=await assistContext(this.document);this.check(signal,generation);
           const editor=inspectAleksEditor(this.document);
           if((context.can_fill_integer || context.can_fill_fraction) && editor.singleEditor.readback.status==='empty') {this.phase='idle';return;}
           if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
-            // Un nuevo ejercicio visual también puede terminar el avance. El
-            // coordinador decide si su formato admite otra entrega.
             this.phase='idle';return;
           }
         }
