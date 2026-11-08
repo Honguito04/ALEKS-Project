@@ -19,19 +19,21 @@ async function solve():Promise<AssistView> {
   const context=await assistContext(document);
   if(metrics.holdSolve)await new Promise<void>(resolve=>{metrics.releaseSolve=resolve;});
   return {id:crypto.randomUUID(),context,result:assistResultSchema.parse({fingerprint:context.fingerprint,provider:'ollama',provider_calls:1,
-    model:'synthetic-model',verified:false,verification:'none',proposal:{status:'proposed',answers:[{field_key:'answer',value:metrics.fraction?metrics.fractionValue:metrics.nexts?'20':'12',unit:''}],
+    model:'synthetic-model',verified:false,verification:'none',proposal:{status:'proposed',answers:[{field_key:'answer',value:context.fixed_unit?'7':metrics.fraction?metrics.fractionValue:metrics.nexts?'20':'12',unit:context.fixed_unit?'horas':''}],
       explanation:'Propuesta sintética para comprobar el recorrido del panel.',missing_information:[]}})};
 }
 const input=document.querySelector<HTMLInputElement>('input.ansed_input')!,verify=document.querySelector<HTMLButtonElement>('.checkAnswer')!;
 input.addEventListener('input',()=>{
+  const tree=document.querySelector('.ansed_tree')!,unit=[...tree.children].find(node=>node.textContent==='hora(s)');
   const glyph=document.createElement('span');glyph.className='AnsedObject';glyph.textContent=input.value;
   glyph.style.cssText='position:absolute;font:18px serif;left:2px;top:3px;height:24px';
+  if(unit)glyph.style.cssText='position:absolute;font:18px serif;left:12px;top:12px;height:22px';
   if(metrics.fraction){
     const [numeratorText,denominatorText]=input.value.split('/');
     const denominator=glyph.cloneNode(true) as HTMLElement;glyph.textContent=numeratorText;denominator.textContent=denominatorText;denominator.style.top='32px';
     document.querySelector<HTMLElement>('.ansed_root')!.style.height='65px';document.querySelector<HTMLElement>('.ansed_tree')!.style.height='65px';
     document.querySelector('.ansed_tree')!.replaceChildren(glyph,denominator);
-  }else document.querySelector('.ansed_tree')!.replaceChildren(glyph);input.value='';
+  }else tree.replaceChildren(glyph,...(unit?[unit]:[]));input.value='';
 });
 verify.addEventListener('click',()=>{
   metrics.submits++;verify.remove();

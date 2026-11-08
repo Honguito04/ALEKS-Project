@@ -16,7 +16,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   const fields=editor.circleTable.status==='observed'?editor.circleTable.fields.map(field=>({key:field.kind,label:field.label})):
     roots.size>1?[...roots].sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top || a.getBoundingClientRect().left-b.getBoundingClientRect().left)
       .map((_,i)=>({key:`field_${i+1}`,label:`Recuadro ${i+1} en orden visual de arriba abajo e izquierda a derecha; asociación sin validar`})):
-      [{key:'answer',label:'Respuesta del ejercicio'}];
+      [{key:'answer',label:single.readback.unitLabel?`Respuesta del ejercicio (unidad predefinida: ${single.readback.unitLabel}; escribe solo el número)`:'Respuesta del ejercicio'}];
   const fill_blockers:FillBlocker[]=[];
   if(!readable)fill_blockers.push('unreadable_prompt');
   if(single.status!=='observed')fill_blockers.push(single.status==='ambiguous'?'multiple_editors':single.status==='missing'?'editor_missing':'editor_structure');
@@ -38,7 +38,8 @@ export async function assistContext(document:Document,allowImage=false):Promise<
     single.status,single.rootCount,single.disabled,single.readback,editor.circleTable]);
   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)))].map(value=>value.toString(16).padStart(2,'0')).join('');
   return assistContextSchema.parse({fingerprint,statement:readable?prompt.statement:'No fue posible leer el enunciado como texto estructurado. Interpreta únicamente el ejercicio visible en la captura adjunta; si faltan datos, indícalo.',
-    fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,can_fill_fraction,fill_blockers});
+    fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,can_fill_fraction,fill_blockers,
+    ...(single.readback.fixed_unit?{fixed_unit:single.readback.fixed_unit}:{})});
 }
 
 /** El usuario confirmó la conversión automática de a/b en fracción vertical.
@@ -79,7 +80,7 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
       const editor=inspectAleksEditor(document);
       if(current.fingerprint!==promptBefore.fingerprint || !root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root ||
         document.activeElement!==input || disabled(input) || input.readOnly || !visible(root) ||
-        editor.singleEditor.status!=='observed' || editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('Cambió el ejercicio o el foco del editor. El teclado de Chrome se detuvo.');
+        editor.singleEditor.status!=='observed' || editor.singleEditor.readback.fixed_unit!==before.fixed_unit || editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('Cambió el ejercicio, su unidad o el foco del editor. El teclado de Chrome se detuvo.');
     };
     // El panel lateral puede tener el foco de Chrome. CDP dirige las teclas a
     // la pestaña validada por el worker y enfoca su render widget. Aquí importa
@@ -93,8 +94,8 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     signal.throwIfAborted();
     if(afterIntent.fingerprint!==promptBefore.fingerprint || !root.isConnected)throw Error('El enunciado cambió antes de escribir.');
     if(proceed) {
-      const stillEmpty=inspectAleksEditor(document).singleEditor.readback.status==='empty';
-      if(!stillEmpty)throw Error('El editor cambió durante la preparación. Revisa el recuadro.');
+      const readback=inspectAleksEditor(document).singleEditor.readback;
+      if(readback.status!=='empty' || readback.fixed_unit!==before.fixed_unit)throw Error('El editor o su unidad cambió durante la preparación. Revisa el recuadro.');
       Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')!.set!.call(input,value);
       input.dispatchEvent(new InputEvent('input',{bubbles:true,inputType:'insertText',data:value}));
       input.dispatchEvent(new Event('change',{bubbles:true}));
@@ -105,9 +106,11 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     signal.throwIfAborted();
     if(!root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root || !visible(root) || disabled(input) || input.readOnly)throw Error('El editor desapareció o cambió durante la escritura.');
     const observation=inspectAleksEditor(document).singleEditor;
+    if(observation.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad del recuadro cambió durante la escritura. No se entregó la respuesta.');
     if(observation.status==='observed' && observation.readback.status==='readable' && observation.readback.value===value) {
       const current=await readAleksPrompt(document);signal.throwIfAborted();
       if(current.fingerprint!==promptBefore.fingerprint)throw Error('El enunciado cambió durante la escritura.');
+      if(inspectAleksEditor(document).singleEditor.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad cambió antes de confirmar la escritura.');
       return {written:true,display:value,submitted:false};
     }
     await new Promise(resolve=>setTimeout(resolve,50));

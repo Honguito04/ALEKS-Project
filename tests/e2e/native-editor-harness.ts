@@ -7,7 +7,7 @@ import { assistContext,fillAssistAnswer } from '../../extension/src/aleks-assist
 import { inspectSingleEditor } from '../../extension/src/aleks-single-editor';
 import { typeNativeAnswer } from '../../extension/src/native-keyboard';
 
-type Mode='normal'|'focus-change'|'prompt-change'|'abort';
+type Mode='normal'|'focus-change'|'prompt-change'|'abort'|'fixed-unit'|'fixed-unit-change';
 declare global {interface Window {
   nativeCommand:(method:string,params:Record<string,unknown>)=>Promise<unknown>;
   nativeEditor:{run:(value:string,native:boolean,mode?:Mode)=>Promise<unknown>;snapshot:()=>unknown};
@@ -38,7 +38,11 @@ function render() {
   if(buffer.includes('/')) {
     root.style.height='64px';tree.style.height='64px';
     tree.replaceChildren(glyph(numerator,2),...(denominator?[glyph(denominator,32)]:[]));
-  } else tree.replaceChildren(glyph(buffer,3));
+  } else tree.replaceChildren(glyph(buffer,mode.startsWith('fixed-unit')?12:3));
+  if(mode.startsWith('fixed-unit')) {
+    const unit=glyph(mode==='fixed-unit-change' && buffer?'minuto(s)':'hora(s)',12);
+    unit.style.left='26px';unit.style.font='14px Verdana';tree.append(unit);
+  }
 }
 input.addEventListener('keydown',event=>{
   events.push({key:event.key,trusted:event.isTrusted});
@@ -55,6 +59,9 @@ document.addEventListener('click',()=>clicks++);
 const snapshot=()=>({attached,detached,buffer,events,syntheticInputs,clicks,readback:inspectSingleEditor(document).readback});
 window.nativeEditor={snapshot,run:async(value,native,nextMode='normal')=>{
   mode=nextMode;controller=new AbortController();
+  if(mode.startsWith('fixed-unit')) {
+    root.style.height='48px';tree.style.height='48px';render();tree.firstElementChild?.remove();
+  }
   const context=await assistContext(document);
   try {
     const written=await fillAssistAnswer(document,context.fingerprint,value,controller.signal,native?async guard=>{

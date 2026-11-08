@@ -23,6 +23,37 @@ test('lee los dos sucesos y el MathML una sola vez sin título, clics, escritura
   expect(result.observation.mathematics).toEqual(['1','6','A','7','B'].map(value=>({kind:'row',items:[{kind:/\d/.test(value)?'number':'identifier',value}]})));
   expect(result.observation.fingerprint).toMatch(/^[a-f0-9]{64}$/);expect(requests).toEqual([]);
 });
+
+for(const space of ['&nbsp;','&#160;','\u00a0',' ']) {
+  test(`lee la separación de unidad MathML ${JSON.stringify(space)}`,async({page})=>{
+    const result=await page.evaluate(space=>{
+      const tree=window.promptMath(`<math><mn>10</mn><mo>${space}</mo><mstyle fontface="unit"><mtext>m</mtext></mstyle></math>`);
+      return {tree,text:window.promptMathText(tree)};
+    },space);
+    expect(result.tree).toMatchObject({kind:'row',items:[{kind:'number',value:'10'},{kind:'space'},{kind:'row',items:[{kind:'text',value:'m'}]}]});
+    expect(result.text.replace(/\s+/gu,' ')).toBe('10 m');
+  });
+}
+
+test('la potencia con base vacía se asocia únicamente a su unidad explícita anterior',async({page})=>{
+  const result=await page.evaluate(()=>{
+    const tree=window.promptMath('<math><mn>16</mn><mstyle fontface="unit"><mtext>m</mtext></mstyle><msup><mn></mn><mrow><mn>3</mn></mrow></msup></math>');
+    return window.promptMathText(tree);
+  });
+  expect(result).toBe('16 (m)^(3)');
+});
+
+for(const xml of [
+  '<math><msup><mn/><mn>3</mn></msup></math>',
+  '<math><mn>16</mn><msup><mn/><mn>3</mn></msup></math>',
+  '<math><mstyle><mtext>m</mtext></mstyle><msup><mn/><mn>3</mn></msup></math>',
+  '<math><mo>&unknown;</mo></math>',
+  '<math><mstyle fontface="unit"><mtext>m</mtext></mstyle><msup><mn/>extra<mn>3</mn></msup></math>'
+]) {
+  test(`no adivina bases ni descarta estructuras inválidas: ${xml}`,async({page})=>{
+    expect(await page.evaluate(xml=>{try{window.promptMath(xml);return false;}catch{return true;}},xml)).toBe(true);
+  });
+}
 test('el diagnóstico muestra el enunciado sin habilitar operaciones reales',async({page})=>{
   const result=await page.evaluate(async()=>{
     const detection=await window.pendingAdapter.detect();

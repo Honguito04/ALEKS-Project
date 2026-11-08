@@ -39,6 +39,16 @@ test('diagnostica Continuar en Mi ruta con los textos observados sin copiar dato
   expect(result.report.routeTransition).toMatchObject({status:'observed',controlCount:1,markerCount:1});
   expect(JSON.stringify(result.report)).not.toContain('PRIVATE');
 });
+
+test('exporta únicamente la unidad predefinida reconocida del recuadro',async({page})=>{
+  const report=await page.evaluate(()=>{
+    const root=document.querySelector<HTMLElement>('.ansed_root')!,tree=root.querySelector<HTMLElement>('.ansed_tree')!;
+    root.style.width='175px';root.style.height='48px';tree.style.width='175px';tree.style.height='48px';
+    tree.innerHTML='<span class="AnsedObject" style="position:absolute;left:26px;top:12px;font:14px Verdana;height:22px">hora(s)</span>';
+    return window.editorDiagnostics(document);
+  });
+  expect(report.fixedUnit).toEqual({unit:'h',label:'hora(s)'});
+});
 test('omite texto privado, atributos, buffer, HTML, URL y contenido de marcos',async({page})=>{
   const report=await page.evaluate(()=>{
     document.title='PRIVATE_TITLE';document.querySelector('#algoPrompt')!.textContent='PRIVATE_PROMPT';

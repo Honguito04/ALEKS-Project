@@ -1,5 +1,22 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.4.4: unidad predefinida y MathML
+
+`aleks-single-editor` distingue un sufijo conocido del contenido editable usando
+el formato aportado (span directo, Verdana 14 normal), sus límites y su posición
+a la derecha del número. No descarta texto arbitrario ni variables en cursiva.
+La lectura conserva `fixed_unit` y `unitLabel`; el contexto incorpora la unidad
+a la etiqueta del campo y a su huella. El worker excluye `fixed_unit` del contrato
+del backend. `proposalFillMessages` acepta una unidad vacía o un alias de la
+unidad ya mostrada, sin conversiones de magnitudes ni clics en menús de unidad.
+Escritor y entrega comprueban que se conserve durante toda la operación.
+
+El lector MathML admite solo la entidad HTML `&nbsp;` como espacio XML y preserva
+los tokens vacíos usados como separación. Una base vacía de `msup` hereda el nodo
+anterior únicamente si es una unidad explícita `mstyle[fontface="unit"]` con
+`mtext`; no se atribuye una base numérica ni se omiten estructuras desconocidas.
+El panel muestra los motivos concretos que mantienen deshabilitado el inicio.
+
 ## Ampliación 0.4.3: transición al terminar un tema
 
 `AleksSubmission.next()` conserva la vinculación con la entrega aceptada y el clic único en Siguiente. Durante la espera puede reconocer el intermedio **Temas restantes** con **Continuar en Mi ruta**, localizar su ancestro semántico de botón sin inventar un ID del sitio y hacer un segundo clic acotado. Requiere controles únicos, visibles y habilitados, y ausencia del ejercicio visible. Después espera otro enunciado y editor vacío antes de devolver el control al coordinador; no declara éxito por desaparecer la pantalla ni cuenta la transición como otra respuesta.

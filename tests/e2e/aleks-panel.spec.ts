@@ -37,6 +37,27 @@ test('el panel consulta y permite introducir el entero sin exigir cm³ o pulsar 
   await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeVisible();
 });
 
+test('explica junto al inicio qué estructura del enunciado impide leerlo',async({page})=>{
+  await openPanel(page);
+  await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeEnabled();
+  await page.evaluate(()=>{
+    document.querySelector('#algoPrompt')!.innerHTML='<span mathml="&lt;math&gt;&lt;mo&gt;∑&lt;/mo&gt;&lt;/math&gt;"></span>';
+  });
+  await page.getByRole('button',{name:'Leer actividad seleccionada'}).click();
+  await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeDisabled();
+  await expect(page.getByRole('list',{name:'Motivos que impiden iniciar el recorrido'})).toContainText('Operador MathML no admitido');
+});
+
+test('explica la captura que bloquea el recorrido y se recupera al desmarcarla',async({page})=>{
+  await openPanel(page);
+  await page.getByLabel('Incluir captura visible de la pestaña seleccionada').check();
+  await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeDisabled();
+  await expect(page.getByRole('list',{name:'Motivos que impiden iniciar el recorrido'})).toContainText('Desmarca la captura');
+  await page.getByLabel('Incluir captura visible de la pestaña seleccionada').uncheck();
+  await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeEnabled();
+  await expect(page.getByRole('list',{name:'Motivos que impiden iniciar el recorrido'})).toHaveCount(0);
+});
+
 test('presenta un cálculo exacto como comprobado y disponible para escritura asistida',async({page})=>{
   await openPanel(page);
   await page.evaluate(()=>{window.testAssistResult={provider:'deterministic',provider_calls:0,model:'',verified:true,verification:'ordered_prizes'};});

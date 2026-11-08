@@ -2,6 +2,30 @@
 
 Actualización: 8 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
+## Revisión 0.4.4: piscina y unidad predefinida (8 de noviembre)
+
+- Compilación y TypeScript correctos; **181 pruebas unitarias pasadas**.
+- **218 pruebas de navegador pasadas** sobre lectura, contexto, panel, escritura,
+  entrega, avance, fracciones y ruta; **6 de diagnóstico pasadas** después de
+  añadir la unidad reconocida al informe. Incluyen 11 casos de teclado de
+  Chromium mediante CDP, dos nuevos para conservar la unidad e interrumpir una
+  escritura parcial cuando cambia.
+- El fragmento de la piscina conserva los MathML aportados: `&nbsp;`, separación
+  de unidad y `msup` con base vacía después de `mstyle[fontface="unit"]`. No se
+  interpretan bases vacías aisladas, entidades desconocidas ni expresiones solo
+  de espacios. Se eliminaron enlaces de sesión e identificadores dinámicos.
+- El sufijo `hora(s)` se distingue del número mediante el formato y la geometría
+  observados. Se rechazan texto desconocido, variables en cursiva, unidades
+  duplicadas, solapadas o distintas de la propuesta, y cambios durante la escritura.
+
+El recorrido de prueba habilita el inicio, recibe una propuesta simulada `7`
+con unidad `horas`, escribe únicamente el número, conserva el sufijo, confirma
+un feedback simulado y pasa al siguiente ejercicio. El modelo real no se ejecutó
+y no se operó la cuenta ALEKS del usuario. `fixed_unit` permanece fuera del
+contrato del backend; sus capacidades se conservan en la etiqueta del campo.
+La versión de la extensión es **0.4.4**, con los mismos permisos. El backend no
+cambió y no se repitió su suite; la última ejecución conserva **293 pruebas**.
+
 ## Integración de Reticle para desarrollo (8 de noviembre)
 
 Reticle se conecta al simulador servido por Vite en `127.0.0.1:5173/simulator/`.

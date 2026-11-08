@@ -1,13 +1,14 @@
 import { test,expect,type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
-let fixture:string,bundle:string;
+let fixture:string,unitFixture:string,bundle:string;
 test.beforeAll(async()=>{
   fixture=await readFile('tests/fixtures/aleks-single-editor.html','utf8');
+  unitFixture=await readFile('tests/fixtures/aleks-fixed-unit-editor.html','utf8');
   bundle=(await build({entryPoints:['tests/e2e/aleks-automation-panel-harness.ts'],bundle:true,write:false,format:'iife',target:'es2022',loader:{'.css':'empty'}})).outputFiles[0].text;
 });
-async function openPanel(page:Page) {
-  await page.route('**/automation-panel-fixture',r=>r.fulfill({contentType:'text/html',body:fixture}));
+async function openPanel(page:Page,body=fixture) {
+  await page.route('**/automation-panel-fixture',r=>r.fulfill({contentType:'text/html',body}));
   await page.route('**/__automation-panel.js',r=>r.fulfill({contentType:'application/javascript',body:bundle}));
   await page.goto('/automation-panel-fixture');
   await page.evaluate(()=>{const root=document.createElement('div');root.id='root';document.body.append(root);});
@@ -15,6 +16,18 @@ async function openPanel(page:Page) {
   await page.getByRole('button',{name:'Leer actividad seleccionada'}).click();
 }
 const counters=(page:Page)=>page.evaluate(()=>({solves:window.automationTest.solves,submits:window.automationTest.submits,nexts:window.automationTest.nexts}));
+
+test('lee la piscina con MathML real, escribe 7 ante hora(s), verifica y continúa',async({page})=>{
+  await openPanel(page,unitFixture);
+  const start=page.getByRole('button',{name:'Iniciar recorrido automático'});
+  await expect(start).toBeEnabled();
+  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await start.click();
+  const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
+  await expect(status).toContainText('2 correctas confirmadas por ALEKS',{timeout:15000});
+  expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
+  await expect(page.locator('.ansed_tree')).toHaveText('20');
+});
 
 test('continúa en Mi ruta entre temas y conserva los contadores del recorrido',async({page})=>{
   await openPanel(page);await page.evaluate(()=>{window.automationTest.topicCompletion=true;});

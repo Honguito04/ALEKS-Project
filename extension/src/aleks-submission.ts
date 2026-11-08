@@ -94,13 +94,13 @@ export class AleksSubmission {
       const target=targets[0];
       const roots=[...this.document.querySelectorAll<HTMLElement>('.ansed_root')].filter(root=>visible(root) && !root.closest('#algoPrompt') && root.querySelector('input.ansed_input[aria-label="Answer Editor"]'));
       if(roots.length!==1)throw Error('No hay un único recuadro reconocido para esta entrega.');
-      const root=roots[0];
+      const root=roots[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
       await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
       const editor=inspectAleksEditor(this.document);
       const freshTargets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
       if(!root.isConnected || !visible(root) || editor.singleEditor.status!=='observed' || editor.singleEditor.disabled ||
-        editor.singleEditor.readback.status!=='readable' || editor.singleEditor.readback.value!==value ||
+        editor.singleEditor.readback.status!=='readable' || editor.singleEditor.readback.value!==value || editor.singleEditor.readback.fixed_unit!==fixedUnit ||
         freshTargets.length!==1 || freshTargets[0]!==target || disabled(target) || alerts(this.document).length ||
         editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('El recuadro o los controles cambiaron antes de verificar. No se entregó la respuesta.');
       // Ocultar/mostrar un resultado antiguo no acredita otra entrega. Solo

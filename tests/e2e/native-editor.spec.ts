@@ -40,6 +40,20 @@ test('rechaza texto ejecutable antes de conectar el teclado',async({page})=>{
   expect(result.error).not.toBe('');expect(result.events).toEqual([]);
 });
 
+test('el teclado de Chrome escribe 7 conservando hora(s)',async({page})=>{
+  const result=await page.evaluate(()=>window.nativeEditor.run('7',true,'fixed-unit')) as any;
+  expect(result).toMatchObject({attached:1,detached:1,buffer:'7',clicks:0,error:'',
+    written:{written:true,display:'7',submitted:false},readback:{status:'readable',value:'7',fixed_unit:'h',unitLabel:'hora(s)'}});
+  expect(result.events).toEqual([{key:'7',trusted:true}]);
+});
+
+test('cambiar la unidad interrumpe el teclado antes del segundo dígito',async({page})=>{
+  const result=await page.evaluate(()=>window.nativeEditor.run('72',true,'fixed-unit-change')) as any;
+  expect(result).toMatchObject({attached:1,detached:1,buffer:'7',clicks:0});
+  expect(result.error).not.toBe('');expect(result.written).toBeUndefined();
+  expect(result.events).toEqual([{key:'7',trusted:true}]);
+});
+
 test('permite iniciar desde el panel aunque el documento no tenga el foco de Chrome',async({page})=>{
   // El foco externo se simula; las teclas sí las entrega Chromium por CDP.
   // No se carga una extensión ni un panel nativo en este entorno administrado.

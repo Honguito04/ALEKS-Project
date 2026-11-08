@@ -1,4 +1,5 @@
 import { parseSupportedAnswer } from './answer-format';
+import { answerUnit } from './answer-units';
 import type { AssistContext,AssistResult,AssistView,FillBlocker } from './shared';
 
 export const fillBlockerMessages:Record<FillBlocker,string>={
@@ -12,7 +13,7 @@ export const fillBlockerMessages:Record<FillBlocker,string>={
   result_present:'Se observa un resultado o un botón de avance. Abre un ejercicio sin resolver y vuelve a consultar.',
   diagram_required:'Esta respuesta depende de un diagrama que la escritura asistida no valida.',
   image_based_proposal:'La propuesta depende de una captura. Si el ejercicio se resuelve solo con el texto, desmarca la captura y vuelve a consultar.',
-  answer_format:'La escritura admite un entero o una fracción reducida no negativa, sin unidad, en un único recuadro (hasta doce dígitos por componente).',
+  answer_format:'La escritura admite un entero o una fracción reducida no negativa en un único recuadro (hasta doce dígitos por componente). La unidad, si existe, debe estar ya mostrada y reconocida en ALEKS.',
   fraction_control:'La lectura actual no confirmó un editor vacío compatible con fracciones. Vuelve a leer la actividad.',
   no_answer:'No hay una respuesta estructurada disponible para introducir.',
   unknown:'Esta consulta no confirmó que pueda escribir. Vuelve a leer la actividad y consultar.'
@@ -35,10 +36,15 @@ export function proposalFillBlockers(view:AssistView):FillBlocker[] {
   if(!view.context.can_fill_integer && !view.context.can_fill_fraction && !blockers.length)blockers.push('unknown');
   const {proposal}=view.result;
   if(proposal.status!=='proposed')blockers.push('no_answer');
-  else if(proposal.answers.length!==1 || proposal.answers[0].field_key!=='answer' || proposal.answers[0].unit!=='' ||
+  else if(proposal.answers.length!==1 || proposal.answers[0].field_key!=='answer' || !unitMatches(view) ||
     !parseSupportedAnswer(proposal.answers[0].value))blockers.push('answer_format');
   else if(parseSupportedAnswer(proposal.answers[0].value)?.kind==='fraction' && !view.context.can_fill_fraction)blockers.push('fraction_control');
   return [...new Set(blockers)];
+}
+
+function unitMatches(view:AssistView) {
+  const unit=view.result.proposal.answers[0]?.unit;
+  return unit==='' || Boolean(view.context.fixed_unit && answerUnit(unit || '')===view.context.fixed_unit);
 }
 
 /** Acota el diagnóstico y hace visibles los caracteres de control/formato. */
@@ -52,7 +58,9 @@ function answerFormatMessage(view:AssistView):string {
   if(answers.length!==1)return `Se recibieron ${answers.length} respuestas; la escritura necesita una sola respuesta asociada al recuadro.`;
   const answer=answers[0],reasons:string[]=[];
   if(answer.field_key!=='answer')reasons.push(`El campo recibido es ${quotedDiagnostic(answer.field_key)}; no corresponde al recuadro «answer».`);
-  if(answer.unit!=='')reasons.push(`La respuesta incluye la unidad ${quotedDiagnostic(answer.unit)}; la escritura actual admite respuestas sin unidad.`);
+  if(!unitMatches(view))reasons.push(view.context.fixed_unit?
+    `La unidad propuesta ${quotedDiagnostic(answer.unit)} no coincide con la unidad predefinida ${quotedDiagnostic(view.context.fixed_unit)}.`:
+    `La respuesta incluye la unidad ${quotedDiagnostic(answer.unit)}; no se reconoció una unidad predefinida en el recuadro.`);
   if(!parseSupportedAnswer(answer.value))reasons.push(`El valor recibido ${quotedDiagnostic(answer.value)} no tiene el formato admitido: entero o fracción reducida no negativa (por ejemplo, 15/64), hasta doce dígitos por componente.`);
   return reasons.join(' ') || fillBlockerMessages.answer_format;
 }

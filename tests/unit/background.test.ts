@@ -154,6 +154,18 @@ it('introduce 15/64 desde la propuesta nueva sin marcar al modelo como verificad
   expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id})).ok).toBe(true);
   expect(tabsSend.mock.calls.at(-1)?.[1]).toMatchObject({type:'assistFill',value:'15/64'});
 });
+
+it('transporta la unidad predefinida en la etiqueta y escribe solo el número',async()=>{
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'7',unit:'horas'}]}});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,data:message.type==='assistContext'?
+    {...assistContext,fixed_unit:'h',fields:[{key:'answer',label:'Respuesta (unidad predefinida: hora(s))'}]}:{written:true}}));
+  const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(response.ok).toBe(true);
+  const sent=JSON.parse(fetchMock.mock.calls[0][1].body).context;
+  expect(sent).not.toHaveProperty('fixed_unit');expect(sent.fields[0].label).toContain('hora(s)');
+  expect((await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id})).ok).toBe(true);
+  expect(tabsSend.mock.calls.at(-1)?.[1]).toMatchObject({type:'assistFill',value:'7'});
+});
 it('explica el valor o unidad incompatible antes de pedir escritura al adaptador',async()=>{
   prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'15/64',unit:'cm'}]}});
   const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false}),calls=tabsSend.mock.calls.length;

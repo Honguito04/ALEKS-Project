@@ -1,6 +1,7 @@
 import type { SingleEditorObservation } from './shared';
 import { painted,visible,disabled } from './aleks-dom';
 import { parseSupportedAnswer } from './answer-format';
+import { answerUnit } from './answer-units';
 
 const INPUT='input.ansed_input[aria-label="Answer Editor"][type="text"]';
 const unsupported=(reason:string):SingleEditorObservation['readback']=>({status:'unsupported',reason});
@@ -25,11 +26,35 @@ export function inspectSingleEditor(document:Document):SingleEditorObservation {
 }
 
 function readNumber(root:HTMLElement,tree:HTMLElement):SingleEditorObservation['readback'] {
-  const nodes=[...tree.children] as HTMLElement[];
-  if(nodes.length>24 || [...tree.childNodes].some(node=>node.nodeType!==1 && node.textContent?.trim()))return unsupported('El árbol visual contiene texto o tokens adicionales.');
+  const allNodes=[...tree.children] as HTMLElement[];
+  if(allNodes.length>24 || [...tree.childNodes].some(node=>node.nodeType!==1 && node.textContent?.trim()))return unsupported('El árbol visual contiene texto o tokens adicionales.');
+  if(allNodes.some(node=>node.tagName!=='SPAN' || !node.classList.contains('AnsedObject') || !painted(node) ||
+    [...node.childNodes].some(child=>child.nodeType!==3)))return unsupported('El árbol visual contiene un elemento no reconocido.');
+  const units=allNodes.filter(node=>{
+    const style=node.ownerDocument.defaultView!.getComputedStyle(node);
+    // El sufijo aportado usa Verdana 14 normal; una variable matemática en cursiva no es una unidad fija.
+    return answerUnit(node.textContent || '') && style.fontFamily==='Verdana' && style.fontSize==='14px' && style.fontStyle==='normal';
+  });
+  if(units.length>1)return unsupported('Hay varias etiquetas de unidad en el recuadro.');
+  const unit=units[0],bounds=root.getBoundingClientRect();
+  const inside=(rect:DOMRect)=>rect.width>0 && rect.height>0 && rect.left>=bounds.left-1 && rect.right<=bounds.right+1 && rect.top>=bounds.top-1 && rect.bottom<=bounds.bottom+1;
+  if(unit && !inside(unit.getBoundingClientRect()))return unsupported('La unidad no está completamente dentro del recuadro.');
+  const nodes=allNodes.filter(node=>node!==unit);
+  const result=readNumericNodes(nodes,root);
+  if(!unit)return result;
+  const unitRect=unit.getBoundingClientRect(),rects=nodes.map(node=>node.getBoundingClientRect());
+  if(unitRect.left<=bounds.left+1 || rects.some(rect=>rect.right>unitRect.left+1))return unsupported('La unidad no es un sufijo separado a la derecha del número.');
+  if(rects.length) {
+    const top=Math.min(...rects.map(rect=>rect.top)),bottom=Math.max(...rects.map(rect=>rect.bottom));
+    if(Math.abs((top+bottom)/2-(unitRect.top+unitRect.bottom)/2)>Math.max(unitRect.height,bottom-top)*.35)return unsupported('El número y la unidad no están alineados.');
+  }
+  return {...result,fixed_unit:answerUnit(unit.textContent!)!,unitLabel:unit.textContent!.trim(),
+    reason:result.status==='empty'?`Recuadro vacío; unidad predefinida: ${unit.textContent!.trim()}.`:result.reason};
+}
+
+function readNumericNodes(nodes:HTMLElement[],root:HTMLElement):SingleEditorObservation['readback'] {
   if(!nodes.length)return {status:'empty',reason:'Recuadro vacío.'};
-  if(nodes.some(node=>node.tagName!=='SPAN' || !node.classList.contains('AnsedObject') || !painted(node) ||
-    [...node.childNodes].some(child=>child.nodeType!==3) || !/^\d{1,12}$/u.test(node.textContent?.trim() || '')))return unsupported('La respuesta no tiene el formato de entero o fracción simple admitido para esta lectura.');
+  if(nodes.some(node=>!/^\d{1,12}$/u.test(node.textContent?.trim() || '')))return unsupported('La respuesta no tiene el formato de entero o fracción simple admitido para esta lectura.');
   const bounds=root.getBoundingClientRect(),rects=nodes.map(node=>node.getBoundingClientRect());
   if(rects.some(rect=>rect.width<=0 || rect.height<=0 || rect.left<bounds.left-1 || rect.right>bounds.right+1 || rect.top<bounds.top-1 || rect.bottom>bounds.bottom+1))return unsupported('Los dígitos no están completamente dentro del recuadro visible.');
   const rows:{nodes:HTMLElement[];rects:DOMRect[]}[]=[];

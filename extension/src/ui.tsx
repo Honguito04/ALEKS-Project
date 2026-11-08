@@ -109,6 +109,14 @@ function App() {
   const canFill=Boolean(assist && fillBlockers.length===0);
   const resultVisible=aleks && view.detection?.editorObservation?.resultMarker.status==='positive_marker';
   const canContinueHere=Boolean(automation?.canContinue && resultVisible);
+  const startBlockers=[
+    !mode && 'Entra en demostración o inicia sesión en el asistente.',
+    !health && 'Conecta primero el backend.',
+    diagramRequired && 'El recorrido actual requiere un ejercicio de texto sin diagrama pendiente de interpretar.',
+    hasImage && 'Desmarca la captura y retira la imagen adjunta si el ejercicio se resuelve con el texto.',
+    resultVisible && 'Hay una respuesta correcta anterior. Usa Continuar desde la respuesta correcta o avanza en ALEKS.',
+    view.detection?.promptObservation?.status!=='readable' && `Falta leer el enunciado completo: ${view.detection?.promptObservation?.reason || 'pulsa Leer actividad seleccionada.'}`
+  ].filter((reason):reason is string=>typeof reason==='string');
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">ALEKS · Recorrido automático para enteros y fracciones en un recuadro. Se avanza cuando ALEKS confirma «Correcta».</div>
@@ -204,7 +212,7 @@ function App() {
     {aleks && <section aria-label="Recorrido automático ALEKS">
       <div className="section-label">RECORRIDO AUTOMÁTICO ALEKS</div>
       <p>Resuelve, escribe, pulsa «Verificar» o «Entregar» y espera la confirmación de ALEKS. Después de «Correcta», pulsa «Siguiente» o «Siguiente tema». Si aparece «Temas restantes», pulsa «Continuar en Mi ruta» y espera el nuevo ejercicio.</p>
-      <p className="small">Admite enteros y fracciones reducidas no negativas, sin unidad, en un único recuadro vacío. Escribe a/b y comprueba que ALEKS lo represente como fracción vertical. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas o formatos que aún no reconoce. Mantén el panel abierto durante el recorrido.</p>
+      <p className="small">Admite enteros y fracciones reducidas no negativas en un único recuadro vacío. Si ALEKS muestra una unidad predefinida reconocida, la conserva y escribe solo el número. Escribe a/b y comprueba que ALEKS lo represente como fracción vertical. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas o formatos que aún no reconoce. Mantén el panel abierto durante el recorrido.</p>
       <div className="limits">
         <label>Máximo de respuestas<input aria-label="Máximo de respuestas ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoExercises);}}/></label>
         <label>Máximo de minutos<input aria-label="Máximo de minutos ALEKS" type="number" min="1" max="120" disabled={working} value={autoMinutes} onChange={e=>setAutoMinutes(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoMinutes);}}/></label>
@@ -213,7 +221,8 @@ function App() {
       <p className="small" aria-label="Alcance del recorrido">{autoExercises===1?
         'Con este límite se completará 1 respuesta y no avanzará después de Correcta. Para avanzar automáticamente, elige 2 o más respuestas.':
         `Se completarán hasta ${autoExercises} respuestas correctas. Se pulsará Siguiente o Siguiente tema entre ejercicios mientras queden tiempo y llamadas IA.`}</p>
-      <button disabled={working || !mode || !health || diagramRequired || hasImage || resultVisible || view.detection?.promptObservation?.status!=='readable'} onClick={()=>void startAutomation()}>Iniciar recorrido automático</button>
+      <button disabled={working || startBlockers.length>0} aria-describedby={!working && startBlockers.length?'automation-start-blockers':undefined} onClick={()=>void startAutomation()}>Iniciar recorrido automático</button>
+      {!working && startBlockers.length>0 && <ul id="automation-start-blockers" aria-label="Motivos que impiden iniciar el recorrido" className="small">{startBlockers.map(reason=><li key={reason}>{reason}</li>)}</ul>}
       {canContinueHere && <>
         <p className="small">Puedes continuar desde la respuesta confirmada. El máximo de respuestas y de llamadas IA incluye las ya contabilizadas; aumenta los límites necesarios. El tiempo vuelve a empezar al continuar.</p>
         <button disabled={working || !mode || !health || diagramRequired || hasImage} onClick={()=>void continueAutomation()}>Continuar desde la respuesta correcta</button>

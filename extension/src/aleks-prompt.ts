@@ -13,10 +13,11 @@ function operatorCodes(value:string) {
  * URLs, identificadores, handlers o anotaciones alternativas del renderizador. */
 export function parsePromptMath(xml:string):PromptMath {
   if(xml.length>4096 || /<!\s*(DOCTYPE|ENTITY)/iu.test(xml))throw new Unreadable('MathML demasiado largo o con declaraciones no admitidas.');
-  const parsed=new DOMParser().parseFromString(xml,'application/xml');
+  // ALEKS serializa este espacio HTML en atributos MathML, aunque no es una entidad XML predefinida.
+  const parsed=new DOMParser().parseFromString(xml.replace(/&nbsp;/gu,'&#160;'),'application/xml');
   if(parsed.querySelector('parsererror') || parsed.documentElement.localName!=='math')throw new Unreadable('MathML inválido: no se puede leer la expresión completa.');
   let count=0;
-  function visit(element:Element,depth:number):PromptMath {
+  function visit(element:Element,depth:number,implicitUnit?:PromptMath):PromptMath {
     if(++count>128 || depth>12)throw new Unreadable('La expresión MathML supera los límites de complejidad.');
     if(element.namespaceURI && element.namespaceURI!=='http://www.w3.org/1998/Math/MathML')throw new Unreadable('Espacio de nombres MathML no admitido.');
     const tag=element.localName,children=[...element.children];
@@ -24,7 +25,7 @@ export function parsePromptMath(xml:string):PromptMath {
       const raw=element.textContent || '',value=normalize(raw);
       // ALEKS usa <mn> </mn> como separación en m∠AOB = 160°.
       // Se conserva como espacio, nunca como un número ni un cero implícito.
-      if(tag==='mn' && !children.length && raw.length>0 && !value)return {kind:'space'};
+      if(['mn','mo'].includes(tag) && !children.length && raw.length>0 && !value)return {kind:'space'};
       if(children.length || !value || value.length>80)throw new Unreadable('Token matemático vacío o no admitido.');
       if(tag==='mn' && !/^[+−-]?(?:\d+(?:[.,]\d+)?|[.,]\d+)$/u.test(value))throw new Unreadable('No se puede interpretar el número MathML sin ambigüedad.');
       if(tag==='mi' && !/^\p{L}{1,16}$/u.test(value))throw new Unreadable('Identificador matemático no admitido.');
@@ -40,10 +41,21 @@ export function parsePromptMath(xml:string):PromptMath {
     // de presentación no se trasladan al AST ni se ejecutan.
     if(['math','mrow','mstyle','msqrt'].includes(tag)) {
       if(!children.length)throw new Unreadable('Representación matemática vacía.');
-      return {kind:tag==='msqrt'?'sqrt':'row',items:children.map(c=>visit(c,depth+1))};
+      const items:PromptMath[]=[];
+      for(const [index,child] of children.entries()) {
+        const previous=children[index-1],base=child.children[0];
+        // El exponente de m³ puede venir como <mstyle unit>m</mstyle><msup><mn/><mn>3</mn></msup>.
+        // Solo esa base vacía, inmediatamente después de una unidad explícita, hereda el nodo anterior.
+        const postfix=child.localName==='msup' && child.children.length===2 && base.localName==='mn' &&
+          !base.children.length && !base.textContent?.trim() && previous?.localName==='mstyle' && previous.getAttribute('fontface')==='unit' &&
+          previous.children.length===1 && previous.children[0].localName==='mtext';
+        const inherited=postfix?items.pop():undefined;
+        items.push(visit(child,depth+1,inherited));
+      }
+      return {kind:tag==='msqrt'?'sqrt':'row',items};
     }
     if(['mfrac','msup','mroot','msub','mover'].includes(tag) && children.length===2) {
-      const left=visit(children[0],depth+1),right=visit(children[1],depth+1);
+      const left=tag==='msup' && implicitUnit?implicitUnit:visit(children[0],depth+1),right=visit(children[1],depth+1);
       if(tag==='mfrac')return {kind:'fraction',numerator:left,denominator:right};
       if(tag==='msup')return {kind:'power',base:left,exponent:right};
       if(tag==='mroot')return {kind:'root',radicand:left,index:right};
@@ -52,7 +64,9 @@ export function parsePromptMath(xml:string):PromptMath {
     }
     throw new Unreadable(`Estructura MathML no admitida: ${tag}.`);
   }
-  return visit(parsed.documentElement,0);
+  const math=visit(parsed.documentElement,0);
+  if(!promptMathText(math).trim())throw new Unreadable('Representación matemática vacía.');
+  return math;
 }
 
 export function promptMathText(math:PromptMath):string {

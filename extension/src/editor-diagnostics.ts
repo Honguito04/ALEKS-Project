@@ -1,5 +1,6 @@
 import { painted,visible,disabled } from './aleks-dom';
 import { inspectAleksRoute } from './aleks-route';
+import { inspectSingleEditor } from './aleks-single-editor';
 
 const INPUT='input.ansed_input[aria-label="Answer Editor"][type="text"]';
 const knownClasses=['ansed_root','ansed_tree','AnsedObject','ansed_canvas','ansed_caret','ansed_input'];
@@ -77,7 +78,8 @@ export function editorDiagnostics(document:Document) {
     })
   ];
   if(roots.slice(0,12).some(root=>root.querySelectorAll(INPUT).length>4 || root.querySelectorAll(':scope > .ansed_tree').length>2))truncated=true;
+  const {fixed_unit,unitLabel}=inspectSingleEditor(document).readback;
   return {version:1,title:'Diagnóstico del editor ALEKS',status:roots.length?'observed':'missing',rootCount:roots.length,
     visibleRootCount:roots.filter(visible).length,inputCount:inputs.length,frameCount:document.querySelectorAll('iframe,frame').length,
-    truncated,editors,controls,routeTransition:inspectAleksRoute(document)};
+    truncated,editors,controls,routeTransition:inspectAleksRoute(document),...(fixed_unit?{fixedUnit:{unit:fixed_unit,label:unitLabel}}:{})};
 }

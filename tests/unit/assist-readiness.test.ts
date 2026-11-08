@@ -11,6 +11,15 @@ function proposal():AssistView {
 }
 
 describe('diagnóstico compartido de escritura',()=>{
+  it.each(['','h','horas','hora(s)'])('admite el número con una unidad predefinida coincidente: %s',unit=>{
+    const candidate=proposal();candidate.context.fixed_unit='h';candidate.result.proposal.answers[0]={field_key:'answer',value:'7',unit};
+    expect(proposalFillBlockers(candidate)).toEqual([]);
+  });
+
+  it('rechaza una unidad propuesta distinta aunque la cantidad sea válida',()=>{
+    const candidate=proposal();candidate.context.fixed_unit='h';candidate.result.proposal.answers[0]={field_key:'answer',value:'7',unit:'min'};
+    expect(proposalFillMessages(candidate).join(' ')).toContain('no coincide');
+  });
   it('acepta 15/64 como propuesta aunque el modelo no esté verificado',()=>{
     const candidate=proposal();
     expect(proposalFillBlockers(candidate)).toEqual([]);expect(proposalFillMessages(candidate)).toEqual([]);

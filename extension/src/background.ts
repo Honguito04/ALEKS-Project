@@ -2,7 +2,7 @@ import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limit
 import { typeNativeAnswer } from './native-keyboard';
 import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
-import { captureFillPolicy,requireAssistImage,proposalFillMessages } from './assist-readiness';
+import { captureFillPolicy,requireAssistImage,proposalFillMessages,fillBlockerMessages } from './assist-readiness';
 
 type Auth = {token:string;mode:'demo'|'google'};
 type Consent = {origin:string;activity:string;limits:ReturnType<typeof limitsSchema.parse>};
@@ -185,7 +185,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           if(context.fill_blockers.includes('result_present'))throw Error(automations.get(t.id)?.view.canContinue?
             'La respuesta anterior ya fue confirmada. Aumenta el máximo de respuestas y pulsa Continuar desde la respuesta correcta.':
             'ALEKS muestra un resultado anterior. Pulsa Siguiente en ALEKS y lee el nuevo ejercicio antes de iniciar otro recorrido.');
-          throw Error('El recorrido necesita un único recuadro vacío para un entero o fracción y un enunciado sin diagramas.');
+          throw Error(context.fill_blockers.map(blocker=>fillBlockerMessages[blocker]).join(' ') || 'El recorrido necesita un único recuadro vacío y un enunciado legible.');
         }
         const seed=m.proposalId===undefined?undefined:assistProposals.get(t.id);
         if(m.proposalId!==undefined && (!seed || seed.id!==m.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta cambió; vuelve a consultar.');
@@ -275,7 +275,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
         // Peticiones cortas: MV3 puede terminar un worker cuyo fetch no recibe
         // respuesta durante 30 s. No mantenemos un fetch abierto a la inferencia.
         // Los motivos de escritura son diagnóstico local, no datos del modelo.
-        const {fill_blockers,can_fill_fraction,...modelContext}=context;
+        const {fill_blockers,can_fill_fraction,fixed_unit,...modelContext}=context;
         if(!isCurrent() || assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
         const started=await api('/assist/jobs','POST',{context:modelContext,...(image?{image}:{})},true);
         if(typeof started?.id!=='string' || !/^[a-f0-9-]{36}$/.test(started.id))throw Error('Identificador de consulta inválido.');
@@ -314,7 +314,6 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       const blockers=proposalFillMessages(proposal);
       if(blockers.length)throw Error(blockers.join(' '));
       const answers=proposal.result.proposal.answers;
-      if(proposal.result.proposal.status!=='proposed' || answers.length!==1 || answers[0].field_key!=='answer' || answers[0].unit!=='' || !parseSupportedAnswer(answers[0].value))throw Error('Esta propuesta requiere introducción manual; la escritura asistida admite un entero o fracción sin unidad.');
       assistWriters.add(t.id);
       try{return await deliverAnswer(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answers[0].value});}
       finally{assistWriters.delete(t.id);}
