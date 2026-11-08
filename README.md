@@ -8,6 +8,8 @@ Para usar el teclado, marca **Usar teclado de Chrome para esta pestaña**. El pe
 
 ¿Es tu primera instalación y no tienes experiencia en programación? Sigue la [guía desde cero para Windows](docs/GUIA_DESDE_CERO.md): incluye descarga, instalación, primera prueba y lectura en ALEKS.
 
+Para comprobar el simulador con Reticle, sigue [la configuración de desarrollo](docs/RETICLE.md). La extensión compilada no incluye su runtime.
+
 ## Inicio rápido en Windows (PowerShell)
 
 Requisitos: Python **3.12**, Node.js **24**, npm y Chrome **116 o posterior**. El backend debe ejecutarse en el mismo equipo que Chrome. No requiere administrador, componentes nativos de automatización ni cuentas externas para la demostración.

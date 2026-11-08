@@ -2,6 +2,29 @@
 
 Actualización: 8 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
+## Integración de Reticle para desarrollo (8 de noviembre)
+
+Reticle se conecta al simulador servido por Vite en `127.0.0.1:5173/simulator/`.
+El proxy de desarrollo usa el backend real del puerto 8000. Se comprobó que el
+origen local funciona y que uno ajeno sigue obteniendo 403. La CSP original del
+backend y el manifest Chrome permanecen intactos; el paquete compilado no
+contiene el runtime ni las conexiones de Reticle. Sus registros se excluyen de Git.
+
+Reticle detectó un fallo real: `0.3` recibía `accepted:false` porque el oráculo
+comparaba texto con `3/10`. Cuatro regresiones fallaron antes de corregirlo.
+Tras usar comparación racional acotada para números de ejercicios exactos,
+pasaron **293 pruebas del backend**, compilación y **175 pruebas unitarias**.
+Se conservan unidades, formatos de redondeo, rechazos de aproximaciones e
+idempotencia.
+
+La repetición con Reticle pasó **7 de 7 comprobaciones**: reinicio, fracción,
+aceptación por POST real, siguiente, decimal, aceptación y siguiente con avance
+persistente tras recargar. El resumen histórico de la sesión conserva el fallo
+anterior: **12 comprobaciones correctas y 1 fallida**. No se presenta ese
+historial como una pasada limpia. Los veredictos posteriores son `verified:yes`,
+con cobertura parcial: se observan DOM y red, sin almacén de estado registrado.
+No se probó una cuenta ALEKS ni Ollama. Véase [la guía de Reticle](RETICLE.md).
+
 ## Revisión 0.4.3: continuar al terminar un tema (8 de noviembre)
 
 - `npm run check`: compilación, TypeScript y **175 pruebas unitarias pasadas**.

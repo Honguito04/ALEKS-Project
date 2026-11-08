@@ -4,6 +4,7 @@
   "version": "0.1.0",
   "type": "module",
   "scripts": {
+    "dev": "vite --config vite.reticle.config.ts",
     "build": "tsc --noEmit && vite build && vite build --config vite.content.config.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
@@ -17,6 +18,8 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.56.0",
+    "@reticlehq/react": "^3.9.0",
+    "@reticlehq/vite-plugin": "^3.9.0",
     "@types/chrome": "^0.1.24",
     "@types/node": "^24.0.0",
     "@types/react": "^19.2.0",

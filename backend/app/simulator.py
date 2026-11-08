@@ -1,6 +1,8 @@
 """Ejercicios originales. El oráculo de calificación no usa el motor de resolución."""
 import time
 import json
+import re
+from fractions import Fraction
 from typing import Literal
 from fastapi import APIRouter, HTTPException
 from pydantic import Field
@@ -52,7 +54,14 @@ def grade(body: Grade):
     if body.problem_id not in ANSWERS: raise HTTPException(404, "Ejercicio inexistente")
     with db() as conn:
         conn.execute("DELETE FROM grades WHERE created < ?", (time.time() - 86400,))
-        accepted = body.answer.replace(" ", "") == ANSWERS[body.problem_id] and body.unit == ANSWER_UNITS.get(body.problem_id, "")
+        answer, expected = body.answer.replace(" ", ""), ANSWERS[body.problem_id]
+        accepted = answer == expected
+        exact = any(p['id'] == body.problem_id and p.get('format', 'exact') == 'exact' for p in PROBLEMS)
+        number = r'[+-]?[0-9]+(?:\.[0-9]+|/[0-9]+)?'
+        if exact and re.fullmatch(number, answer) and re.fullmatch(number, expected):
+            try: accepted = Fraction(answer) == Fraction(expected)
+            except ZeroDivisionError: accepted = False
+        accepted = accepted and body.unit == ANSWER_UNITS.get(body.problem_id, "")
         # La clave de idempotencia también cubre cambios de unidad. No requiere migración.
         stored_answer = json.dumps([body.answer, body.unit], ensure_ascii=True, separators=(",", ":"))
         inserted = conn.execute("INSERT OR IGNORE INTO grades VALUES(?,?,?,?,?)", (body.operation_id, body.problem_id, stored_answer, int(accepted), time.time())).rowcount
