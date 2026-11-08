@@ -46,16 +46,7 @@ los orígenes `http://127.0.0.1:5173` y `http://localhost:5173` al del backend; 
 rechazándose. Reticle registra cuerpos de red en este simulador de desarrollo.
 Usa datos de prueba. Los registros locales `.reticle/` quedan fuera de Git.
 
-El plugin se desactiva durante la compilación de producción. `npm.cmd run build`
-genera la extensión sin el runtime de Reticle.
+`npm.cmd run dev` carga Reticle. `npm.cmd run build` genera la extensión sin él.
 
-Se verificó con Reticle: respuesta exacta → aceptación del backend → siguiente
-ejercicio, conservando el avance tras recargar. La prueba usa pantalla y red;
-no registra un almacén de estado. No prueba la cuenta real de ALEKS ni el botón
-«Continuar en Mi ruta» en esa cuenta.
-
-Reticle detectó que el simulador rechazaba `0.3` al compararlo literalmente con
-`3/10`. El calificador ahora compara los números de los ejercicios exactos con
-aritmética racional. Conserva la unidad exigida, el formato decimal de los
-ejercicios redondeados y la idempotencia. La repetición posterior pasó las siete
-comprobaciones del flujo; el historial también conserva el fallo anterior.
+Solo se comprobó el simulador local; ALEKS real sigue pendiente.
+Resultados y límites de la prueba: [VALIDACION.md](VALIDACION.md#integración-de-reticle-para-desarrollo-8-de-noviembre).
