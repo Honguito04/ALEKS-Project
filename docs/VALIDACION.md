@@ -2,6 +2,26 @@
 
 Actualización: 8 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
 
+## Revisión 0.4.5: varias ventanas y foco del teclado (8 de noviembre)
+
+- Compilación y TypeScript correctos; **188 pruebas unitarias pasadas**.
+- **66 pruebas de navegador pasadas** sobre panel, teclado, unidades, contenido
+  y recorrido. Incluyen la selección de la pestaña activa entre dos destinos,
+  la ausencia de selección si ambos están inactivos y la conservación de una
+  selección explícita al actualizar.
+- El worker diferencia pestaña inactiva, ventana sin foco y sesión perdida.
+  Las pruebas comprueban que no envía teclas en esos estados, que un inicio
+  bloqueado no gasta IA ni resetea el editor y que una continuación sin foco
+  conserva la confirmación para intentarla después.
+- El paquete generado contiene ocho archivos idénticos a `dist/` y manifest
+  **0.4.5**, sin cambios de permisos. El backend permanece en **0.4.2**.
+
+Las APIs de pestañas, ventanas y sesión de Chrome están simuladas. Los casos
+de teclado usan eventos CDP reales contra un editor de prueba; la política de
+Chromium administrado impide cargar la extensión nativa aquí. No se operó la
+cuenta ALEKS ni el Chrome del usuario. El aviso anterior agrupaba varias causas:
+las capturas y respuestas recibidas no permiten determinar cuál ocurrió.
+
 ## Revisión 0.4.4: piscina y unidad predefinida (8 de noviembre)
 
 - Compilación y TypeScript correctos; **181 pruebas unitarias pasadas**.

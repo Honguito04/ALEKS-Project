@@ -93,6 +93,19 @@ async function tab(id:unknown) {
   if(!await chrome.permissions.contains({origins:[`${new URL(t.url).origin}/*`]})) throw Error('Falta el permiso del sitio');
   return t as chrome.tabs.Tab & {id:number;url:string};
 }
+async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean) {
+  const cancelled=()=>{if(!isCurrent())throw Error('La operación de teclado fue cancelada o perdió su autorización.');};
+  cancelled();
+  const current=await tab(id);cancelled();
+  if(current.url!==url)throw Error('La página de ALEKS cambió. Lee de nuevo la actividad antes de escribir.');
+  if(!await auth())throw Error('La sesión del asistente terminó. Vuelve a entrar en demostración o inicia sesión.');
+  if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Falta el permiso de depuración de Chrome. Recarga la extensión y revisa sus permisos.');
+  cancelled();
+  const active=await chrome.tabs.query({active:true,windowId:current.windowId});cancelled();
+  if(active.length!==1 || active[0].id!==id)throw Error('La pestaña seleccionada en el asistente no es la pestaña activa de esa ventana. Activa la pestaña ALEKS seleccionada.');
+  const browserWindow=await chrome.windows.get(current.windowId);cancelled();
+  if(!browserWindow.focused)throw Error('La ventana de Chrome que contiene ALEKS no está en primer plano. Vuelve a esa ventana y revisa el recuadro antes de iniciar de nuevo.');
+}
 async function send(id:number,type:string,data:Record<string,unknown>={},isCurrent=()=>true) {
   await tab(id);if(!isCurrent())throw Error('Recorrido detenido.');
   const response=await chrome.tabs.sendMessage(id,{scope:'adapter',type,...data});
@@ -157,7 +170,10 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       await stopAll();await chrome.storage.local.clear();
       await chrome.permissions.remove({origins:[`${BACKEND}/*`,...ALEKS_ORIGINS.map(origin=>`${origin}/*`)]});return true;
     }
-    case 'tabs': return (await chrome.tabs.query({})).filter(t=>t.id && t.url && allowedTab(t.url)).map(t=>({id:t.id,title:t.title,url:t.url}));
+    case 'tabs': {
+      const [all,active]=await Promise.all([chrome.tabs.query({}),chrome.tabs.query({active:true,lastFocusedWindow:true})]);
+      return all.filter(t=>t.id && t.url && allowedTab(t.url)).map(t=>({id:t.id,title:t.title,url:t.url,active:active.length===1 && active[0].id===t.id}));
+    }
     case 'attach': {const result=await attach(m.tabId);return {...result,nativeKeyboard:nativeTabs.has(result.tab.id),automation:await automationStatus(result.tab.id)};}
     case 'status': {const t=await tab(m.tabId);return {...await send(t.id,'status'),nativeKeyboard:nativeTabs.has(t.id),automation:await automationStatus(t.id)};}
     case 'nativeKeyboard': {
@@ -179,6 +195,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       try {
         const limits=automationLimitsSchema.parse(m.limits);
         await automationStatus(t.id);starting.signal.throwIfAborted();
+        if(nativeTabs.has(t.id))await checkNativeTab(t.id,t.url,()=>!starting.signal.aborted && nativeTabs.has(t.id));
         const context=assistContextSchema.parse(await send(t.id,'assistContext'));
         starting.signal.throwIfAborted();
         if(!context.can_fill_integer && !context.can_fill_fraction) {
@@ -225,6 +242,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || !await auth())throw Error('Selecciona ALEKS e inicia sesión en el asistente.');
       if(!run || run.view.id!==m.runId)throw Error('No queda una confirmación vigente para continuar. Pulsa Siguiente en ALEKS y lee el nuevo ejercicio.');
       if(automationStarting.has(t.id) || run.view.active || run.view.busy || assistJobs.has(t.id) || assistWriters.has(t.id))throw Error('Ya hay una operación en curso en esta pestaña.');
+      if(nativeTabs.has(t.id))await checkNativeTab(t.id,t.url,()=>automations.get(t.id)===run && run.view.canContinue && nativeTabs.has(t.id));
       // Mantener runId y la evidencia pendiente en content.ts. next() vuelve a
       // comprobar el enunciado, Correcta y el botón antes de hacer un solo clic.
       return run.continue(automationLimitsSchema.parse(m.limits));
@@ -347,11 +365,7 @@ async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.Mess
     write.used=true;
     const check=async()=>{
       write.abort.signal.throwIfAborted();
-      const current=await tab(t.id);
-      const active=await chrome.tabs.query({active:true,windowId:current.windowId});
-      const window=await chrome.windows.get(current.windowId);
-      if(nativeWrites.get(t.id)!==write || !write.current() || !nativeTabs.has(t.id) || current.url!==write.url ||
-        active.length!==1 || active[0].id!==t.id || !window.focused || !await auth() || !await chrome.permissions.contains({permissions:['debugger']}))throw Error('Activa la pestaña ALEKS y conserva el foco en el editor. Se detuvo la escritura.');
+      await checkNativeTab(t.id,write.url,()=>!write.abort.signal.aborted && nativeWrites.get(t.id)===write && write.current() && nativeTabs.has(t.id));
       write.abort.signal.throwIfAborted();
     };
     await typeNativeAnswer(t.id,write.value,{signal:write.abort.signal,check,

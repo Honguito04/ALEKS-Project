@@ -70,6 +70,15 @@ it('rechaza pestañas externas y permisos revocados',async()=>{
   url='https://evil.example/simulator';expect((await send({scope:'ui',type:'attach',tabId:7})).ok).toBe(false);
   url=BACKEND+'/simulator/';permitted=false;expect((await send({scope:'ui',type:'attach',tabId:7})).ok).toBe(false);
 });
+
+it('marca solo la pestaña activa de la última ventana enfocada',async()=>{
+  const first={id:7,url:ALEKS_ACTIVITY+'/first',title:'Primera',active:true,windowId:1};
+  const second={id:8,url:ALEKS_ACTIVITY+'/second',title:'Visible',active:true,windowId:2};
+  chrome.tabs.query=vi.fn(async (query:chrome.tabs.QueryInfo)=>(query.active?[second]:[first,second]) as chrome.tabs.Tab[]);
+  const result=await send({scope:'ui',type:'tabs'});
+  expect(result.data).toMatchObject([{id:7,active:false},{id:8,active:true}]);
+  expect(chrome.tabs.query).toHaveBeenCalledWith({active:true,lastFocusedWindow:true});
+});
 it('registra actividad y límites autorizados antes de arrancar',async()=>{
   const response=await send({scope:'ui',type:'start',tabId:7,activity:'activity',limits});
   expect(response.ok).toBe(true);expect(local['consent:7']).toEqual({origin:BACKEND,activity:'activity',limits});
@@ -630,6 +639,47 @@ it.each(['frame','tab','url','permission','auth','active-tab','focused-window'] 
   });
   expect((await nativeFill(proposal.id)).ok).toBe(false);
   expect(nativeCommand).not.toHaveBeenCalled();
+});
+
+it.each(['active-tab','focused-window','auth'] as const)('identifica la causa del bloqueo del teclado: %s',async reason=>{
+  const proposal=await nativeProposal();
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type!=='assistFill')return {ok:true,data:true};
+    if(reason==='active-tab')nativeActiveTab=8;
+    if(reason==='focused-window')nativeFocused=false;
+    if(reason==='auth')delete session.auth;
+    return send({scope:'content',type:'nativeType',writeId:message.nativeWriteId},content());
+  });
+  const response=await nativeFill(proposal.id);
+  expect(response.ok).toBe(false);
+  expect(response.error).toContain(reason==='active-tab'?'no es la pestaña activa':reason==='focused-window'?'no está en primer plano':'sesión del asistente terminó');
+  expect(nativeCommand).not.toHaveBeenCalled();
+});
+
+it.each(['active-tab','focused-window'] as const)('el recorrido con teclado comprueba %s antes de gastar IA',async reason=>{
+  prepareAutomation();
+  await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true});
+  if(reason==='active-tab')nativeActiveTab=8;else nativeFocused=false;
+  const response=await automationStart();
+  expect(response.ok).toBe(false);
+  expect(response.error).toContain(reason==='active-tab'?'no es la pestaña activa':'no está en primer plano');
+  expect(fetchMock).not.toHaveBeenCalled();expect(adapterCalls('automationReset')).toHaveLength(0);
+  expect(nativeAttach).not.toHaveBeenCalled();expect(nativeCommand).not.toHaveBeenCalled();
+});
+
+it('continuar sin foco conserva la confirmación y permite volver cuando Chrome está activo',async()=>{
+  prepareAutomation();await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true});
+  const started=await automationStart({limits:{...automationLimits,maxExercises:1}}),runId=started.data.id;
+  await automationStep(runId);await automationStep(runId);
+  const completed=(await send({scope:'ui',type:'status',tabId:7})).data.automation,queries=fetchMock.mock.calls.length;
+  nativeFocused=false;
+  const message={scope:'ui',type:'automationContinue',tabId:7,runId,limits:automationLimits};
+  const blocked=await send(message);
+  expect(blocked.ok).toBe(false);expect(blocked.error).toContain('no está en primer plano');
+  expect((await send({scope:'ui',type:'status',tabId:7})).data.automation).toEqual(completed);
+  expect(adapterCalls('automationNext')).toHaveLength(0);expect(fetchMock).toHaveBeenCalledTimes(queries);
+  nativeFocused=true;
+  expect((await send(message)).data).toMatchObject({phase:'CORRECTA',accepted:1,active:true});
 });
 
 it('detener antes de la solicitud de teclado invalida la operación pendiente',async()=>{

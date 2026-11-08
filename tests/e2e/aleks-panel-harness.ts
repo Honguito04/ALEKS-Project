@@ -10,6 +10,7 @@ declare global {interface Window {
   testNativeKeyboardError?:string;
   testAutomation?:AutomationView;
   testPanelMessages:Record<string,unknown>[];
+  testPanelTabs?:{id:number;title:string;url:string;active:boolean}[];
 }}
 let context:Awaited<ReturnType<typeof window.assistContext>>;
 window.testPanelMessages=[];
@@ -21,7 +22,7 @@ Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
       let data:unknown;
       if(message.type==='health')data={status:'ok',ai_configured:true,google_configured:false,ai_provider:'ollama'};
       else if(message.type==='session')data={mode:'demo'};
-      else if(message.type==='tabs')data=[{id:7,title:'Ejercicio de prueba',url:'https://latam-awu.aleks.com/exercise-fixture'}];
+      else if(message.type==='tabs')data=window.testPanelTabs || [{id:7,title:'Ejercicio de prueba',url:'https://latam-awu.aleks.com/exercise-fixture',active:true}];
       else if(message.type==='attach' || message.type==='status')data={detection:{...await window.pendingAdapter.detect(),origin:'https://latam-awu.aleks.com'},nativeKeyboard:window.testNativeKeyboard===true,automation:window.testAutomation};
       else if(message.type==='nativeKeyboard') {
         if(window.testNativeKeyboardError)throw Error(window.testNativeKeyboardError);

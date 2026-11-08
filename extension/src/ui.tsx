@@ -6,7 +6,7 @@ import { proposalFillBlockers,proposalFillMessages } from './assist-readiness';
 import { prepareAssistImage } from './assist-image';
 import type { AutomationView } from './aleks-automation';
 
-type Tab = {id:number;title:string;url:string};
+type Tab = {id:number;title:string;url:string;active?:boolean};
 type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution;automation?:AutomationView;nativeKeyboard?:boolean};
 type Health = {status:string;version?:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
 const verifiedResultLabels={
@@ -40,7 +40,8 @@ function App() {
   }
   async function refresh() {
     setHealth(await rpc('health'));setMode((await rpc('session')).mode);
-    const list=await rpc('tabs');setTabs(list);if(!selected && list.length) setSelected(list[0].id);
+    const list:Tab[]=await rpc('tabs');setTabs(list);
+    if(!selected)setSelected(list.find(tab=>tab.active)?.id);
   }
   async function connectBackend() {
     // Se llama directamente desde el gesto del usuario: no se solicitan permisos al instalar.
@@ -140,7 +141,7 @@ function App() {
     {!options && <><section><div className="section-label">03 / PESTAÑA Y ACTIVIDAD</div>
       <button className="secondary" disabled={working} onClick={()=>void attempt(refresh)}>Actualizar pestañas</button>
       <label>Pestaña de trabajo<select aria-label="Pestaña de trabajo" disabled={working} value={selected || ''} onChange={e=>{setSelected(Number(e.target.value));setView({});setAssist(undefined);setAutomation(undefined);}}>
-        <option value="">Selecciona una pestaña</option>{tabs.map(t=><option key={t.id} value={t.id}>{t.title}</option>)}
+        <option value="">Selecciona una pestaña</option>{tabs.map(t=><option key={t.id} value={t.id}>{t.title}{t.active?' (activa al actualizar)':''}</option>)}
       </select></label>
       <button disabled={!selected || working} onClick={()=>void attach()}>Leer actividad seleccionada</button>
       <p className="small">Abre el simulador en Chrome: <code>{BACKEND}/simulator/</code></p>

@@ -95,7 +95,7 @@ test('el guard rechaza un cambio de enunciado antes de escribir',async({page})=>
     const context=await window.contentRPC('assistContext');
     return window.contentRPC('assistFill',{fingerprint:context.data.fingerprint,value:'12',nativeWriteId:'write-1'});
   });
-  expect(result).toMatchObject({ok:false,error:'Cambió el ejercicio o el foco del editor. El teclado de Chrome se detuvo.'});
+  expect(result).toMatchObject({ok:false,error:'Cambió el ejercicio, su unidad o el foco del editor. El teclado de Chrome se detuvo.'});
   await expect(page.locator('.ansed_tree')).toHaveText('');
 });
 

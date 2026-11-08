@@ -1,5 +1,15 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.4.5: destino del teclado
+
+El worker marca la pestaña activa de `lastFocusedWindow`; el panel la preselecciona
+solo si todavía no hay selección. La marca se renueva al actualizar la lista.
+`checkNativeTab` concentra las comprobaciones de vigencia, URL, sesión, permiso,
+pestaña activa y ventana enfocada, con errores distintos. Se ejecuta antes de
+iniciar o continuar un recorrido con teclado y antes de cada evento nativo.
+Un fallo antes de continuar conserva la confirmación pendiente. No se activa
+otra ventana, no se redirigen teclas y no se reintenta una escritura parcial.
+
 ## Ampliación 0.4.4: unidad predefinida y MathML
 
 `aleks-single-editor` distingue un sufijo conocido del contenido editable usando

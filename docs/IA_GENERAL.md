@@ -2,7 +2,15 @@
 
 El objetivo es ampliar la cobertura por interpretación del contenido, sin programar una regla para cada enunciado. Una IA multimodal puede trabajar con texto, fórmulas y diagramas. La extensión puede introducir respuestas y pulsar controles, pero necesita comprobar lo que la interfaz registró. Ningún modelo garantiza resolver todos los ejercicios ni manejar cualquier editor.
 
-## Actualizar a 0.4.4 en Windows
+## Actualizar a 0.4.5 en Windows
+
+Con varias ventanas o pestañas ALEKS, el destino seleccionado podía ser distinto
+del visible. El aviso anterior agrupaba varias causas y no permite confirmar
+cuál ocurrió. Ahora la selección inicial prefiere la pestaña activa de la última
+ventana de Chrome enfocada y la marca **activa al actualizar**. Actualizar la lista
+conserva una selección que hayas hecho. El recorrido con teclado comprueba el
+destino antes de consultar la IA y distingue pestaña inactiva, ventana sin foco,
+cambio de página, sesión perdida y cancelación. No cambia de ventana por su cuenta.
 
 El problema de la piscina tenía dos bloqueos: espacios `&nbsp;` dentro de MathML
 y una potencia de unidad con base vacía, además de «hora(s)» en el árbol del
@@ -11,14 +19,18 @@ separa el sufijo de la respuesta numérica. La IA recibe la unidad en la etiquet
 del campo; la extensión escribe solo el valor. Se detiene si cambia la unidad,
 si no coincide con la propuesta o si no puede comprobar la representación.
 
-Para actualizar desde 0.4.3:
+Para actualizar desde 0.4.3 o 0.4.4:
 
 1. Detén el recorrido. Descarga el [ZIP actualizado](https://github.com/Honguito04/ALEKS-Project/archive/refs/heads/main.zip) y reemplaza **extension** dentro de tu proyecto original. Conserva `.env` y `.venv`.
 2. Desde PowerShell, en la carpeta que contiene `package.json`, ejecuta `npm.cmd run build`.
-3. Recarga el asistente en `chrome://extensions` y comprueba **0.4.4**. Pulsa **F5** en ALEKS.
-4. Activa **Usar teclado de Chrome para esta pestaña** y pulsa **Leer actividad seleccionada**. Para probar la piscina, borra el número que escribiste manualmente; «hora(s)» debe conservarse.
+3. Recarga el asistente en `chrome://extensions` y comprueba **0.4.5**. Pulsa **F5** en ALEKS.
+4. Desde la ventana y pestaña ALEKS que quieres usar, abre el panel y pulsa **Actualizar pestañas**. Elige en **Pestaña de trabajo** la marcada **activa al actualizar**, pulsa **Leer actividad seleccionada** y activa **Usar teclado de Chrome para esta pestaña**. Para probar la piscina, el recuadro debe estar vacío y conservar «hora(s)».
 5. Deja desmarcada la captura si todo el problema está en el texto. El enunciado debe leerse y el recuadro debe indicar que está vacío con unidad predefinida. Pulsa **Resolver con IA local** y revisa el cálculo; para la captura recibida da `3,14 × 5² × 1,5 ÷ 16 = 7,359375`, que se redondea a **7 horas**.
-6. Con el recuadro aún vacío, usa **Responder, verificar y continuar**, o inicia el recorrido directamente. Configura al menos 2 respuestas para probar el avance. Cierra DevTools y mantén activa la pestaña.
+6. Con el recuadro aún vacío, usa **Responder, verificar y continuar**, o inicia el recorrido directamente. Configura al menos 2 respuestas para probar el avance. Cierra DevTools y mantén esa pestaña activa y su ventana de Chrome en primer plano mientras calcula y escribe. Puedes conservar otras ventanas abiertas.
+
+Si se pierde el foco, vuelve a esa ventana, revisa el recuadro y lee de nuevo
+la actividad antes de iniciar otro recorrido. Si quedó una escritura parcial,
+bórrala primero; la extensión no reintenta una entrega incierta.
 
 El backend y Ollama pueden seguir abiertos. La actualización no añade permisos
 ni cambia el contrato del backend. Si el inicio sigue deshabilitado, el panel

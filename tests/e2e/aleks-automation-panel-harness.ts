@@ -73,7 +73,7 @@ Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
       let data:unknown;
       if(message.type==='health')data={status:'ok',ai_configured:true,google_configured:false,ai_provider:'ollama'};
       else if(message.type==='session')data={mode:'demo'};
-      else if(message.type==='tabs')data=[{id:7,title:'Ejercicio de recorrido sintético',url:'https://latam-awu.aleks.com/fixture'}];
+      else if(message.type==='tabs')data=[{id:7,title:'Ejercicio de recorrido sintético',url:'https://latam-awu.aleks.com/fixture',active:true}];
       else if(message.type==='attach' || message.type==='status')data=await status();
       else if(message.type==='editorDiagnostics')data=editorDiagnostics(document);
       else if(message.type==='localAIStatus')data={configured:true,online:true,model_installed:true,model:'synthetic-model'};

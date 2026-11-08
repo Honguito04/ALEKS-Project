@@ -2,13 +2,14 @@ import { test,expect,type Page } from '@playwright/test';
 import { readFile } from 'node:fs/promises';
 import { build } from 'esbuild';
 
-async function openPanel(page:Page) {
+async function openPanel(page:Page,tabs?:{id:number;title:string;url:string;active:boolean}[],read=true) {
   const fixture=await readFile('tests/fixtures/aleks-single-editor.html','utf8');
   const bundle=(await build({entryPoints:['tests/e2e/aleks-panel-harness.ts'],bundle:true,write:false,format:'iife',target:'es2022',loader:{'.css':'empty'}})).outputFiles[0].text;
   await page.route('**/panel-fixture',r=>r.fulfill({contentType:'text/html',body:fixture}));
   await page.route('**/__panel.js',r=>r.fulfill({contentType:'application/javascript',body:bundle}));
   await page.goto('/panel-fixture');
-  await page.evaluate(()=>{
+  await page.evaluate(tabs=>{
+    if(tabs)window.testPanelTabs=tabs;
     const root=document.createElement('div');root.id='root';document.body.append(root);
     // Editor sintético: refleja los eventos en el árbol, no emula ALEKS.
     const input=document.querySelector<HTMLInputElement>('.ansed_input')!;
@@ -18,10 +19,28 @@ async function openPanel(page:Page) {
       document.querySelector('.ansed_tree')!.replaceChildren(glyph);input.value='';
     });
     document.querySelector('#smt_bottomnav_button_input_checkAnswer')!.addEventListener('click',()=>{throw Error('No se debe entregar');});
-  });
+  },tabs);
   await page.addScriptTag({url:'/__panel.js'});
-  await page.getByRole('button',{name:'Leer actividad seleccionada'}).click();
+  if(read)await page.getByRole('button',{name:'Leer actividad seleccionada'}).click();
 }
+
+test('prefiere la pestaña activa aunque otra ALEKS aparezca primero en la lista',async({page})=>{
+  await openPanel(page,[{id:7,title:'Otra ALEKS',url:'https://latam-awu.aleks.com/first',active:false},
+    {id:8,title:'ALEKS visible',url:'https://latam-awu.aleks.com/second',active:true}]);
+  await expect(page.getByLabel('Pestaña de trabajo')).toHaveValue('8');
+  await expect(page.getByRole('option',{name:'ALEKS visible (activa al actualizar)'})).toHaveCount(1);
+  expect(await page.evaluate(()=>window.testPanelMessages.find(message=>message.type==='attach')?.tabId)).toBe(8);
+  await page.getByLabel('Pestaña de trabajo').selectOption('7');
+  await page.getByRole('button',{name:'Actualizar pestañas'}).click();
+  await expect(page.getByLabel('Pestaña de trabajo')).toHaveValue('7');
+});
+
+test('no elige una ALEKS inactiva cuando ninguna pestaña admitida es la actual',async({page})=>{
+  await openPanel(page,[{id:7,title:'Otra ALEKS',url:'https://latam-awu.aleks.com/first',active:false}],false);
+  await expect(page.getByRole('button',{name:'Actualizar pestañas'})).toBeEnabled();
+  await expect(page.getByLabel('Pestaña de trabajo')).toHaveValue('');
+  await expect(page.getByRole('button',{name:'Leer actividad seleccionada'})).toBeDisabled();
+});
 
 test('el panel consulta y permite introducir el entero sin exigir cm³ o pulsar Verificar',async({page})=>{
   await openPanel(page);
