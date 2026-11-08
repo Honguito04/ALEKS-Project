@@ -1,6 +1,17 @@
 # Validación ejecutada
 
-Actualización: 30 de octubre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+Actualización: 8 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+
+## Revisión 0.4.3: continuar al terminar un tema (8 de noviembre)
+
+- `npm run check`: compilación, TypeScript y **175 pruebas unitarias pasadas**.
+- Primera pasada: **110 pruebas de navegador pasadas**, cubriendo transición, panel, entrega, contenido, avance y diagnóstico.
+- La revisión reprodujo un bloqueo adicional: un `#algoPrompt` vacío, con altura cero, contaba como ejercicio visible. La regresión falló antes de corregirlo. Después de una corrección local que conserva la protección de enunciados con contenido, pasaron **80 pruebas de navegador**, incluidas las 34 variantes de transición, el recorrido del panel, la entrega y el diagnóstico.
+- La extensión y el ZIP local compilado identifican **0.4.3**. Backend y sus dependencias no cambiaron; continúa en **0.4.2**.
+
+El usuario aportó los textos **Temas restantes** y **Continuar en Mi ruta**, y confirmó que el botón abre otro ejercicio directamente. Las pruebas reconstruyen el intermedio usando esos fragmentos y un ancestro semántico de botón, sin inventar selectores propios del sitio. Se comprueban clic único, nuevo ejercicio vacío, duplicados, controles ocultos/deshabilitados, cambio de nodos, cancelación, pantalla persistente y conservación de los límites y contadores. El diagnóstico de la ruta exporta únicamente estado y conteos.
+
+La transición queda vinculada a una entrega aceptada dentro del recorrido activo. Una recarga en la pantalla de fin de tema necesita un primer avance manual antes de iniciar otro recorrido. El navegador ejecuta el código de producción sobre DOM y APIs de Chrome simulados; no se operó la cuenta ALEKS del usuario ni se ejecutó Ollama. La compatibilidad con el ancestro real del botón sigue pendiente de comprobar en su instalación.
 
 ## Revisión 0.4.2: fracciones y ruleta (30 de octubre)
 

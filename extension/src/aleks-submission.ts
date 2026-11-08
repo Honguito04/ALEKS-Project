@@ -2,6 +2,7 @@ import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist'
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
 import { visible,disabled } from './aleks-dom';
+import { resolveAleksRoute,type AleksRouteObservation } from './aleks-route';
 
 const SUBMITS=[
   ['button#smt_bottomnav_button_input_checkAnswer.checkAnswer[type="button"]','Verificar'],
@@ -18,7 +19,8 @@ function alerts(document:Document) {
   return [...document.querySelectorAll<HTMLElement>('#result_feedback_alert')].filter(visible);
 }
 
-/** Una entrega y un avance como máximo. El resultado se vincula al enunciado
+/** Una entrega y un avance como máximo, con un clic de continuación de ruta
+ * si aparece la pantalla de fin de tema. El resultado se vincula al enunciado
  * conservado y a un mensaje que aparece después de nuestro clic. Nunca deduce
  * aceptación de la ausencia del editor o de un botón «Siguiente» por sí solo.
  */
@@ -47,16 +49,6 @@ export class AleksSubmission {
     if(matches.length!==1 || disabled(matches[0]))return undefined;
     return matches[0];
   }
-  /** Pantalla de cierre de tema: el botón puede no usar los selectores
-   * learningCorrect de los ejercicios normales, así que se reconoce por su
-   * etiqueta visible exacta y por ser un único botón habilitado. */
-  private routeButton() {
-    const matches=[...this.document.querySelectorAll<HTMLButtonElement>('button')]
-      .filter(button=>visible(button) && !disabled(button) &&
-        button.querySelectorAll('div.textContent').length===1 &&
-        button.querySelector('div.textContent')?.textContent?.trim()==='Continuar en Mi ruta');
-    return matches.length===1?matches[0]:undefined;
-  }
   private positiveFeedback() {
     const feedback=alerts(this.document),editor=inspectAleksEditor(this.document),next=this.nextButton();
     if(feedback.length!==1 || feedback[0].getAttribute('aria-live')!=='polite' || !next || editor.resultMarker.status!=='positive_marker')return undefined;
@@ -64,6 +56,27 @@ export class AleksSubmission {
       node.childNodes.length===1 && node.firstChild?.nodeType===3 && node.textContent?.trim()==='Correcta');
     if(messages.length!==1)return undefined;
     return {feedback:feedback[0],next};
+  }
+  private routeScreenClear() {
+    const selectors=['#algoPrompt','#result_feedback_alert',NEXT,...SUBMITS.map(([selector])=>selector)];
+    const occupied=(element:HTMLElement)=>{
+      if(!visible(element))return false;
+      // Un contenedor vacío sin superficie no representa un enunciado activo.
+      if(element.id==='algoPrompt' && !element.childElementCount && !element.textContent?.trim()) {
+        return [...element.getClientRects()].some(rect=>rect.width>0 && rect.height>0);
+      }
+      return true;
+    };
+    if(selectors.some(selector=>[...this.document.querySelectorAll<HTMLElement>(selector)].some(occupied)))return false;
+    return ![...this.document.querySelectorAll<HTMLElement>('.ansed_root')].some(root=>
+      visible(root) && Boolean(root.querySelector('input.ansed_input')));
+  }
+  private routeFailure(observation:AleksRouteObservation) {
+    if(observation.status==='disabled')return 'El botón «Continuar en Mi ruta» sigue deshabilitado. No se pulsó; revisa ALEKS.';
+    if(observation.labelCount && !observation.controlCount)return 'Se encontró «Continuar en Mi ruta», pero falta un elemento botón reconocible que lo contenga. No se hizo clic.';
+    if(observation.controlCount && !observation.markerCount)return 'Se encontró «Continuar en Mi ruta», pero no el marcador «Temas restantes». No se pudo confirmar la pantalla de fin de tema.';
+    if(observation.markerCount && !observation.labelCount)return 'Se encontró «Temas restantes», pero no el botón visible «Continuar en Mi ruta». Revisa ALEKS.';
+    return 'La pantalla de fin de tema conserva un ejercicio, resultado o control incompatible. No se pulsó «Continuar en Mi ruta».';
   }
   async submit(fingerprint:string,value:string,signal:AbortSignal,nativeInput?:NativeInput):Promise<{status:'accepted'}> {
     if(this.phase!=='idle')throw Error('Esta entrega ya fue iniciada; no se vuelve a pulsar Verificar.');
@@ -130,33 +143,46 @@ export class AleksSubmission {
       await this.samePrompt(pending.prompt,pending.fingerprint,signal,generation);
       const positive=this.positiveFeedback();
       if(!positive || positive.feedback!==pending.feedback || positive.next!==pending.next)throw Error('La confirmación o el botón Siguiente cambiaron; se detuvo el avance.');
+      if(resolveAleksRoute(this.document).observation.labelCount)throw Error('«Continuar en Mi ruta» ya estaba visible antes del avance; no se puede asociar esa pantalla a esta respuesta.');
       this.check(signal,generation);pending.next.click();
-      const deadline=Date.now()+this.timeout;
-      let routeClicked=false;
+      let deadline=Date.now()+this.timeout,routeClicked=false;
+      let lastRoute:AleksRouteObservation|undefined;
       while(Date.now()<deadline) {
         this.check(signal,generation);
-        // Al terminar una unidad ALEKS muestra una pantalla intermedia con
-        // «Temas restantes» y «Continuar en Mi ruta». Ese botón inicia el
-        // siguiente tema; se pulsa como máximo una vez por transición.
-        const route=this.routeButton();
-        if(route && !routeClicked) {
-          this.check(signal,generation);
-          if(this.promptNode()!==pending.prompt)throw Error('La pantalla cambió antes de continuar en Mi ruta.');
-          route.click();routeClicked=true;
-          await delay();this.check(signal,generation);
-          continue;
-        }
         const prompt=await readAleksPrompt(this.document);this.check(signal,generation);
-        if(prompt.status==='readable' && prompt.fingerprint && prompt.fingerprint!==pending.fingerprint && !alerts(this.document).length) {
+        if(Date.now()>=deadline)break;
+        const route=resolveAleksRoute(this.document);lastRoute=route.observation;
+        if(route.observation.labelCount && route.observation.status==='ambiguous')throw Error('Hay varios controles o marcadores de continuación de ruta. Se detuvo el avance sin elegir uno.');
+        if(route.observation.labelCount) {
+          if(!routeClicked && route.control && route.marker && this.routeScreenClear()) {
+            // Exigir que los mismos nodos sigan disponibles tras un turno del
+            // navegador. Cancelar o reemplazar el control no dispara un clic.
+            await delay();this.check(signal,generation);
+            if(Date.now()>=deadline)throw Error('Se agotó el tiempo para confirmar «Continuar en Mi ruta». No se pulsó el botón.');
+            const current=resolveAleksRoute(this.document);
+            if(current.control!==route.control || current.marker!==route.marker || !this.routeScreenClear()) {
+              throw Error('La pantalla o el botón «Continuar en Mi ruta» cambiaron antes del clic. Se detuvo el avance.');
+            }
+            this.check(signal,generation);routeClicked=true;route.control.click();this.check(signal,generation);
+            // Dos esperas acotadas: llegar a la pantalla y abrir el ejercicio.
+            // El coordinador conserva además el límite global del recorrido.
+            deadline=Date.now()+this.timeout;
+          }
+        } else if(prompt.status==='readable' && prompt.fingerprint && prompt.fingerprint!==pending.fingerprint && !alerts(this.document).length) {
           const context=await assistContext(this.document);this.check(signal,generation);
+          if(resolveAleksRoute(this.document).observation.labelCount)continue;
           const editor=inspectAleksEditor(this.document);
           if((context.can_fill_integer || context.can_fill_fraction) && editor.singleEditor.readback.status==='empty') {this.phase='idle';return;}
           if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
+            // Un nuevo ejercicio visual también puede terminar el avance. El
+            // coordinador decide si su formato admite otra entrega.
             this.phase='idle';return;
           }
         }
         await delay();this.check(signal,generation);
       }
+      if(routeClicked)throw Error('Se pulsó «Continuar en Mi ruta» una vez, pero no se reconoció otro ejercicio vacío. No se repetirá el clic; revisa ALEKS.');
+      if(lastRoute && (lastRoute.labelCount || lastRoute.markerCount))throw Error(this.routeFailure(lastRoute));
       throw Error('Se pulsó Siguiente una vez, pero no se reconoció otro ejercicio vacío. Puede haber terminado la actividad; revisa ALEKS.');
     } catch(error) {if(generation===this.generation)this.phase='failed';throw error;}
   }

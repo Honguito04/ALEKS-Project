@@ -8,9 +8,9 @@ import { PendingAleksAdapter } from '../../extension/src/adapters';
 import { assistResultSchema,type AssistView } from '../../extension/src/shared';
 
 declare global {interface Window {
-  automationTest:{fraction:boolean;fractionValue:string;holdSolve:boolean;feedback:'correct'|'incorrect';solves:number;submits:number;nexts:number;releaseSolve?:()=>void};
+  automationTest:{fraction:boolean;fractionValue:string;holdSolve:boolean;topicCompletion:boolean;holdRoute:boolean;routeClicks:number;feedback:'correct'|'incorrect';solves:number;submits:number;nexts:number;releaseSolve?:()=>void};
 }}
-const metrics=window.automationTest={fraction:false,fractionValue:'1/5',holdSolve:false,feedback:'correct' as 'correct'|'incorrect',solves:0,submits:0,nexts:0,releaseSolve:undefined as undefined|(()=>void)};
+const metrics=window.automationTest={fraction:false,fractionValue:'1/5',holdSolve:false,topicCompletion:false,holdRoute:false,routeClicks:0,feedback:'correct' as 'correct'|'incorrect',solves:0,submits:0,nexts:0,releaseSolve:undefined as undefined|(()=>void)};
 const adapter=new PendingAleksAdapter(),submission=new AleksSubmission(document,800);
 let automation:AleksAutomation|undefined,abort=new AbortController(),proposal:AssistView|undefined;
 const status=async()=>({detection:{...await adapter.detect(),origin:'https://latam-awu.aleks.com'},automation:automation?.view});
@@ -43,8 +43,24 @@ verify.addEventListener('click',()=>{
   const next=document.createElement('button');next.type='button';next.id='smt_bottomnav_button_input_learningCorrect';next.className='learningCorrect';
   next.innerHTML='<div><div class="textContent">Siguiente tema</div></div>';
   next.addEventListener('click',()=>{
-    metrics.nexts++;document.querySelector('#algoPrompt')!.textContent=`Hay ${4+metrics.nexts} nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?`;
-    document.querySelector('.ansed_tree')!.replaceChildren();feedback.remove();next.remove();document.body.append(verify);
+    metrics.nexts++;
+    const prompt=document.querySelector<HTMLElement>('#algoPrompt')!,root=document.querySelector<HTMLElement>('.ansed_root')!;
+    feedback.remove();next.remove();
+    const openExercise=()=>{
+      prompt.hidden=false;root.hidden=false;
+      prompt.textContent=`Hay ${4+metrics.nexts} nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?`;
+      document.querySelector('.ansed_tree')!.replaceChildren();document.body.append(verify);
+    };
+    if(!metrics.topicCompletion){openExercise();return;}
+    prompt.hidden=true;root.hidden=true;
+    // Reconstrucción del intermedio observado; no presupone IDs de ALEKS.
+    const screen=document.createElement('section');
+    screen.innerHTML='<div style="font-weight:bold">Temas restantes</div><button type="button"><div class="textContent">Continuar en Mi ruta</div></button>';
+    screen.querySelector('button')!.addEventListener('click',()=>{
+      metrics.routeClicks++;
+      if(!metrics.holdRoute){screen.remove();openExercise();}
+    });
+    document.body.append(screen);
   });
   document.body.append(next);
 });

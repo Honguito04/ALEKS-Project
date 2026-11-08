@@ -1,5 +1,11 @@
 # Contratos y ampliación del adaptador
 
+## Ampliación 0.4.3: transición al terminar un tema
+
+`AleksSubmission.next()` conserva la vinculación con la entrega aceptada y el clic único en Siguiente. Durante la espera puede reconocer el intermedio **Temas restantes** con **Continuar en Mi ruta**, localizar su ancestro semántico de botón sin inventar un ID del sitio y hacer un segundo clic acotado. Requiere controles únicos, visibles y habilitados, y ausencia del ejercicio visible. Después espera otro enunciado y editor vacío antes de devolver el control al coordinador; no declara éxito por desaparecer la pantalla ni cuenta la transición como otra respuesta.
+
+`aleks-route.ts` concentra reconocimiento y observación serializable. El informe `editorDiagnostics.routeTransition` permite revisar las coincidencias sin exportar HTML, URLs o texto libre. La cancelación y el cambio de generación invalidan las esperas; no se repite el clic si la pantalla persiste. El coordinador conserva sus límites y solo inicia el avance tras Correcta con presupuesto disponible. No se recuperan confirmaciones antiguas después de recargar la extensión.
+
 ## Ampliación 0.4.2: fracciones y ruletas
 
 `AssistAnswer` normaliza únicamente representaciones numéricas completas: enteros y fracciones de hasta doce dígitos por componente, barras ordinarias o de fracción, y `frac`/`dfrac`/`tfrac` con argumentos enteros no negativos. Admite envolturas matemáticas completas `$…$`, `\(…\)` y `\[…\]`. Reduce exactamente con `Fraction`; no interpreta prosa, expresiones ni decimales aproximados. Un denominador nulo o formato no admitido se conserva para diagnóstico, sin habilitar escritura. Las unidades solo pierden espacio exterior. La salida de Ollama sigue con `verified:false`.

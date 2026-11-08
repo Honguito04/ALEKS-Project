@@ -2,7 +2,31 @@
 
 El objetivo es ampliar la cobertura por interpretación del contenido, sin programar una regla para cada enunciado. Una IA multimodal puede trabajar con texto, fórmulas y diagramas. La extensión puede introducir respuestas y pulsar controles, pero necesita comprobar lo que la interfaz registró. Ningún modelo garantiza resolver todos los ejercicios ni manejar cualquier editor.
 
-## Actualizar a 0.4.2 en Windows
+## Actualizar a 0.4.3 en Windows
+
+ALEKS puede mostrar **Temas restantes** después de pulsar **Siguiente** al terminar un tema. La extensión reconoce esa pantalla y pulsa una vez **Continuar en Mi ruta**, que según la prueba manual del usuario abre otro ejercicio directamente. Espera el nuevo enunciado y el recuadro vacío antes de volver a resolver; conserva las respuestas y llamadas contabilizadas. Se mantienen los límites de respuestas, tiempo y llamadas, y el botón Detener.
+
+Si ya instalaste 0.4.2:
+
+1. Detén cualquier recorrido. Descarga [el ZIP actualizado de main](https://github.com/Honguito04/ALEKS-Project/archive/refs/heads/main.zip) y extráelo.
+2. Copia **extension** al proyecto original, reemplazando sus archivos. Conserva `.env`, `.venv` y `node_modules`. Puedes dejar el backend y Ollama abiertos: no cambian en esta revisión.
+3. En PowerShell, desde la carpeta del proyecto que contiene `package.json`, ejecuta:
+
+   ```powershell
+   npm.cmd run build
+   (Get-Content .\dist\manifest.json -Raw | ConvertFrom-Json).version
+   ```
+
+   Debe mostrar **0.4.3**.
+4. En `chrome://extensions`, recarga el asistente y comprueba **0.4.3**. Pulsa **F5** en ALEKS, abre el panel y activa de nuevo **Usar teclado de Chrome para esta pestaña**. Cierra DevTools.
+5. Si sigues en la pantalla de la captura, pulsa **Continuar en Mi ruta** manualmente esta primera vez. La recarga descarta el recorrido anterior; el avance automático nuevo se vincula a una respuesta aceptada dentro del recorrido activo.
+6. Pulsa **Leer actividad seleccionada** y configura los límites, por ejemplo, **10 respuestas, 15 minutos y 20 llamadas IA**. Inicia el recorrido con el recuadro vacío. Al terminar otro tema, debería pasar por **Continuar en Mi ruta** automáticamente mientras queden límites.
+
+La transición exige los textos observados y un botón o control con rol de botón visible, único y habilitado. Si no reconoce el control o no aparece otro ejercicio después del clic, se detiene con un mensaje específico. **Preparar diagnóstico del editor** incluye ahora el estado de esa transición sin copiar datos de cuenta ni enlaces. No selecciona automáticamente temas en menús distintos de esta pantalla. La compatibilidad con el control real sigue por comprobar tras actualizar.
+
+El backend continúa mostrando **0.4.2**; es lo esperado. Si vienes de una versión anterior, actualiza también el backend siguiendo el procedimiento de 0.4.2 que figura debajo; al compilar el ZIP actual, la extensión quedará en **0.4.3**.
+
+## Historial 0.4.2: fracciones y ruleta
 
 El usuario confirmó que la detención ocurrió antes de la propuesta de **15/64**. Esa fracción sí cumple el formato admitido; la captura no muestra el valor que rechazó el intento anterior. Ahora el panel identifica ese estado como **Recorrido anterior · DETENIDO** al mostrar una consulta nueva. Si una propuesta se rechaza, indica si sobran respuestas, no corresponde el campo, lleva unidad o tiene un valor incompatible.
 

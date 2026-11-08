@@ -27,6 +27,18 @@ test('informe incluye geometría de fracción y controles conocidos sin modifica
   expect(result.report.controls).toContainEqual({label:'Fraction',count:1,visible:1,enabled:1});
   expect(result.report.controls).toContainEqual({label:'Verificar',count:1,visible:1,enabled:1});
 });
+
+test('diagnostica Continuar en Mi ruta con los textos observados sin copiar datos de la pantalla',async({page})=>{
+  const result=await page.evaluate(()=>{
+    document.body.innerHTML='<section data-private="PRIVATE"><h1>PRIVATE_ACCOUNT</h1><div style="font-weight:bold">Temas restantes</div><button type="button"><div class="textContent">Continuar en Mi ruta</div></button></section>';
+    let clicks=0;document.addEventListener('click',()=>clicks++);
+    const report=window.editorDiagnostics(document);
+    return {report,clicks};
+  });
+  expect(result.clicks).toBe(0);
+  expect(result.report.routeTransition).toMatchObject({status:'observed',controlCount:1,markerCount:1});
+  expect(JSON.stringify(result.report)).not.toContain('PRIVATE');
+});
 test('omite texto privado, atributos, buffer, HTML, URL y contenido de marcos',async({page})=>{
   const report=await page.evaluate(()=>{
     document.title='PRIVATE_TITLE';document.querySelector('#algoPrompt')!.textContent='PRIVATE_PROMPT';

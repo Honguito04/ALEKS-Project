@@ -16,6 +16,45 @@ async function openPanel(page:Page) {
 }
 const counters=(page:Page)=>page.evaluate(()=>({solves:window.automationTest.solves,submits:window.automationTest.submits,nexts:window.automationTest.nexts}));
 
+test('continúa en Mi ruta entre temas y conserva los contadores del recorrido',async({page})=>{
+  await openPanel(page);await page.evaluate(()=>{window.automationTest.topicCompletion=true;});
+  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
+  const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
+  await expect(status).toContainText('COMPLETADO',{timeout:15000});
+  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 2 llamadas IA');
+  expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
+  expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
+});
+
+test('el límite de una respuesta impide abrir otro tema hasta ampliar el recorrido',async({page})=>{
+  await openPanel(page);await page.evaluate(()=>{window.automationTest.topicCompletion=true;});
+  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
+  const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
+  await expect(status).toContainText('COMPLETADO');
+  expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
+  expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(0);
+  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByRole('button',{name:'Continuar desde la respuesta correcta'}).click();
+  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 2 llamadas IA',{timeout:15000});
+  expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
+  expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
+});
+
+test('detener mientras se abre Mi ruta conserva la respuesta aceptada sin otra consulta',async({page})=>{
+  await openPanel(page);await page.evaluate(()=>{window.automationTest.topicCompletion=true;window.automationTest.holdRoute=true;});
+  await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
+  await expect.poll(()=>page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
+  await page.getByRole('button',{name:'Detener recorrido'}).click();
+  const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
+  await expect(status).toContainText('DETENIDO');
+  await expect(status).toContainText('1 correctas confirmadas por ALEKS · 1 llamadas IA');
+  await page.waitForTimeout(1100);
+  expect(await counters(page)).toEqual({solves:1,submits:1,nexts:1});
+  expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
+});
+
 test('escribe una fracción, pulsa Verificar y confirma Correcta',async({page})=>{
   await openPanel(page);await page.evaluate(()=>{window.automationTest.fraction=true;});
   await page.getByLabel('Máximo de respuestas ALEKS').fill('1');

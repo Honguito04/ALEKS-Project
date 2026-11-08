@@ -203,7 +203,7 @@ function App() {
     </section>}
     {aleks && <section aria-label="Recorrido automático ALEKS">
       <div className="section-label">RECORRIDO AUTOMÁTICO ALEKS</div>
-      <p>Resuelve, escribe, pulsa «Verificar» o «Entregar» y espera la confirmación de ALEKS. Después de «Correcta», pulsa «Siguiente» o «Siguiente tema» y continúa.</p>
+      <p>Resuelve, escribe, pulsa «Verificar» o «Entregar» y espera la confirmación de ALEKS. Después de «Correcta», pulsa «Siguiente» o «Siguiente tema». Si aparece «Temas restantes», pulsa «Continuar en Mi ruta» y espera el nuevo ejercicio.</p>
       <p className="small">Admite enteros y fracciones reducidas no negativas, sin unidad, en un único recuadro vacío. Escribe a/b y comprueba que ALEKS lo represente como fracción vertical. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas o formatos que aún no reconoce. Mantén el panel abierto durante el recorrido.</p>
       <div className="limits">
         <label>Máximo de respuestas<input aria-label="Máximo de respuestas ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoExercises);}}/></label>
