@@ -2,6 +2,22 @@
 
 La web permite crear una cuenta, pegar un enunciado, adjuntar una imagen JPEG/PNG/WebP y pedir propuestas matemáticas. Funciona en móvil y computadora. No lee ni controla ALEKS: esa función continúa perteneciendo a la extensión, cuya vinculación con estas cuentas no está implementada.
 
+## Windows: primera prueba
+
+Instala Python **3.12** desde python.org y Node.js **24** desde nodejs.org. Descarga la version actual del repositorio y extrae el ZIP completo en una carpeta nueva. No copies `.env`, `.venv` ni `node_modules` de otra instalacion.
+
+En la carpeta extraida abre `scripts` y haz doble clic en **start-web.cmd**. El archivo instala dependencias, compila la web e inicia el servidor. La primera vez necesita Internet y puede tardar varios minutos. Cuando aparezca `Application startup complete`, abre **http://127.0.0.1:8000/app/** en Chrome o Edge. Conserva la ventana abierta.
+
+Tambien puedes ejecutarlo desde PowerShell, situado en la carpeta del proyecto:
+
+```powershell
+.\scripts\start-web.cmd
+```
+
+Crea una cuenta con una contrasena de al menos doce caracteres, pulsa **Probar un ejemplo** y **Consultar**: debe aparecer **12** como resultado comprobado. Este ejemplo no requiere Gemini. Los ejercicios generales y las imagenes requieren configurar la clave y modelo del backend. No existe recuperacion por correo.
+
+Si el puerto 8000 esta ocupado, revisa si ya dejaste otra ventana del servidor abierta. Para detener tu servidor pulsa Ctrl+C en su ventana. Este inicio es local: para usar la web desde celulares por Internet sigue el despliegue descrito mas abajo.
+
 ## Desarrollo local
 
 Usa el checkout existente; cada tarea en la nube ya está aislada. Python 3.12 y Node 24:
