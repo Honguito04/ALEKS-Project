@@ -1,0 +1,28 @@
+services:
+  - type: web
+    name: aleks-demo-web
+    runtime: docker
+    plan: free
+    autoDeployTrigger: "off"
+    healthCheckPath: /health
+    envVars:
+      - key: WEB_PUBLIC_MODE
+        value: "true"
+      - key: WEB_PUBLIC_URL
+        sync: false
+      - key: WEB_DATABASE_URL
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GEMINI_MODEL
+        sync: false
+      - key: WEB_ACCOUNT_DAILY_CALLS
+        value: "10"
+      - key: WEB_GLOBAL_DAILY_CALLS
+        value: "100"
+      - key: WEB_AI_TIMEOUT_SECONDS
+        value: "60"
+      - key: ENABLE_DEMO
+        value: "false"
+      - key: AI_PROVIDER
+        value: none

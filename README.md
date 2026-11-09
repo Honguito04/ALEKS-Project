@@ -1,5 +1,7 @@
 # Asistente Matemático para ALEKS · MVP
 
+La nueva **demo web independiente** tiene registro e inicio de sesión, consultas de texto/imagen y preparación para IA en la nube. Consulta [desarrollo y despliegue gratuito](docs/WEB.md). No está vinculada a los controles de la extensión ni publicada por esta tarea.
+
 Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 
 **La versión 0.4.5 prioriza la pestaña activa al abrir el panel y distingue las causas que detienen el teclado.** Comprueba pestaña y ventana antes de gastar IA al iniciar un recorrido con teclado de Chrome. Conserva la lectura MathML y los sufijos predefinidos como «hora(s)» de 0.4.4. Mantiene el avance mediante «Siguiente» y «Continuar en Mi ruta», los contadores y límites. Admite ejercicios de texto con un entero no negativo o una fracción reducida en un único recuadro vacío compatible (doce dígitos por componente). Diagramas, varios recuadros y otros formatos siguen requiriendo adaptación; las unidades que se introducen con botones conservan su revisión manual. El usuario confirmó escritura, verificación y avance hasta el fin de un tema; los cambios nuevos se prueban aquí con fixtures. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
