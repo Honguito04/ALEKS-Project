@@ -4,5 +4,5 @@
     "module": "ESNext", "moduleResolution": "Bundler", "jsx": "react-jsx",
     "strict": true, "noEmit": true, "skipLibCheck": true, "types": ["chrome", "node", "vitest/globals"]
   },
-  "include": ["extension", "tests", "*.ts"]
+  "include": ["extension", "tests", "web", "*.ts"]
 }

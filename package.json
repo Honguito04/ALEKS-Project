@@ -9,7 +9,10 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
-    "check": "npm run build && npm test"
+    "check": "npm run build && npm test",
+    "dev:web": "vite --config vite.web.config.ts",
+    "build:web": "tsc --noEmit && vite build --config vite.web.config.ts",
+    "test:web": "playwright test --config playwright.web.config.ts"
   },
   "dependencies": {
     "react": "^19.2.0",

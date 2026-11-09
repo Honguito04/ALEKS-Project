@@ -12,3 +12,10 @@ test-results/
 coverage/
 .runtime/
 .reticle/
+web-dist/
+.env.*
+!.env.example
+!.env.web.example
+*.pem
+*.key
+*.dump

@@ -26,6 +26,8 @@ pydantic==2.14.1
 pydantic-settings==2.13.1
 pydantic_core==2.50.1
 Pygments==2.21.0
+psycopg==3.3.3
+psycopg-binary==3.3.3
 pytest==9.0.2
 python-dotenv==1.2.4
 requests==2.32.5
