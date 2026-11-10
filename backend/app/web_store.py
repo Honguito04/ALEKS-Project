@@ -61,6 +61,7 @@ def initialize_web():
             "CREATE TABLE IF NOT EXISTS web_users (id TEXT PRIMARY KEY, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created DOUBLE PRECISION NOT NULL)",
             "CREATE TABLE IF NOT EXISTS web_sessions (id TEXT PRIMARY KEY, user_id TEXT REFERENCES web_users(id) ON DELETE CASCADE, csrf TEXT NOT NULL, expires DOUBLE PRECISION NOT NULL)",
             "CREATE INDEX IF NOT EXISTS web_sessions_user ON web_sessions(user_id)",
+            "CREATE TABLE IF NOT EXISTS web_bridge_tokens (token_hash TEXT PRIMARY KEY, session_id TEXT NOT NULL UNIQUE REFERENCES web_sessions(id) ON DELETE CASCADE, expires DOUBLE PRECISION NOT NULL)",
             "CREATE TABLE IF NOT EXISTS web_throttle (bucket TEXT NOT NULL, window_start BIGINT NOT NULL, used INTEGER NOT NULL, PRIMARY KEY(bucket,window_start))",
             "CREATE TABLE IF NOT EXISTS web_quota (day TEXT NOT NULL, owner TEXT NOT NULL, used INTEGER NOT NULL, PRIMARY KEY(day,owner))",
         ):

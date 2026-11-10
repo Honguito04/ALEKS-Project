@@ -3,6 +3,7 @@ import { typeNativeAnswer } from './native-keyboard';
 import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { captureFillPolicy,requireAssistImage,proposalFillMessages,fillBlockerMessages } from './assist-readiness';
+import { WebBridge,BRIDGE_WEB_ORIGIN } from './web-bridge';
 
 type Auth = {token:string;mode:'demo'|'google'};
 type Consent = {origin:string;activity:string;limits:ReturnType<typeof limitsSchema.parse>};
@@ -18,6 +19,7 @@ const nativeTabEpoch=new Map<number,number>();
 function cancelNative(id:number) {nativeTabEpoch.set(id,(nativeTabEpoch.get(id)||0)+1);nativeWrites.get(id)?.abort.abort();}
 type NativeWrite={id:string;url:string;value:string;used:boolean;abort:AbortController;current:()=>boolean};
 const nativeWrites=new Map<number,NativeWrite>();
+let webBridge:WebBridge|undefined;
 async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,current=()=>true) {
   if(!nativeTabs.has(id))return send(id,type,data,current);
   const epoch=nativeEpoch,tabEpoch=nativeTabEpoch.get(id)||0;
@@ -98,7 +100,7 @@ async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean) {
   cancelled();
   const current=await tab(id);cancelled();
   if(current.url!==url)throw Error('La página de ALEKS cambió. Lee de nuevo la actividad antes de escribir.');
-  if(!await auth())throw Error('La sesión del asistente terminó. Vuelve a entrar en demostración o inicia sesión.');
+  if(webBridge?.ownsTab(id)?!await webBridge.authorized(id):!await auth())throw Error('La sesión del asistente terminó. Vuelve a vincular o iniciar sesión.');
   if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Falta el permiso de depuración de Chrome. Recarga la extensión y revisa sus permisos.');
   cancelled();
   const active=await chrome.tabs.query({active:true,windowId:current.windowId});cancelled();
@@ -117,6 +119,7 @@ async function attach(id:unknown) {
   return {...await send(t.id,'status'),tab:{id:t.id,title:t.title || 'Actividad matemática',url:t.url}};
 }
 async function stopAll() {
+  await webBridge?.stopAll('Se cambió la sesión o los permisos del asistente.');
   nativeEpoch++;nativeTabs.clear();for(const write of nativeWrites.values())write.abort.abort();
   for(const starting of automationStarting.values())starting.abort();
   await Promise.allSettled([...automations.values()].map(run=>run.stop('Recorrido detenido por cambio de sesión o permisos.')));
@@ -132,6 +135,8 @@ const random=()=>{const bytes=crypto.getRandomValues(new Uint8Array(32));return 
 async function sha(text:string) {return btoa(String.fromCharCode(...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(text))))).replaceAll('+','-').replaceAll('/','_').replaceAll('=','');}
 
 async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>true):Promise<any> {
+  if(typeof m.tabId==='number' && webBridge?.ownsTab(m.tabId) &&
+    !['status','attach'].includes(String(m.type)))throw Error('La pestaña está vinculada a la web. Detén y desvincula ese control antes de usar el panel.');
   if(!automated && ['assist','assistFill','start'].includes(String(m.type)) &&
     (automations.get(Number(m.tabId))?.view.active || automationStarting.has(Number(m.tabId))))throw Error('Detén el recorrido automático antes de iniciar otra operación.');
   switch(m.type) {
@@ -414,4 +419,16 @@ chrome.tabs.onRemoved.addListener(id=>{
   assistProposals.delete(id);assistJobs.delete(id);assistWriters.delete(id);
   const remote=assistRemoteJobs.get(id);assistRemoteJobs.delete(id);if(remote)void api(`/assist/jobs/${remote}`,'DELETE',undefined,true).catch(()=>{});
   void chrome.storage.local.remove([`run:${id}`,`consent:${id}`]);
+});
+
+webBridge=new WebBridge(BRIDGE_WEB_ORIGIN,{
+  tab,attach,send,deliver:deliverAnswer,cancel:cancelTabAssist,
+  setNative:(id,enabled)=>{if(enabled)nativeTabs.add(id);else{nativeTabs.delete(id);cancelNative(id);}},
+  legacyBusy:id=>Boolean(automations.get(id)?.view.active || automationStarting.has(id) || assistJobs.has(id) || assistWriters.has(id) || nativeWrites.has(id)),
+  focus:async id=>{
+    const current=await tab(id);
+    await chrome.windows.update(current.windowId,{focused:true});await chrome.tabs.update(id,{active:true});
+    const selected=await chrome.tabs.query({active:true,windowId:current.windowId}),window=await chrome.windows.get(current.windowId);
+    if(selected.length!==1 || selected[0].id!==id || !window.focused)throw Error('No se pudo activar la pestaña ALEKS seleccionada.');
+  }
 });

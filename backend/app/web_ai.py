@@ -4,6 +4,7 @@ import json
 import re
 import time
 from dataclasses import dataclass
+from contextvars import ContextVar
 from typing import Literal
 from uuid import UUID, uuid4
 
@@ -19,6 +20,18 @@ from .assist_checks import check_calculations
 from .counting import ordered_prizes
 from .probability import independent_boxes, independent_spins
 from .web_accounts import current_user, register_cleanup, require_csrf, reserve_call, session_active
+
+
+_call_meter = ContextVar("web_provider_calls", default=None)
+
+
+def auth_active(user):
+    if not session_active(user["session_id"]):
+        return False
+    if user.get("bridge_token_id"):
+        from .web_bridge import bridge_active
+        return bridge_active(user["bridge_token_id"])
+    return True
 
 
 class CloudResult(AssistResult):
@@ -81,9 +94,12 @@ def discarded(body, reason, calls):
 async def gemini_chat(client, user, body, instructions, schema, candidate=None):
     # No await between checking the session and recording quota: logout/deletion
     # cannot schedule another request on this worker in that interval.
-    if not session_active(user["session_id"]):
+    if not auth_active(user):
         raise ProviderError("session_expired", "La sesión terminó. Inicia sesión de nuevo.")
     reserve_call(user["id"])
+    meter = _call_meter.get()
+    if meter is not None:
+        meter.provider_calls += 1
     context = body.context.model_dump(exclude={"fingerprint", "can_fill_integer"})
     text = json.dumps({"context": context, "candidate": candidate} if candidate else context, ensure_ascii=False)
     parts = [{"text": text}]
@@ -184,6 +200,8 @@ class WebJob:
     task: asyncio.Task | None = None
     result: CloudResult | None = None
     error: dict | None = None
+    provider_calls: int = 0
+    bridge_token_id: str | None = None
 
 
 jobs: dict[str, WebJob] = {}
@@ -240,13 +258,14 @@ async def create_job(body: AssistRequest, user=Depends(current_user)):
             raise HTTPException(429, "El servicio está ocupado; espera antes de iniciar otra consulta.")
         jobs.pop(min(finished, key=lambda item: item[1].created)[0], None)
     key = str(uuid4())
-    job = WebJob(user["id"], user["session_id"], time.monotonic())
+    job = WebJob(user["id"], user["session_id"], time.monotonic(), bridge_token_id=user.get("bridge_token_id"))
     jobs[key] = job
 
     async def run():
+        meter_token = _call_meter.set(job)
         try:
             proposal = await consult_cloud(user, body)
-            if jobs.get(key) is job and session_active(job.session_id):
+            if jobs.get(key) is job and auth_active(user):
                 job.result = proposal
         except asyncio.CancelledError:
             raise
@@ -259,6 +278,8 @@ async def create_job(body: AssistRequest, user=Depends(current_user)):
             job.error = {"code": "timeout", "message": "La consulta superó el tiempo disponible. No se reintentó; la cuota consumida no se devuelve."}
         except Exception:
             job.error = {"code": "unavailable", "message": "No se pudo completar la consulta. No se reintentó; vuelve a intentarlo más tarde."}
+        finally:
+            _call_meter.reset(meter_token)
 
     job.task = asyncio.create_task(run())
     return {"id": key}
@@ -268,19 +289,19 @@ async def create_job(body: AssistRequest, user=Depends(current_user)):
 async def get_job(key: UUID, user=Depends(current_user)):
     expire_jobs()
     job = jobs.get(str(key))
-    if job is None or job.user_id != user["id"] or job.session_id != user["session_id"]:
+    if job is None or job.user_id != user["id"] or job.session_id != user["session_id"] or job.bridge_token_id != user.get("bridge_token_id"):
         raise HTTPException(404, "Consulta no disponible. Pudo cancelarse o interrumpirse al reiniciar el servidor; no se reenviará automáticamente.")
     if job.error:
-        return {"status": "error", "error": job.error}
+        return {"status": "error", "error": {**job.error, "provider_calls": job.provider_calls}, "provider_calls": job.provider_calls}
     if job.result:
         return {"status": "completed", "result": job.result.model_dump()}
-    return {"status": "pending"}
+    return {"status": "pending", "provider_calls": job.provider_calls}
 
 
 @router.delete("/jobs/{key}", status_code=204, dependencies=[Depends(require_csrf)])
 async def delete_job(key: UUID, user=Depends(current_user)):
     job = jobs.get(str(key))
-    if job and job.user_id == user["id"] and job.session_id == user["session_id"]:
+    if job and job.user_id == user["id"] and job.session_id == user["session_id"] and job.bridge_token_id == user.get("bridge_token_id"):
         if job.task:
             job.task.cancel()
         jobs.pop(str(key), None)

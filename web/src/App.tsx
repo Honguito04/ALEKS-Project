@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type FormEvent } from 'react';
+import AleksBridge from './AleksBridge';
 
 type User = { id: string; email: string };
 type Session = { user: User | null; csrf_token: string };
@@ -43,6 +44,7 @@ export default function App() {
   const generation = useRef(0);
   const jobRef = useRef<string | null>(null);
   const cancellation = useRef<Promise<void>>(Promise.resolve());
+  const bridgeDisconnect = useRef<(() => void) | null>(null);
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -62,6 +64,7 @@ export default function App() {
   const [error, setError] = useState('');
 
   function acceptSession(next: Session) {
+    bridgeDisconnect.current?.();
     generation.current++;
     jobRef.current = null;
     sessionRef.current = next; setSession(next);
@@ -146,6 +149,7 @@ export default function App() {
   }
 
   async function logout() {
+    bridgeDisconnect.current?.();
     generation.current++; setBusy(false); setResult(null); setError(''); setAuthBusy(true);
     try {
       await request('/logout', 'POST');
@@ -158,6 +162,7 @@ export default function App() {
 
   async function deleteAccount(event: FormEvent) {
     event.preventDefault(); if (!confirmDelete) return;
+    bridgeDisconnect.current?.();
     setError(''); setAuthBusy(true);
     try {
       await request('/account', 'DELETE', { password: accountPassword });
@@ -292,9 +297,10 @@ export default function App() {
               <p className="result-meta">{result.provider === 'deterministic' ? 'Comprobador matemático' : 'IA en la nube'} · {result.provider_calls} {result.provider_calls === 1 ? 'llamada' : 'llamadas'} de IA</p>
               {!result.verified && <p className="result-caution">Una revisión de cálculos no demuestra que la IA haya interpretado correctamente el enunciado o la imagen. Contrasta la propuesta antes de utilizarla.</p>}
             </> : <div className="result-placeholder"><span className="empty-math" aria-hidden="true">x<span>²</span> + y<span>²</span></span><h3>Primero, el problema.<br />Después, el porqué.</h3><p>Aquí aparecerán las respuestas, su explicación y el alcance de la comprobación.</p></div>}
-            <div className="result-bottom"><span aria-hidden="true">◇</span><p>Esta web no lee ni controla ALEKS. Esas acciones requieren la extensión; las cuentas aún no están vinculadas.</p></div>
+            <div className="result-bottom"><span aria-hidden="true">◇</span><p>Las consultas pegadas aquí no modifican ALEKS. Para leer y actuar en una pestaña, vincula la extensión en la sección siguiente.</p></div>
           </section>
         </div>
+        <AleksBridge key={user.id} userId={user.id} csrfToken={session.csrf_token} request={request} disconnectRef={bridgeDisconnect} suspended={authBusy} />
       </>}
     </main>
     <footer className="site-footer"><span>honguito <span aria-hidden="true">·</span> aprende con criterio</span><span>Demo con cuotas limitadas. No se garantiza disponibilidad continua.</span></footer>

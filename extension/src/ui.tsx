@@ -6,6 +6,9 @@ import { proposalFillBlockers,proposalFillMessages } from './assist-readiness';
 import { prepareAssistImage } from './assist-image';
 import type { AutomationView } from './aleks-automation';
 
+declare const __BRIDGE_WEB_ORIGIN__: string;
+const bridgeOrigin=typeof __BRIDGE_WEB_ORIGIN__==='string'?__BRIDGE_WEB_ORIGIN__:'';
+
 type Tab = {id:number;title:string;url:string;active?:boolean};
 type View = {tab?:Tab;detection?:Detection;run?:Run;exercise?:Exercise;solution?:Solution;automation?:AutomationView;nativeKeyboard?:boolean};
 type Health = {status:string;version?:string;google_configured:boolean;ai_configured:boolean;ai_provider?:string};
@@ -121,6 +124,13 @@ function App() {
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
     <div className="banner">ALEKS · Recorrido automático para enteros y fracciones en un recuadro. Se avanza cuando ALEKS confirma «Correcta».</div>
+    {bridgeOrigin && <section><h2>Conexión con la web</h2><p>Origen autorizado: <code>{bridgeOrigin}</code>. Inicia sesión en esa web para elegir la pestaña ALEKS y autorizar sus límites.</p>
+      <button disabled={working} onClick={()=>{
+        // La solicitud debe salir directamente del gesto del usuario.
+        const granting=chrome.permissions.request({origins:[`${bridgeOrigin}/*`,...ALEKS_ORIGINS.map(origin=>`${origin}/*`)]});
+        void attempt(async()=>{if(!await granting)throw Error('No se concedieron los permisos de la web y ALEKS.');setNotice('Conexión autorizada. Vuelve a la web y pulsa Conectar extensión.');});
+      }}>Autorizar conexión con la web</button>
+      <p className="small">El recorrido activará ALEKS para usar el teclado. Mantén esa pestaña en primer plano; cambiarla puede detener la escritura.</p></section>}
     <section><div className="section-label">01 / CONEXIÓN</div>
       <div className="status"><span className={health?'dot on':'dot'}/><strong>{health?'Backend conectado · SymPy disponible':'Backend sin comprobar'}</strong></div>
       {health && <p className="small">{health.version?`Versión del backend: ${health.version}`:'El backend no informa su versión. Actualiza también la carpeta backend y reinícialo para cargar los comprobadores actuales.'}</p>}

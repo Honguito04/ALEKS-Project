@@ -137,8 +137,15 @@ export class AleksAutomation {
           await this.complete('Límite de consultas alcanzado: se necesitan dos llamadas disponibles para iniciar otra resolución.');
         } else {
           this.state.aiCalls+=2;
-          await this.phase('RESOLVIENDO','Consultando el ejercicio con el modelo local…');
-          const proposal=await this.deps.solve();this.guard();
+          await this.phase('RESOLVIENDO','Consultando el ejercicio con el proveedor de IA…');
+          let proposal:AssistView;
+          try {proposal=await this.deps.solve();}
+          catch(error) {
+            const calls=error && typeof error==='object' && 'providerCalls' in error?error.providerCalls:undefined;
+            if(typeof calls==='number' && Number.isInteger(calls) && calls>=0 && calls<=2)this.state.aiCalls-=2-calls;
+            throw error;
+          }
+          this.guard();
           const result=assistResultSchema.parse(proposal.result);
           this.state.aiCalls-=2-result.provider_calls;
           this.acceptProposal(proposal);await this.persist();this.guard();

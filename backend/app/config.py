@@ -39,6 +39,7 @@ class Settings(BaseSettings):
     gemini_api_key: str = ""
     gemini_model: str = ""
     web_ai_timeout_seconds: int = Field(default=60, ge=5, le=180)
+    web_bridge_extension_id: str = Field(default="fjjgjakbpjhhegekcjogilmfheaicjge", pattern=r"^[a-p]{32}$")
 
     @property
     def web_origin(self):

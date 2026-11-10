@@ -18,6 +18,7 @@ from .providers import interpreter
 from .local_assistant import AssistRequest, AssistResult, consult_local, local_status, create_job,job_state,cancel_job,close_jobs
 from .web_accounts import router as web_accounts_router, initialize_web
 from .web_ai import router as web_ai_router, close_jobs as close_web_jobs
+from .web_bridge import router as web_bridge_router, bridge_origin
 
 
 @asynccontextmanager
@@ -42,6 +43,7 @@ app.add_middleware(CORSMiddleware,
 async def boundary(request: Request, call_next):
     path = request.url.path
     web_path = path == "/web-api" or path.startswith("/web-api/")
+    bridge_path = path.startswith("/web-api/bridge/")
     app_path = path == "/app" or path.startswith("/app/")
     # El despliegue web nunca expone rutas de IA/demostración heredadas,
     # aunque el proxy reescriba Host o se envíe un Host de loopback.
@@ -53,10 +55,12 @@ async def boundary(request: Request, call_next):
         return JSONResponse({"detail": "Host no permitido"}, status_code=403)
     origin = request.headers.get("origin")
     allowed = [settings.web_origin] if web_path or settings.web_public_mode else ["http://127.0.0.1:8000"] + [f"chrome-extension://{v}" for v in settings.extension_ids]
+    if bridge_path:
+        allowed = [bridge_origin()]
     if origin and origin not in allowed:
         return JSONResponse({"detail": "Origen no autorizado"}, status_code=403)
     length = request.headers.get("content-length", "0")
-    limit = 1_600_000 if path in ("/assist", "/assist/jobs", "/web-api/jobs") else 16000
+    limit = 1_600_000 if path in ("/assist", "/assist/jobs", "/web-api/jobs", "/web-api/bridge/jobs") else 16000
     if not length.isdecimal() or int(length) > limit:
         return JSONResponse({"detail": "Petición demasiado grande"}, status_code=413)
     if web_path:
@@ -68,7 +72,17 @@ async def boundary(request: Request, call_next):
             if len(body) > limit:
                 return JSONResponse({"detail": "Petición demasiado grande"}, status_code=413)
         request._body = bytes(body)
-    response = await call_next(request)
+    if bridge_path and request.method == "OPTIONS":
+        if origin != bridge_origin() or request.headers.get("access-control-request-method") not in ("GET", "POST", "DELETE"):
+            return JSONResponse({"detail": "Preflight no autorizado"}, status_code=403)
+        response = JSONResponse({"ok": True})
+        response.headers["Access-Control-Allow-Methods"] = "GET, POST, DELETE"
+        response.headers["Access-Control-Allow-Headers"] = "Authorization, Content-Type"
+    else:
+        response = await call_next(request)
+    if bridge_path and origin == bridge_origin():
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Vary"] = "Origin"
     response.headers["Cache-Control"] = "no-store"
     response.headers["X-Content-Type-Options"] = "nosniff"
     response.headers["Referrer-Policy"] = "no-referrer"
@@ -87,6 +101,7 @@ async def boundary(request: Request, call_next):
 app.include_router(router)
 app.include_router(web_accounts_router)
 app.include_router(web_ai_router)
+app.include_router(web_bridge_router)
 
 
 @app.exception_handler(RequestValidationError)

@@ -21,11 +21,16 @@ call npm.cmd ci --no-audit --no-fund
 if errorlevel 1 goto fail
 call npm.cmd run build:web
 if errorlevel 1 goto fail
+set BRIDGE_WEB_ORIGIN=http://127.0.0.1:8000
+set BRIDGE_ALLOW_LOCAL=true
+call npm.cmd run build
+if errorlevel 1 goto fail
 if not exist .env copy .env.example .env >nul
 set WEB_PUBLIC_MODE=false
 set WEB_PUBLIC_URL=http://127.0.0.1:8000
 set WEB_DATABASE_URL=
 echo Abre http://127.0.0.1:8000/app/ en tu navegador cuando aparezca Application startup complete.
+echo Para usar ALEKS en Chrome de escritorio, carga la carpeta dist en chrome://extensions.
 echo Conserva esta ventana abierta. Para detener el servidor pulsa Ctrl+C.
 .venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --no-access-log
 if errorlevel 1 goto fail
