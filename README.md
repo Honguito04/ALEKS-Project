@@ -1,6 +1,6 @@
 # Asistente Matemático para ALEKS · MVP
 
-La nueva **demo web independiente** tiene registro e inicio de sesión, consultas de texto/imagen y preparación para IA en la nube. Consulta [desarrollo y despliegue gratuito](docs/WEB.md). No está vinculada a los controles de la extensión ni publicada por esta tarea.
+La nueva **demo web independiente** tiene registro e inicio de sesión, consultas de texto/imagen y preparación para IA en la nube. Consulta [desarrollo y despliegue gratuito](docs/WEB.md). El [puente web ↔ extensión](docs/WEB_BRIDGE.md) permite autorizar un recorrido en una pestaña ALEKS concreta desde Chrome de escritorio. La web no está publicada por esta tarea.
 
 Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 

@@ -704,3 +704,63 @@ it('detener durante una tecla evita enviar el resto de la respuesta y desconecta
   await send({scope:'ui',type:'cancelAssist',tabId:7});release();
   expect((await filling).ok).toBe(false);expect(nativeCommand).toHaveBeenCalledTimes(1);expect(nativeDetach).toHaveBeenCalledTimes(1);
 });
+
+it.each(['authorized','focus-lost','capability-revoked'] as const)('web → background → teclado conserva autorización y foco: %s',async boundary=>{
+  const origin='https://bridge.example.test';
+  delete session.auth;url=ALEKS_ACTIVITY+'/exercise-fixture';
+  const context={fingerprint:'a'.repeat(64),statement:'Hay cuatro participantes y dos premios.',fields:[{key:'answer',label:'Respuesta'}],diagram_required:false,can_fill_integer:true,fill_blockers:[]};
+  let accept!:(port:chrome.runtime.Port)=>void,receive!:(message:unknown)=>void,closed!:()=>void,revoked=false;
+  const replies:any[]=[];
+  (chrome.runtime as any).onConnectExternal={addListener:(fn:typeof accept)=>{accept=fn;}};
+  chrome.windows.update=vi.fn(async()=>({id:1,focused:true})) as any;
+  chrome.tabs.update=vi.fn(async()=>({id:7,url,active:true,windowId:1})) as any;
+  fetchMock.mockImplementation(async(destination:string,options?:RequestInit)=>{
+    if(destination.endsWith('/session'))return revoked?Response.json({detail:'Vinculación revocada'},{status:401}):Response.json({user:{id:'account'}});
+    if(options?.method==='DELETE')return new Response(null,{status:204});
+    if(options?.method==='POST')return Response.json({id:'00000000-0000-4000-8000-000000000009'});
+    return Response.json({status:'completed',result:{fingerprint:context.fingerprint,model:'test',provider:'gemini',provider_calls:1,verified:false,verification:'none',
+      proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Prueba simulada',missing_information:[]}}});
+  });
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type==='assistContext')return {ok:true,data:context};
+    if(message.type==='automationSubmit'){
+      expect(message.nativeWriteId).toEqual(expect.any(String));
+      if(boundary==='focus-lost')nativeFocused=false;
+      if(boundary==='capability-revoked')revoked=true;
+      const typed=await send({scope:'content',type:'nativeType',writeId:message.nativeWriteId},content());
+      return typed.ok?{ok:true,data:{status:'accepted'}}:typed;
+    }
+    return {ok:true,data:true};
+  });
+  vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.resetModules();
+  await import('../../extension/src/background');
+  const port={name:'aleks-web-bridge-v1',sender:{url:origin+'/app/',origin,frameId:0,documentId:'web-document',tab:{id:99,url:origin+'/app/'}},
+    onMessage:{addListener:(fn:typeof receive)=>{receive=fn;}},onDisconnect:{addListener:(fn:typeof closed)=>{closed=fn;}},
+    postMessage:(message:any)=>replies.push(message),disconnect:()=>closed()};
+  accept(port as any);
+  const command=async(name:string,data:Record<string,unknown>={})=>{
+    const requestId=crypto.randomUUID();receive({requestId,command:name,...data});
+    await vi.waitFor(()=>expect(replies.some(r=>r.requestId===requestId)).toBe(true));
+    return replies.find(r=>r.requestId===requestId);
+  };
+  try {
+    expect((await command('connect',{token:'x'.repeat(43)})).ok).toBe(true);
+    expect((await command('bind',{tabId:7})).ok).toBe(true);
+    expect((await command('start',{fingerprint:context.fingerprint,limits:{maxExercises:1,maxMinutes:1,maxAICalls:2},nativeKeyboard:true})).ok).toBe(true);
+    if(boundary==='authorized'){
+      await vi.waitFor(()=>expect(replies.some(r=>r.value?.automation?.phase==='COMPLETADO')).toBe(true));
+      expect(nativeCommand.mock.calls.map(call=>call[2].text).filter(Boolean)).toEqual(['1','2']);
+      expect(nativeCommand.mock.calls.every(call=>call[1]==='Input.dispatchKeyEvent')).toBe(true);
+      expect(nativeDetach).toHaveBeenCalledWith({tabId:7});
+    }else{
+      await vi.waitFor(()=>expect(adapterCalls('stop').length).toBeGreaterThan(0));
+      expect(nativeCommand).not.toHaveBeenCalled();
+    }
+    expect(chrome.windows.update).toHaveBeenCalledWith(1,{focused:true});
+    expect(chrome.tabs.update).toHaveBeenCalledWith(7,{active:true});
+    expect(session.auth).toBeUndefined();
+  }finally{
+    await send({scope:'ui',type:'logout'});
+    vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',undefined);
+  }
+});

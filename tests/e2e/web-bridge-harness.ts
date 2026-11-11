@@ -13,12 +13,14 @@ const contentMessages=event(),connections=event(),updated=event(),removed=event(
 const origin='https://demo.example.test';
 const metrics={submits:0,nexts:0,writes:0,creates:0,polls:0,deletes:0,cancels:0,sent:[] as {tabId:number;type:string}[]};
 let currentContext:any,holdProvider=false,releaseProvider:(()=>void)|undefined;
+let feedbackMode:'correct'|'incorrect'|'uncertain'='correct';
 const native=new Set<number>();
-const tab=(id:number)=>({id,windowId:1,active:true,title:'Fixture ALEKS',url:'https://latam-awu.aleks.com/fixture'});
+const tab=(id:number)=>({id,windowId:1,active:id===7,title:'Fixture ALEKS',url:'https://latam-awu.aleks.com/fixture'} as chrome.tabs.Tab & {id:number;url:string});
 Object.defineProperty(globalThis,'chrome',{configurable:true,value:{
   runtime:{id:'fjjgjakbpjhhegekcjogilmfheaicjge',onMessage:contentMessages,onConnectExternal:connections,
     sendMessage:async()=>({ok:true,data:true}),getPlatformInfo:async()=>({os:'linux'})},
-  tabs:{onUpdated:updated,onRemoved:removed,query:async()=>[tab(7),tab(8)],get:async(id:number)=>tab(id)},
+  tabs:{onUpdated:updated,onRemoved:removed,query:async(query:chrome.tabs.QueryInfo)=>query.active?[tab(7)]:[tab(7),tab(8)],get:async(id:number)=>tab(id)},
+  windows:{get:async()=>({id:1,focused:true})},
   permissions:{onRemoved:permissionsRemoved,contains:async()=>true},
   storage:{session:{get:async()=>({}),set:async()=>{},remove:async()=>{}},local:{get:async()=>({}),set:async()=>{}}},
   alarms:{onAlarm:event(),create:()=>{},clear:async()=>true},
@@ -40,7 +42,8 @@ verify.addEventListener('click',()=>{
   metrics.submits++;verify.remove();
   const feedback=document.createElement('div');feedback.id='result_feedback_alert';feedback.setAttribute('aria-live','polite');
   feedback.style.cssText='display:inline-block;border:1px solid rgb(57,108,41)';
-  feedback.innerHTML='<div style="display:inline-block;color:rgb(57,108,41)">Correcta</div>';
+  feedback.innerHTML=`<div style="display:inline-block;color:rgb(57,108,41)">${feedbackMode==='correct'?'Correcta':feedbackMode==='incorrect'?'Incorrecta':'Revisa la respuesta'}</div>`;
+  if(feedbackMode!=='correct'){document.body.append(feedback);return;}
   const next=document.createElement('button');next.type='button';next.id='smt_bottomnav_button_input_learningCorrect';next.className='learningCorrect';
   next.innerHTML='<div class="textContent">Siguiente tema</div>';
   next.addEventListener('click',()=>{
@@ -61,7 +64,11 @@ globalThis.fetch=async(destination:RequestInfo|URL,init?:RequestInit)=>{
   }
   if(url.includes('/bridge/jobs/')){
     metrics.polls++;
-    if(holdProvider)await new Promise<void>(resolve=>{releaseProvider=resolve;});
+    if(holdProvider)await new Promise<void>((resolve,reject)=>{
+      const abort=()=>reject(init?.signal?.reason || new DOMException('Aborted','AbortError'));
+      releaseProvider=()=>{init?.signal?.removeEventListener('abort',abort);resolve();};
+      if(init?.signal?.aborted)abort();else init?.signal?.addEventListener('abort',abort,{once:true});
+    });
     return Response.json({status:'completed',result:{fingerprint:currentContext.fingerprint,model:'synthetic-cloud',provider:'gemini',provider_calls:1,
       verified:false,verification:'none',proposal:{status:'proposed',answers:[{field_key:'answer',value:metrics.nexts?'20':'12',unit:''}],
         explanation:'Proveedor simulado para probar transporte y acciones DOM.',missing_information:[]}}});
@@ -98,6 +105,7 @@ void import('../../extension/src/content').then(()=>{
       pending.set(requestId,message=>{clearTimeout(timeout);resolve(message);});port._messages.emit({requestId,command,...data});
     }),disconnect:()=>port.disconnect(),stop:()=>controller.stopAll('Prueba detenida'),
     holdProvider:(hold:boolean)=>{holdProvider=hold;},releaseProvider:()=>{holdProvider=false;releaseProvider?.();},
+    feedback:(mode:typeof feedbackMode)=>{feedbackMode=mode;},
     updateTab:(id:number)=>updated.emit(id,{url:'https://latam-awu.aleks.com/other-exercise'},tab(id)),
   };
   (window as any).webBridgeTest=api;connect();

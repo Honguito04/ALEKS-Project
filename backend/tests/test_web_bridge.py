@@ -102,13 +102,14 @@ def test_issue_requires_cookie_auth_and_csrf(bridge_client):
     register(bridge_client)
     assert bridge_client.post("/web-api/bridge-token", headers={"Origin": ORIGIN}).status_code == 403
     value = issue(bridge_client)
-    assert set(value) == {"token", "expires_in", "expires_at", "user"}
+    assert set(value) == {"token", "capability_id", "expires_in", "expires_at", "user"}
     assert 3598 <= value["expires_in"] <= 3600
     assert len(value["token"]) == 43
     with web_db() as conn:
         stored = conn.execute("SELECT token_hash,session_id,expires FROM web_bridge_tokens").fetchall()
     assert len(stored) == 1
     assert stored[0]["token_hash"] == digest(value["token"])
+    assert value["capability_id"] == digest(value["token"])
     assert value["token"] != stored[0]["token_hash"]
     response = bridge_client.get("/web-api/bridge/session", headers=extension_headers(value["token"]))
     assert response.status_code == 200
@@ -175,9 +176,47 @@ def test_revoke_requires_csrf_and_cleans_jobs(bridge_client, gemini_calls):
     outcome(bridge_client, token, key)
     assert bridge_client.delete("/web-api/bridge-token", headers={"Origin": ORIGIN}).status_code == 403
     assert bridge_client.get("/web-api/bridge/session", headers=extension_headers(token)).status_code == 200
-    assert bridge_client.delete("/web-api/bridge-token", headers=web_headers(bridge_client)).status_code == 204
+    assert bridge_client.request("DELETE", "/web-api/bridge-token", headers=web_headers(bridge_client),
+                                 json={"capability_id": digest(token)}).status_code == 204
     assert key not in web_ai.jobs
     assert bridge_client.get("/web-api/bridge/session", headers=extension_headers(token)).status_code == 401
+
+
+def test_delayed_revoke_preserves_new_capability_and_its_job(bridge_client, gemini_calls):
+    register(bridge_client)
+    old = issue(bridge_client)
+    new = issue(bridge_client)
+    key = create(bridge_client, new["token"])
+    result = outcome(bridge_client, new["token"], key)
+    for _ in range(2):
+        response = bridge_client.request("DELETE", "/web-api/bridge-token", headers=web_headers(bridge_client),
+                                         json={"capability_id": old["capability_id"]})
+        assert response.status_code == 204
+    assert bridge_client.get("/web-api/bridge/session", headers=extension_headers(new["token"])).status_code == 200
+    assert outcome(bridge_client, new["token"], key) == result
+
+
+@pytest.mark.parametrize("body", [{}, {"capability_id": "bad"}, {"capability_id": "a" * 64, "all": True}])
+def test_revoke_requires_exact_capability_shape(bridge_client, body):
+    register(bridge_client)
+    token = issue(bridge_client)["token"]
+    response = bridge_client.request("DELETE", "/web-api/bridge-token", headers=web_headers(bridge_client), json=body)
+    assert response.status_code == 422
+    assert bridge_client.get("/web-api/bridge/session", headers=extension_headers(token)).status_code == 200
+
+
+def test_cannot_revoke_another_sessions_capability(bridge_client, gemini_calls):
+    register(bridge_client)
+    own = issue(bridge_client)
+    key = create(bridge_client, own["token"])
+    outcome(bridge_client, own["token"], key)
+    with TestClient(bridge_client.app, base_url=ORIGIN) as other:
+        register(other, "other@example.org")
+        response = other.request("DELETE", "/web-api/bridge-token", headers=web_headers(other),
+                                 json={"capability_id": own["capability_id"]})
+        assert response.status_code == 204
+        assert bridge_client.get("/web-api/bridge/session", headers=extension_headers(own["token"])).status_code == 200
+        assert bridge_client.get("/web-api/bridge/jobs/" + key, headers=extension_headers(own["token"])).status_code == 200
 
 
 @pytest.mark.parametrize("action", ["logout", "delete"])

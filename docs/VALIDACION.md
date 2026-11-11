@@ -1,6 +1,20 @@
 # Validación ejecutada
 
-Actualización: 8 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12.14, Node 24.19.0 y Chromium 154 administrado. Las filas identificadas como revisión anterior conservan sus resultados previos.
+Actualización: 11 de noviembre de 2026 (UTC). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+
+## Revisión 0.5.0: puente web, extensión y ALEKS (11 de noviembre)
+
+- Compilación de extensión y web, TypeScript y **231 pruebas unitarias pasadas**. El manifiesto generado permite solo `http://127.0.0.1:8000/*` cuando se configura explícitamente el desarrollo local. Las pruebas de configuración rechazan HTTP ajeno, comodines, credenciales y rutas.
+- **401 pruebas del backend pasadas**; la pasada general omitió cinco pruebas que requieren una URL PostgreSQL. Después se ejecutaron por separado **6 pruebas con PostgreSQL 17 real y TLS `verify-full`**, incluida la nueva regresión de capacidades: rotación, revocación tardía, persistencia al reiniciar y borrado en cascada al cerrar sesión. Se mantiene la advertencia de deprecación Starlette/httpx.
+- **325 pruebas anteriores de navegador pasadas**, incluidas lectura, unidades, fracciones, entrega, Correcta nueva, siguiente, continuación de ruta y teclado de Chromium mediante CDP sobre un editor de prueba.
+- **8 pruebas nuevas del recorrido pasadas**: worker y content script de producción sobre DOM de prueba, dos entregas y un avance, mensajes duplicados, pestaña ajena, cancelación, desconexión, navegación, devolución incorrecta y resultado incierto. El transporte Chrome y el proveedor están simulados; este arnés usa el escritor DOM, no el teclado nativo.
+- **12 pruebas de la web pasadas**: cuentas y backend reales, cálculo determinista, cancelación, sesión vencida, imagen, móvil y cinco recorridos de la interfaz con puerto Chrome simulado. La revocación tardía se retuvo en la red y se comprobó que la nueva capacidad seguía siendo válida en el backend.
+
+Las regresiones unitarias prueban además la conexión del background con el escritor de teclado, sin sesión del panel local: activa la ventana y pestaña autorizadas, emite únicamente teclas acotadas y bloquea el envío si pierde foco o se revoca la capacidad. Las APIs de Chrome están simuladas en esas pruebas. Se verifican también cambio de huella antes de consultar, cambio de pestaña durante captura, reinicio con varios diarios, fallo de almacenamiento y disponibilidad de Detener al agotar la caché de mensajes.
+
+Se reprodujeron y corrigieron el bloqueo de Detener durante una respuesta pendiente y la revocación de un vínculo nuevo por una desconexión tardía. La interfaz distingue llamadas confirmadas de presupuesto reservado y consumo incierto. Las claves permanecen en el backend.
+
+**Pendiente de comprobación real:** instalar la extensión 0.5.0 en Chrome del usuario, conceder permisos y ejecutar una actividad ALEKS autenticada con una respuesta como límite inicial. La política de Chromium administrado bloquea extensiones no autorizadas; no se alteró esa política. No se ejecutó Gemini real ni el lanzador en Windows. Se revisó su uso de `npm.cmd` y `.venv\\Scripts\\python.exe`, y sus compilaciones se ejecutaron en Linux. No se publicó un servidor web. La compatibilidad sigue limitada a los [formatos documentados](WEB_BRIDGE.md); no hay garantía de acierto universal.
 
 ## Revisión 0.4.5: varias ventanas y foco del teclado (8 de noviembre)
 

@@ -11,16 +11,17 @@ const EXTENSION_ID = 'fjjgjakbpjhhegekcjogilmfheaicjge';
 const PORT_NAME = 'aleks-web-bridge-v1';
 type Tab = { id: number; title: string; active?: boolean };
 type Snapshot = { connected: boolean; tab?: Tab; context?: AssistContext; proposal?: AssistView;
-  automation?: AutomationView; providerCalls?: number; interrupted?: string };
+  automation?: AutomationView; providerCalls?: number; providerCallsUncertain?: boolean; interrupted?: string };
 type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 type Pending = { resolve(value: unknown): void; reject(reason: Error): void; timer: ReturnType<typeof setTimeout> };
+type IssuedCapability = { id: string; csrf: string };
 const tabSchema = z.object({ id: z.number().int().nonnegative(), title: z.string().max(500), active: z.boolean().optional() }).strict();
 const proposalSchema = z.object({ id: z.uuid(), context: assistContextSchema, result: assistResultSchema }).strict();
 const automationSchema = z.object({ id: z.uuid(), phase: z.enum(['LEYENDO', 'RESOLVIENDO', 'LISTO', 'ENVIANDO', 'CORRECTA', 'AVANZANDO', 'DETENIDO', 'COMPLETADO']),
   active: z.boolean(), busy: z.boolean(), canContinue: z.boolean(), accepted: z.number().int().min(0).max(100), aiCalls: z.number().int().min(0).max(100),
   started: z.number(), limits: automationLimitsSchema, message: z.string().max(4000), answer: z.string().max(500).optional() }).strict();
 const snapshotSchema = z.object({ connected: z.boolean(), tab: tabSchema.optional(), context: assistContextSchema.optional(),
-  proposal: proposalSchema.optional(), automation: automationSchema.optional(), providerCalls: z.number().int().nonnegative().optional(), interrupted: z.string().max(1000).optional() }).strict();
+  proposal: proposalSchema.optional(), automation: automationSchema.optional(), providerCalls: z.number().int().nonnegative().optional(), providerCallsUncertain: z.boolean().optional(), interrupted: z.string().max(1000).optional() }).strict();
 
 export default function AleksBridge({ userId, csrfToken, request, disconnectRef, suspended }: {
   userId: string; csrfToken: string; request: Api; disconnectRef: MutableRefObject<(() => void) | null>; suspended: boolean;
@@ -29,7 +30,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const pending = useRef(new Map<string, Pending>());
   const lifecycle = useRef(0);
   const action = useRef(0);
-  const issued = useRef(false);
+  const issued = useRef<IssuedCapability | null>(null);
   const api = useRef(request); api.current = request;
   const csrf = useRef(csrfToken); csrf.current = csrfToken;
   const [connected, setConnected] = useState(false);
@@ -45,11 +46,11 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const [authorized, setAuthorized] = useState(false);
   const [limits, setLimits] = useState({ maxExercises: '1', maxMinutes: '5', maxAICalls: '2' });
 
-  function revoke() {
-    if (!issued.current) return;
-    issued.current = false;
+  function revoke(capability: IssuedCapability | null) {
+    if (!capability) return;
     void fetch('/web-api/bridge-token', { method: 'DELETE', credentials: 'same-origin',
-      headers: { 'X-CSRF-Token': csrf.current }, signal: AbortSignal.timeout(10000) }).catch(() => {});
+      headers: { 'X-CSRF-Token': capability.csrf, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ capability_id: capability.id }), signal: AbortSignal.timeout(10000) }).catch(() => {});
   }
 
   function disconnect(message = 'Vínculo desconectado. Vuelve a conectar, seleccionar y leer la pestaña; no se reanudará ningún recorrido.') {
@@ -59,7 +60,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
       try { current.disconnect(); } catch { /* The browser may already have closed it. */ }
     }
     for (const item of pending.current.values()) { clearTimeout(item.timer); item.reject(new Error('El vínculo se desconectó.')); }
-    pending.current.clear(); revoke();
+    pending.current.clear(); revoke(issued.current); issued.current = null;
     setConnected(false); setTabs([]); setSelected(''); setSnapshot(null); setExpires(null);
     setBusy(''); setAuthorized(false); setNativeKeyboard(false); setIncludeImage(false); setError(''); setNotice(message);
   }
@@ -109,12 +110,14 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
       if (typeof chrome === 'undefined' || !chrome.runtime?.connect) {
         throw new Error('Esta función necesita Chrome de escritorio y la extensión instalada. En celulares puedes seguir usando las consultas web.');
       }
-      const capability = await api.current<{ token: string; expires_at: number; user: { id: string } }>('/bridge-token', 'POST');
+      const issuingCsrf = csrf.current;
+      const capability = await api.current<{ token: string; capability_id: string; expires_at: number; user: { id: string } }>('/bridge-token', 'POST');
+      const issuedCapability = { id: capability.capability_id, csrf: issuingCsrf };
       if (epoch !== lifecycle.current) {
-        // A logout/deletion revokes capabilities server-side as well.
+        revoke(issuedCapability);
         return;
       }
-      issued.current = true;
+      issued.current = issuedCapability;
       if (capability.user.id !== userId) throw new Error('La cuenta activa cambió. Recarga la página antes de conectar.');
       const current = chrome.runtime.connect(EXTENSION_ID, { name: PORT_NAME }); port.current = current;
       current.onMessage.addListener(message => receive(message, epoch));
@@ -153,7 +156,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
           : name === 'preview' ? z.object({ proposal: proposalSchema }).strict().parse(raw)
           : name === 'start' ? z.object({ automation: automationSchema }).strict().parse(raw) : snapshotSchema.parse(raw);
         if (epoch !== lifecycle.current || operation !== action.current) return;
-        setSnapshot(previous => name === 'bind' ? value as Snapshot : { ...previous, ...value, connected: true });
+        setSnapshot(previous => name === 'bind' ? value as Snapshot : { ...previous, ...(name === 'read' ? {proposal:undefined} : {}), ...value, connected: true });
         if (name === 'bind' || name === 'read' || name === 'stop') setAuthorized(false);
         if (name === 'bind') { setNativeKeyboard(false); setIncludeImage(false); }
         setNotice(name === 'bind' ? 'Pestaña vinculada. Lee la actividad antes de consultar.'
@@ -190,7 +193,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
       <div className="bridge-tab-picker"><div><label htmlFor="bridge-tab">Pestaña ALEKS que autorizas</label><select id="bridge-tab" value={selected} disabled={Boolean(busy) || running} onChange={event => { setSelected(event.target.value); setAuthorized(false); }}><option value="">Selecciona una pestaña</option>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.title || 'ALEKS'} · pestaña {tab.id}{tab.active ? ' (activa)' : ''}</option>)}</select></div><button className="secondary" disabled={!selected || Boolean(busy) || running} onClick={() => void perform('bind', { tabId: Number(selected) })}>Vincular pestaña</button></div>
       {snapshot?.tab && <>
         <p className="bridge-bound">Vinculada: <strong>{snapshot.tab.title || 'ALEKS'}</strong> · pestaña {snapshot.tab.id}</p>
-        <label className="check-label"><input type="checkbox" checked={includeImage} disabled={Boolean(busy) || running} onChange={event => { setIncludeImage(event.target.checked); setAuthorized(false); }} />Adjuntar captura de la pestaña vinculada solo para vista previa; requiere permiso de Chrome y no autoriza escritura</label>
+        <label className="check-label"><input type="checkbox" checked={includeImage} disabled={Boolean(busy) || running} onChange={event => { setIncludeImage(event.target.checked); setAuthorized(false); setSnapshot(previous => previous ? { ...previous, proposal: undefined } : previous); }} />Adjuntar captura de la pestaña vinculada solo para vista previa; requiere permiso de Chrome y no autoriza escritura</label>
         <div className="bridge-actions"><button className="secondary" disabled={Boolean(busy) || running} onClick={() => void perform('read')}>Leer actividad ALEKS</button><button className="secondary" disabled={!context || Boolean(busy) || running} onClick={() => void perform('preview', { includeImage })}>{busy === 'preview' ? 'Consultando nube…' : 'Consultar vista previa'}</button><button className="inline-button" disabled={Boolean(busy)} onClick={() => void perform('status')}>Actualizar estado</button></div>
       </>}
       {context && <div className="bridge-context"><h3>Actividad observada</h3><p className="bridge-statement">{context.statement}</p><dl className="bridge-diagnostics"><div><dt>Campos</dt><dd>{context.fields.map(field => field.label).join(' · ')}</dd></div><div><dt>Unidad predefinida</dt><dd>{context.fixed_unit || 'Sin unidad reconocida'}</dd></div><div><dt>Formato</dt><dd>{eligible ? 'Editor vacío compatible' : 'Requiere revisión; no se autoriza escritura automática'}</dd></div><div><dt>Huella de actividad</dt><dd><code>{context.fingerprint}</code></dd></div></dl></div>}
@@ -204,7 +207,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
         <p className="result-caution">Al iniciar, Chrome activa ALEKS. Mantén ALEKS como pestaña enfocada: volver a esta web puede detener el recorrido por sus controles de foco. La extensión ejecuta el recorrido; esta página no lo reanuda por sí sola.</p>
         <div className="bridge-actions"><button className="primary" disabled={!eligible || !nativeKeyboard || !authorized || !validLimits || Boolean(busy) || running || blockers.length > 0} onClick={() => void perform('start', { fingerprint: context!.fingerprint, limits: numericLimits, nativeKeyboard, ...(proposal ? { proposalId: proposal.id } : {}) })}>Autorizar e iniciar recorrido</button><button className="danger" onClick={() => { setAuthorized(false); void perform('stop'); }}>Detener recorrido ALEKS</button></div>
       </div>
-      {automation && <div className="bridge-progress" aria-live="polite"><h3>Estado: {automation.phase}</h3><p>{automation.message}</p><dl><div><dt>«Correcta» confirmadas</dt><dd>{automation.accepted}</dd></div><div><dt>Llamadas IA del recorrido</dt><dd>{automation.aiCalls}</dd></div><div><dt>Llamadas de la conexión</dt><dd>{snapshot.providerCalls ?? 0}</dd></div></dl></div>}
+      {snapshot && <div className="bridge-progress" aria-live="polite">{automation && <><h3>Estado: {automation.phase}</h3><p>{automation.message}</p></>}<dl><div><dt>«Correcta» confirmadas</dt><dd>{automation?.accepted ?? 0}</dd></div><div><dt>Presupuesto IA utilizado o reservado</dt><dd>{automation?.aiCalls ?? 0}</dd></div><div><dt>Llamadas confirmadas de la conexión</dt><dd>{snapshot.providerCallsUncertain ? 'Al menos ' : ''}{snapshot.providerCalls ?? 0}{snapshot.providerCallsUncertain && ' · consumo final sin confirmar'}</dd></div></dl></div>}
       {snapshot?.interrupted && <p className="message error" role="alert">{snapshot.interrupted} No se reanudará automáticamente.</p>}
       {expires && <p className="field-help">El vínculo caduca a las {new Date(expires * 1000).toLocaleTimeString('es', { hour: '2-digit', minute: '2-digit' })}. Al caducar deberás conectar y leer de nuevo.</p>}
     </>}

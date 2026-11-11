@@ -12,7 +12,7 @@ La automatización requiere **Chrome de escritorio 116 o posterior**, la extensi
 4. Abre `http://127.0.0.1:8000/app/` en ese mismo Chrome e inicia sesión en la web. Abre otra pestaña con el sitio ALEKS compatible y entra en tu cuenta allí.
 5. Abre el panel de la extensión desde su icono. Pulsa **Autorizar conexión con la web** y concede el permiso solicitado. Pulsa **Autorizar sitio ALEKS** y concede también ese acceso. Un botón de la página web no puede conceder estos permisos por ti.
 6. Vuelve a la web y conecta la extensión. Comprueba la pestaña y el ejercicio seleccionado antes de consultar o iniciar un recorrido. Mantén ALEKS como pestaña activa cuando deba escribir. Chrome puede mostrar un aviso de depuración mientras el teclado está conectado.
-7. Para la primera ejecución usa una respuesta, pocos minutos y un presupuesto pequeño de IA. Revisa la propuesta y los límites que muestra la web. Inicia el recorrido solo sobre una actividad que hayas autorizado. **Detener** cancela lo pendiente; una consulta ya enviada al proveedor puede haber consumido cuota.
+7. Para la primera ejecución usa **1 respuesta, 5 minutos y 2 llamadas IA**. Lee la actividad, consulta la vista previa y revisa su propuesta. Marca las casillas de teclado y autorización; pulsa **Autorizar e iniciar recorrido**. **Detener recorrido ALEKS** cancela lo pendiente; una consulta ya enviada al proveedor puede haber consumido cuota.
 
 El inicio local no publica la web. La computadora debe seguir encendida para servirla. Consulta [WEB.md](WEB.md) para la instalación del servidor en Internet.
 
@@ -20,11 +20,21 @@ El inicio local no publica la web. La computadora debe seguir encendida para ser
 
 El flujo reutiliza las comprobaciones de la extensión: leer el enunciado, consultar al backend con la cuenta web, escribir, leer la respuesta representada por el editor, pulsar el control conocido de verificación una sola vez, esperar una devolución nueva **Correcta** y avanzar a otro ejercicio mediante los controles compatibles. Aplica los límites de respuestas, tiempo y llamadas de IA. Una respuesta incorrecta, un cambio inesperado, un formato incompatible o una entrega incierta detienen el recorrido; no se ensaya otra respuesta automáticamente.
 
+La vista previa es una consulta manual: consume cuota de la cuenta y aparece en las llamadas de la conexión. El presupuesto del recorrido limita las nuevas consultas iniciadas durante ese recorrido; reserva hasta dos llamadas por resolución y ajusta el consumo al recibir el resultado. Reutilizar la propuesta vigente no vuelve a consultar. Si la conexión se interrumpe antes de confirmar el consumo, se muestra como incierto, sin afirmar que se gastaron cero llamadas.
+
+Al alcanzar un límite no se pulsa Siguiente. Para otro recorrido, avanza manualmente en ALEKS, vuelve a leer desde la web y autoriza nuevos límites. Reconectar no recupera automáticamente una entrega ni vuelve a enviarla. La sesión de Chrome conserva las huellas ya enviadas por pestaña para impedir duplicados. Hay una vinculación por sesión web: conectar desde otra pestaña web con la misma sesión revoca el vínculo anterior. Varias pestañas ALEKS pueden estar abiertas; solo actúa sobre la vinculada.
+
 La escritura automática admite un único recuadro numérico vacío: entero no negativo o fracción reducida, con doce dígitos por componente. Los sufijos fijos, como `hora(s)`, conservan sus comprobaciones originales. No habilita gráficos, varios recuadros, campos de unidades interactivos o respuestas de formato arbitrario. Adjuntar una imagen en la demo conserva el flujo de consulta y revisión visual; no habilita un recorrido automático sobre diagramas.
 
 **Resultado comprobado** identifica un comprobador matemático independiente admitido. **Propuesta de IA sin verificar** no acredita que el proveedor haya entendido o resuelto bien el problema; la revisión visual o aritmética de una propuesta no convierte la lectura en evidencia independiente. ALEKS es quien califica una entrega.
 
-Las pruebas automáticas usan fixtures de ALEKS y APIs simuladas donde corresponde. No equivalen a una ejecución con una cuenta ALEKS real, una extensión instalada manualmente o una llamada real a Gemini. Los resultados ejecutados y sus límites deben consultarse en el informe de validación de esta etapa.
+Las pruebas automáticas usan fixtures de ALEKS y APIs simuladas donde corresponde. No equivalen a una ejecución con una cuenta ALEKS real, una extensión instalada manualmente o una llamada real a Gemini. Consulta los resultados y límites en [VALIDACION.md](VALIDACION.md).
+
+## Frontera de seguridad
+
+El worker valida el origen exacto, la pestaña web y su documento principal. El protocolo solo admite conectar, listar pestañas, vincular, leer, consultar vista previa, iniciar con límites, detener, consultar estado y desvincular. Rechaza campos adicionales, JavaScript, selectores y URLs enviados por la web. Cada entrega usa la pestaña vinculada, la huella leída y el identificador del recorrido; el teclado conserva sus comprobaciones de foco, editor y token de un uso.
+
+La web obtiene una capacidad temporal mediante su sesión y CSRF. El backend guarda únicamente su hash, limita su vigencia a una hora o al vencimiento de la sesión y la revoca al salir o eliminar la cuenta. Una revocación tardía solo afecta a su capacidad exacta. El token permite consultar IA, no administrar cuentas. El diario de entregas conserva huellas y contadores; no guarda enunciados, respuestas ni claves de IA.
 
 ## Usar una web HTTPS publicada
 

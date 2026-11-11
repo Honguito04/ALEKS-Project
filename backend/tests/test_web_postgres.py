@@ -135,3 +135,31 @@ def test_public_startup_with_verified_postgres_tls_and_secure_session(postgres_s
         assert next(cookie for cookie in client.cookies.jar if cookie.name == "assistant_web_session").secure
         for path in ("/auth/demo", "/solve", "/assist", "/simulator/", "/docs"):
             assert client.post(path, headers={"Host": "127.0.0.1:8000"}).status_code == 404
+
+
+def test_bridge_rotation_scoped_revoke_restart_and_session_cascade(postgres_store):
+    from app.web_accounts import digest
+    from app.web_bridge import bridge_origin
+
+    with TestClient(app) as client:
+        _, headers = register(client)
+        old = client.post("/web-api/bridge-token", headers=headers).json()
+        new = client.post("/web-api/bridge-token", headers=headers).json()
+        bearer = {"Origin": bridge_origin(), "Authorization": "Bearer " + new["token"]}
+        old_bearer = {**bearer, "Authorization": "Bearer " + old["token"]}
+        assert client.get("/web-api/bridge/session", headers=old_bearer).status_code == 401
+        assert client.request("DELETE", "/web-api/bridge-token", headers=headers,
+                              json={"capability_id": old["capability_id"]}).status_code == 204
+        assert client.get("/web-api/bridge/session", headers=bearer).status_code == 200
+        cookies = dict(client.cookies)
+    initialize_web()
+    with TestClient(app) as restarted:
+        restarted.cookies.update(cookies)
+        assert restarted.get("/web-api/bridge/session", headers=bearer).status_code == 200
+        with web_db() as conn:
+            tokens = conn.execute("SELECT token_hash FROM web_bridge_tokens").fetchall()
+        assert [row["token_hash"] for row in tokens] == [digest(new["token"])]
+        assert restarted.post("/web-api/logout", headers=headers).status_code == 204
+        assert restarted.get("/web-api/bridge/session", headers=bearer).status_code == 401
+    with web_db() as conn:
+        assert conn.execute("SELECT token_hash FROM web_bridge_tokens").fetchall() == []

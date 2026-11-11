@@ -1,6 +1,6 @@
 # Demo web independiente
 
-La web permite crear una cuenta, pegar un enunciado, adjuntar una imagen JPEG/PNG/WebP y pedir propuestas matemáticas. Funciona en móvil y computadora. No lee ni controla ALEKS: esa función continúa perteneciendo a la extensión, cuya vinculación con estas cuentas no está implementada.
+La web permite crear una cuenta, pegar un enunciado, adjuntar una imagen JPEG/PNG/WebP y pedir propuestas matemáticas. Funciona en móvil y computadora. Para leer y controlar una pestaña ALEKS desde Chrome de escritorio utiliza el [puente con la extensión](WEB_BRIDGE.md). La web por sí sola no accede a otras pestañas.
 
 ## Windows: primera prueba
 

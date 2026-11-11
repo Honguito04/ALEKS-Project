@@ -70,7 +70,7 @@ test('cancelar mientras se crea una consulta descarta su resultado tardío', asy
   await page.getByRole('button', { name: 'Cancelar consulta' }).click();
   await expect(page.getByRole('button', { name: 'Consultar', exact: true })).toBeEnabled();
   release();
-  await expect(page.getByRole('status')).toContainText('cancelada');
+  await expect(page.getByRole('status').filter({hasText:'Consulta cancelada'})).toBeVisible();
   await expect(page.getByTestId('answer-value')).toHaveCount(0);
 });
 

@@ -92,3 +92,13 @@ test('navegar la pestaña vinculada detiene sin continuar otro ejercicio',async(
   await expect.poll(async()=>(await metrics(page)).cancels).toBeGreaterThan(0);
   expect(await metrics(page)).toMatchObject({writes:0,submits:0,nexts:0,creates:1});
 });
+
+for(const feedback of ['incorrect','uncertain'] as const) test(`devolución ${feedback} detiene sin contar Correcta ni avanzar`,async({page})=>{
+  const context=await openBridge(page);
+  await page.evaluate(mode=>window.webBridgeTest.feedback(mode),feedback);
+  expect((await command(page,'start',{fingerprint:context.fingerprint,limits,nativeKeyboard:true})).ok).toBe(true);
+  await expect.poll(async()=>(await command(page,'status')).value.automation?.phase,{timeout:20000}).toBe('DETENIDO');
+  const status=await command(page,'status');
+  expect(status.value.automation).toMatchObject({accepted:0,active:false});
+  expect(await metrics(page)).toMatchObject({writes:1,submits:1,nexts:0,creates:1});
+});
