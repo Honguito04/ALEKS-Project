@@ -170,7 +170,7 @@ it('si no se puede persistir el diario no entrega y retira el permiso de teclado
 
 it('el puente entrega dos respuestas por clave sin concatenarlas',async()=>{
   const pair={...context,fields:[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]};
-  const answers=[{field_key:'field_2',value:'6',unit:''},{field_key:'field_1',value:'12',unit:''}];
+  const answers=[{field_key:'field_2',value:'6',unit:'cm²'},{field_key:'field_1',value:'12',unit:'cm'}];
   (deps.send as ReturnType<typeof vi.fn>).mockImplementation(async(_id,type)=>type==='assistContext'?pair:{});
   const original=fetcher.getMockImplementation()!;
   fetcher.mockImplementation(async(url:string,init?:RequestInit)=>{

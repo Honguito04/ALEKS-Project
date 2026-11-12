@@ -70,8 +70,14 @@ it.each(['correct','reversed','missing','duplicate','unknown','units','invalid',
   if(mode==='missing')answers.pop();
   if(mode==='duplicate')answers[1].field_key='field_1';
   if(mode==='unknown')answers[1].field_key='field_3';
-  if(mode==='units')answers[1].unit='cm²';
+  if(mode==='units')answers[1].unit='mm';
   if(mode==='invalid')answers[1].value='1; 2';
   if(mode==='fraction-disabled')candidate.context.can_fill_fraction=false;
   expect(proposalFillBlockers(candidate)).toEqual(['correct','reversed'].includes(mode)?[]:[mode==='fraction-disabled'?'fraction_control':'answer_format']);
+});
+
+it.each(['cm','cm²','cm^2','cm³','cm^3'])('admite selección por campo de %s',unit=>{
+  const candidate=proposal();candidate.context.fields=[{key:'field_1',label:'1'},{key:'field_2',label:'2'}];
+  candidate.result.proposal.answers=[{field_key:'field_1',value:'12',unit:'cm'},{field_key:'field_2',value:'6',unit}];
+  expect(proposalFillBlockers(candidate)).toEqual([]);
 });

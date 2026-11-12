@@ -49,7 +49,7 @@ export interface EditorMenuObservation {
 }
 export interface SingleEditorObservation {
   status:'observed'|'missing'|'ambiguous'|'unsupported';reason:string;rootCount:number;disabled?:boolean;autoSubmitSupported:false;
-  readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string;fixed_unit?:FixedUnit;unitLabel?:string};
+  readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string;fixed_unit?:FixedUnit;selected_unit?:'cm'|'cm^2'|'cm^3';unitLabel?:string};
 }
 export const fillBlockerSchema=z.enum(['unreadable_prompt','editor_missing','multiple_editors','editor_structure','editor_disabled',
   'editor_not_empty','unsupported_readback','result_present','diagram_required','image_based_proposal','answer_format','no_answer','fraction_control','unknown']);

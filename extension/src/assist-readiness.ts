@@ -38,7 +38,7 @@ export function proposalFillBlockers(view:AssistView):FillBlocker[] {
   if(proposal.status!=='proposed')blockers.push('no_answer');
   else if(view.context.fields.length===2 && view.context.fields.every(field=>/^field_[12]$/.test(field.key))) {
     if(proposal.answers.length!==2 || new Set(proposal.answers.map(answer=>answer.field_key)).size!==2 ||
-      view.context.fields.some(field=>!proposal.answers.some(answer=>answer.field_key===field.key && answer.unit==='' && parseSupportedAnswer(answer.value))))blockers.push('answer_format');
+      view.context.fields.some(field=>!proposal.answers.some(answer=>answer.field_key===field.key && (answer.unit==='' || ['cm','cm^2','cm^3'].includes(answerUnit(answer.unit) || '')) && parseSupportedAnswer(answer.value))))blockers.push('answer_format');
     else if(proposal.answers.some(answer=>parseSupportedAnswer(answer.value)?.kind==='fraction') && !view.context.can_fill_fraction)blockers.push('fraction_control');
   }
   else if(proposal.answers.length!==1 || proposal.answers[0].field_key!=='answer' || !unitMatches(view) ||
@@ -60,7 +60,7 @@ function quotedDiagnostic(value:string):string {
 
 function answerFormatMessage(view:AssistView):string {
   const answers=view.result.proposal.answers;
-  if(view.context.fields.length===2)return 'Se necesitan exactamente dos respuestas con claves field_1 y field_2, sin unidades y con un entero o fracción reducida por campo.';
+  if(view.context.fields.length===2)return 'Se necesitan exactamente dos respuestas con claves field_1 y field_2, unidad vacía o cm/cm²/cm³ y con un entero o fracción reducida por campo.';
   if(answers.length!==1)return `Se recibieron ${answers.length} respuestas; la escritura necesita una sola respuesta asociada al recuadro.`;
   const answer=answers[0],reasons:string[]=[];
   if(answer.field_key!=='answer')reasons.push(`El campo recibido es ${quotedDiagnostic(answer.field_key)}; no corresponde al recuadro «answer».`);

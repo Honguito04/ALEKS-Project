@@ -3,6 +3,7 @@ import { inspectEditorRoot } from './aleks-single-editor';
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
 import { visible,disabled } from './aleks-dom';
+import { answerUnit } from './answer-units';
 import { parseSupportedAnswer } from './answer-format';
 
 export function answerRoots(document:Document):HTMLElement[] {
@@ -12,7 +13,7 @@ export function answerRoots(document:Document):HTMLElement[] {
     .sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top || a.getBoundingClientRect().left-b.getBoundingClientRect().left);
 }
 
-/** Orden visual estable. Nunca concatena dos respuestas ni selecciona unidades. */
+/** Orden visual estable. Nunca concatena dos respuestas. Selecciona únicamente los botones de cm aportados. */
 export async function fillTwoAnswers(document:Document,fingerprint:string,answers:FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
   signal.throwIfAborted();
   const promptNode=document.querySelector('#algoPrompt'),prompt=await readAleksPrompt(document);signal.throwIfAborted();
@@ -21,6 +22,12 @@ export async function fillTwoAnswers(document:Document,fingerprint:string,answer
   if(context.fingerprint!==fingerprint || !context.can_fill_integer || roots.length!==2 || answers.length!==2 ||
     new Set(answers.map(answer=>answer.field_key)).size!==2 ||
     context.fields.some(field=>!answers.some(answer=>answer.field_key===field.key && parseSupportedAnswer(answer.value))))throw Error('Se necesitan dos respuestas válidas, una por campo del ejercicio actual.');
+  const units=context.fields.map(field=>{
+    const raw=answers.find(answer=>answer.field_key===field.key)?.unit || '';
+    const unit=raw?answerUnit(raw):undefined;
+    if(raw && !['cm','cm^2','cm^3'].includes(unit || ''))throw Error('Unidad no admitida para seleccionar.');
+    return unit;
+  });
   const values=context.fields.map(field=>answers.find(answer=>answer.field_key===field.key)!.value);
   let completed=0;
   const guard=async(index:number)=>{
@@ -32,7 +39,7 @@ export async function fillTwoAnswers(document:Document,fingerprint:string,answer
     for(let i=0;i<2;i++) {
       const field=inspectEditorRoot(roots[i]);
       if(!inputs[i].isConnected || roots[i].querySelector('input.ansed_input')!==inputs[i] || inputs[i].closest('.ansed_root')!==roots[i] || disabled(inputs[i]) || inputs[i].readOnly || field.status!=='observed' || field.readback.fixed_unit ||
-        (i<completed ? field.readback.status!=='readable' || field.readback.value!==values[i] : i!==index && field.readback.status!=='empty'))throw Error('Un recuadro cambió o perdió su respuesta.');
+        (i<completed ? field.readback.status!=='readable' || field.readback.value!==values[i] || field.readback.selected_unit!==units[i] : i!==index && field.readback.status!=='empty'))throw Error('Un recuadro cambió o perdió su respuesta.');
     }
     if(index>=0 && document.activeElement!==inputs[index])throw Error('Cambió el foco del editor. Se detuvo la escritura.');
   };
@@ -53,9 +60,27 @@ export async function fillTwoAnswers(document:Document,fingerprint:string,answer
     while(true) {
       await guard(i);
       const read=inspectEditorRoot(roots[i]).readback;
-      if(read.status==='readable' && read.value===values[i])break;
+      if(read.status==='readable' && read.value===values[i] && !read.selected_unit)break;
       if(Date.now()>=deadline)throw Error('ALEKS no reflejó una de las respuestas. No se entregó el ejercicio.');
       await new Promise(resolve=>setTimeout(resolve,50));
+    }
+    if(units[i]) {
+      const label=units[i]==='cm'?'Centímetros':units[i]==='cm^2'?'Centímetros cuadrados':'Centímetros cúbicos';
+      const scope=roots[i].closest('.aleks-editor-layout') || document;
+      const buttons=()=>[...scope.querySelectorAll<HTMLButtonElement>('button')].filter(button=>button.getAttribute('aria-label')===label && visible(button));
+      const targets=buttons();
+      if(targets.length!==1 || disabled(targets[0]))throw Error('No hay un único botón de unidad habilitado para este recuadro.');
+      await guard(i);
+      if(buttons().length!==1 || buttons()[0]!==targets[0] || disabled(targets[0]))throw Error('El botón de unidad cambió.');
+      targets[0].click();
+      const deadline=Date.now()+1600;
+      while(true) {
+        await guard(i);
+        const read=inspectEditorRoot(roots[i]).readback;
+        if(read.status==='readable' && read.value===values[i] && read.selected_unit===units[i])break;
+        if(Date.now()>=deadline)throw Error('ALEKS no reflejó el número y su unidad. No se entregó la respuesta.');
+        await new Promise(resolve=>setTimeout(resolve,50));
+      }
     }
     completed++;
   }

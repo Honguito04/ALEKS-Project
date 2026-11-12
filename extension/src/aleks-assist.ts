@@ -56,7 +56,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
  * Se solicita esa escritura una vez y se exige su representación visual.
  * Los eventos sintéticos deben comprobarse en cada instalación de ALEKS.
  */
-export type FieldAnswer={field_key:string;value:string};
+export type FieldAnswer={field_key:string;value:string;unit?:string};
 export type NativeInput=(guard:()=>Promise<void>)=>Promise<void>;
 export async function fillAssistAnswer(document:Document,fingerprint:string,value:string|FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
   if(Array.isArray(value))return fillTwoAnswers(document,fingerprint,value,signal,nativeInput);
@@ -118,6 +118,7 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     signal.throwIfAborted();
     if(!root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root || !visible(root) || disabled(input) || input.readOnly)throw Error('El editor desapareció o cambió durante la escritura.');
     const observation=inspectAleksEditor(document).singleEditor;
+    if(observation.readback.selected_unit)throw Error('Apareció una unidad no solicitada durante la escritura.');
     if(observation.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad del recuadro cambió durante la escritura. No se entregó la respuesta.');
     if(observation.status==='observed' && observation.readback.status==='readable' && observation.readback.value===value) {
       const current=await readAleksPrompt(document);signal.throwIfAborted();

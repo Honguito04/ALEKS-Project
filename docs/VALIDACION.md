@@ -2,6 +2,14 @@
 
 Actualización: 12 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
 
+## Selección de cm, cm² y cm³ (12 de noviembre)
+
+**247 pruebas unitarias y 104 de navegador pasadas**; compilaciones de extensión y web y TypeScript correctos. Las pruebas de navegador cubren escritura asistida, lectura del editor, unidades fijas y entrega, incluidas 11 nuevas variantes de selección de unidad.
+
+Los botones se reconocen por las etiquetas accesibles del HTML aportado: «Centímetros», «Centímetros cuadrados» y «Centímetros cúbicos». No se usan IDs dinámicos ni URLs de imágenes. En dos recuadros se conserva el número como valor y la unidad como metadato por campo, incluido el puente web. El teclado de Chrome escribe solamente el número; el adaptador selecciona la unidad con un clic y exige leerla en el mismo árbol visual antes de entregar.
+
+Las pruebas cubren botones ausentes, deshabilitados o duplicados, unidad sin reflejo visual, exponente equivocado, escritura en otro campo, pérdida de foco, cancelación y cambio del número. Una unidad inesperada tampoco confirma la escritura del editor único. Son escenarios sintéticos; falta comprobar la selección en una sesión autenticada de ALEKS. Si la representación real difiere del número seguido de cm y un exponente elevado, se detiene sin verificar; se necesitará su HTML renderizado para adaptarla. No se amplía el soporte a expresiones con pi ni a otras unidades interactivas.
+
 ## Dos recuadros ALEKS (12 de noviembre)
 
 - Compilaciones de extensión y web y TypeScript correctos; **241 pruebas unitarias pasadas** sobre la versión actual del puente web.

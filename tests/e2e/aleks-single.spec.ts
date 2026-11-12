@@ -62,7 +62,7 @@ for(const mutation of ['duplicate','hidden','extra-input','extra-tree','in-promp
 }
 
 for(const mutation of ['sign','unit','clipped','hidden','exponent','far-apart','loose-text','too-long'] as const) {
-  test(`no lee como entero una respuesta con ${mutation}`,async({page})=>{
+  test(mutation==='unit'?'distingue el número de su unidad seleccionada':`no lee como entero una respuesta con ${mutation}`,async({page})=>{
     const result=await page.evaluate(mutation=>{
       const tree=document.querySelector('.ansed_tree')!;
       tree.innerHTML='<span class="AnsedObject" style="display:block;position:absolute;font:18px serif;left:2px;top:3px;height:24px">12</span>';
@@ -78,7 +78,8 @@ for(const mutation of ['sign','unit','clipped','hidden','exponent','far-apart','
       }
       return window.aleksProbe(document).singleEditor.readback;
     },mutation);
-    expect(result.status).toBe('unsupported');expect(result.value).toBeUndefined();
+    if(mutation==='unit')expect(result).toMatchObject({status:'readable',value:'1',selected_unit:'cm'});
+    else {expect(result.status).toBe('unsupported');expect(result.value).toBeUndefined();}
   });
 }
 

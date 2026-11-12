@@ -140,3 +140,17 @@ for(const state of ['changed-prompt','occupied','disabled','aborted','aborted-on
     expect(result).toEqual({failed:true,events:0,value:''});
   });
 }
+
+test('una unidad no solicitada no confirma la escritura del editor único',async({page})=>{
+  const result=await page.evaluate(async()=>{
+    const input=document.querySelector<HTMLInputElement>('input')!,root=document.querySelector<HTMLElement>('.ansed_root')!;
+    root.style.width='100px';let clicks=0,error='';document.querySelector('button.checkAnswer')!.addEventListener('click',()=>clicks++);
+    input.addEventListener('input',()=>{
+      document.querySelector('.ansed_tree')!.innerHTML=`<span class="AnsedObject" style="position:absolute;left:2px;top:3px;height:24px">${input.value}</span><span class="AnsedObject" style="position:absolute;left:30px;top:3px;height:24px">cm</span>`;
+    });
+    const context=await window.assistContext(document);
+    try{await window.fillAssistInteger(document,context.fingerprint,'12',new AbortController().signal);}catch(e){error=(e as Error).message;}
+    return {clicks,error};
+  });
+  expect(result.clicks).toBe(0);expect(result.error).toContain('unidad no solicitada');
+});

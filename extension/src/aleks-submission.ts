@@ -1,4 +1,5 @@
 import { assistContext,fillAssistAnswer,type FieldAnswer,type NativeInput } from './aleks-assist';
+import { answerUnit } from './answer-units';
 import { answerRoots } from './aleks-two-editors';
 import { inspectEditorRoot } from './aleks-single-editor';
 import { inspectAleksEditor } from './aleks-editor';
@@ -106,9 +107,9 @@ export class AleksSubmission {
       const valid=Array.isArray(value)?ordered.every((node,i)=>{
         const field=inspectEditorRoot(node),current=answerRoots(this.document);
         return current.length===2 && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && document.activeElement===inputs[1] && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
-          field.readback.value===value.find(answer=>answer.field_key===`field_${i+1}`)?.value && !field.readback.fixed_unit;
+          field.readback.value===value.find(answer=>answer.field_key===`field_${i+1}`)?.value && !field.readback.fixed_unit && field.readback.selected_unit===answerUnit(value.find(answer=>answer.field_key===`field_${i+1}`)?.unit || '');
       }):editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
-        editor.singleEditor.readback.value===value && editor.singleEditor.readback.fixed_unit===fixedUnit;
+        editor.singleEditor.readback.value===value && !editor.singleEditor.readback.selected_unit && editor.singleEditor.readback.fixed_unit===fixedUnit;
       if(!root.isConnected || !visible(root) || !valid ||
         freshTargets.length!==1 || freshTargets[0]!==target || disabled(target) || alerts(this.document).length ||
         editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('El recuadro o los controles cambiaron antes de verificar. No se entregó la respuesta.');

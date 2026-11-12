@@ -765,8 +765,8 @@ it.each(['authorized','focus-lost','capability-revoked'] as const)('web → back
   }
 });
 
-it('escribe dos campos por separado y rechaza repetir el índice de teclado',async()=>{
-  const answers=[{field_key:'field_2',value:'6',unit:''},{field_key:'field_1',value:'12',unit:''}];
+it.each([false,true])('escribe dos campos por separado y rechaza repetir el índice de teclado; unidades: %s',async units=>{
+  const answers=[{field_key:'field_2',value:'6',unit:units?'cm²':''},{field_key:'field_1',value:'12',unit:units?'cm':''}];
   prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers}});
   const context={...assistContext,fields:[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]};
   tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,data:message.type==='assistContext'?context:true}));

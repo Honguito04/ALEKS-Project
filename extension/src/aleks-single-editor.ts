@@ -35,6 +35,26 @@ function readNumber(root:HTMLElement,tree:HTMLElement):SingleEditorObservation['
   if(allNodes.length>24 || [...tree.childNodes].some(node=>node.nodeType!==1 && node.textContent?.trim()))return unsupported('El árbol visual contiene texto o tokens adicionales.');
   if(allNodes.some(node=>node.tagName!=='SPAN' || !node.classList.contains('AnsedObject') || !painted(node) ||
     [...node.childNodes].some(child=>child.nodeType!==3)))return unsupported('El árbol visual contiene un elemento no reconocido.');
+  const cm=allNodes.filter(node=>node.textContent?.trim()==='cm' && node.ownerDocument.defaultView!.getComputedStyle(node).fontFamily!=='Verdana');
+  if(cm.length) {
+    if(cm.length!==1)return unsupported('Hay varias unidades seleccionadas.');
+    if(cm[0].ownerDocument.defaultView!.getComputedStyle(cm[0]).fontStyle!=='normal')return unsupported('La unidad está en cursiva.');
+    const unit=cm[0],index=allNodes.indexOf(unit),tail=allNodes.slice(index+1),numeric=allNodes.slice(0,index);
+    if(tail.length>1 || (tail.length===1 && !['2','3'].includes(tail[0].textContent?.trim() || '')))return unsupported('La unidad seleccionada no es cm, cm² o cm³.');
+    const u=unit.getBoundingClientRect(),bounds=root.getBoundingClientRect();
+    const inside=(r:DOMRect)=>r.width>0 && r.height>0 && r.left>=bounds.left-1 && r.right<=bounds.right+1 && r.top>=bounds.top-1 && r.bottom<=bounds.bottom+1;
+    if(!inside(u) || numeric.some(node=>node.getBoundingClientRect().right>u.left+1))return unsupported('La unidad no sigue al número dentro del recuadro.');
+    const result=readNumericNodes(numeric,root);
+    if(result.status!=='readable')return unsupported('Falta el número antes de la unidad seleccionada.');
+    const rects=numeric.map(node=>node.getBoundingClientRect()),top=Math.min(...rects.map(r=>r.top)),bottom=Math.max(...rects.map(r=>r.bottom));
+    if(Math.abs((top+bottom)/2-(u.top+u.bottom)/2)>Math.max(u.height,bottom-top)*.35)return unsupported('La unidad no está alineada con el número.');
+    if(tail.length) {
+      const power=tail[0].getBoundingClientRect();
+      if(!inside(power) || power.left<u.right-2 || power.left-u.right>u.height || power.top>=u.top-u.height*.2 || power.bottom>=u.bottom-u.height*.15 || power.height>u.height)return unsupported('No se reconoce el exponente de cm.');
+    }
+    const selected_unit=tail.length?`cm^${tail[0].textContent!.trim()}` as 'cm^2'|'cm^3':'cm';
+    return {...result,selected_unit,display:`${result.value} ${selected_unit}`};
+  }
   const units=allNodes.filter(node=>{
     const style=node.ownerDocument.defaultView!.getComputedStyle(node);
     // El sufijo aportado usa Verdana 14 normal; una variable matemática en cursiva no es una unidad fija.
