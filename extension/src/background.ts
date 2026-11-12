@@ -17,7 +17,7 @@ const nativeTabs=new Set<number>();
 let nativeEpoch=0;
 const nativeTabEpoch=new Map<number,number>();
 function cancelNative(id:number) {nativeTabEpoch.set(id,(nativeTabEpoch.get(id)||0)+1);nativeWrites.get(id)?.abort.abort();}
-type NativeWrite={id:string;url:string;value:string;used:boolean;abort:AbortController;current:()=>boolean};
+type NativeWrite={id:string;url:string;values:string[];index:number;used:boolean;abort:AbortController;current:()=>boolean};
 const nativeWrites=new Map<number,NativeWrite>();
 let webBridge:WebBridge|undefined;
 async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,current=()=>true) {
@@ -25,11 +25,12 @@ async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,c
   const epoch=nativeEpoch,tabEpoch=nativeTabEpoch.get(id)||0;
   const allowed=()=>current() && nativeTabs.has(id) && epoch===nativeEpoch && tabEpoch===(nativeTabEpoch.get(id)||0);
   const t=await tab(id);
-  if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof data.value!=='string' || !parseSupportedAnswer(data.value))throw Error('Respuesta no admitida por el teclado de Chrome.');
+  const values=Array.isArray(data.value)?['field_1','field_2'].map(key=>(data.value as {field_key:string;value:string}[]).find(answer=>answer.field_key===key)?.value):[data.value];
+  if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || values.some(value=>typeof value!=='string' || !parseSupportedAnswer(value)))throw Error('Respuesta no admitida por el teclado de Chrome.');
   if(!allowed() || nativeWrites.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
   if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión actualizada y concede el permiso de depuración de Chrome.');
   if(!allowed())throw Error('Escritura cancelada.');
-  const write:NativeWrite={id:crypto.randomUUID(),url:t.url,value:data.value,used:false,abort:new AbortController(),current:allowed};
+  const write:NativeWrite={id:crypto.randomUUID(),url:t.url,values:values as string[],index:0,used:false,abort:new AbortController(),current:allowed};
   nativeWrites.set(id,write);
   try{return await send(id,type,{...data,nativeWriteId:write.id},()=>allowed() && !write.abort.signal.aborted);}
   finally {write.abort.abort();if(nativeWrites.get(id)===write)nativeWrites.delete(id);}
@@ -217,7 +218,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           solve:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return handleUI({type:'assist',tabId:t.id,includeImage:false},true,()=>run.view.active);},
           submit:async proposal=>{
             await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');assistProposals.delete(t.id);assistWriters.add(t.id);
-            try{return await deliverAnswer(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:proposal.result.proposal.answers[0].value,runId:run.view.id},()=>run.view.active);}
+            try{return await deliverAnswer(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:proposal.context.fields.length===2?proposal.result.proposal.answers:proposal.result.proposal.answers[0].value,runId:run.view.id},()=>run.view.active);}
             finally{assistWriters.delete(t.id);}
           },
           next:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return send(t.id,'automationNext',{runId:run.view.id},()=>run.view.active);},
@@ -338,7 +339,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       if(blockers.length)throw Error(blockers.join(' '));
       const answers=proposal.result.proposal.answers;
       assistWriters.add(t.id);
-      try{return await deliverAnswer(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answers[0].value});}
+      try{return await deliverAnswer(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:proposal.context.fields.length===2?answers:answers[0].value});}
       finally{assistWriters.delete(t.id);}
     }
     case 'start': {
@@ -366,15 +367,16 @@ async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.Mess
   const t=await tab(sender.tab.id);
   if(m.type==='nativeType') {
     const write=nativeWrites.get(t.id);
-    if(!write || write.used || m.writeId!==write.id || !nativeTabs.has(t.id) || sender.url!==write.url || t.url!==write.url || !ALEKS_ORIGINS.includes(new URL(t.url).origin))throw Error('No hay una escritura de teclado autorizada para esta pestaña.');
+    if(!write || write.used || write.index>=write.values.length || (m.fieldIndex??0)!==write.index || m.writeId!==write.id || !nativeTabs.has(t.id) || sender.url!==write.url || t.url!==write.url || !ALEKS_ORIGINS.includes(new URL(t.url).origin))throw Error('No hay una escritura de teclado autorizada para esta pestaña.');
     write.used=true;
     const check=async()=>{
       write.abort.signal.throwIfAborted();
       await checkNativeTab(t.id,write.url,()=>!write.abort.signal.aborted && nativeWrites.get(t.id)===write && write.current() && nativeTabs.has(t.id));
       write.abort.signal.throwIfAborted();
     };
-    await typeNativeAnswer(t.id,write.value,{signal:write.abort.signal,check,
+    await typeNativeAnswer(t.id,write.values[write.index++],{signal:write.abort.signal,check,
       guard:async()=>{await send(t.id,'nativeGuard',{writeId:write.id},()=>!write.abort.signal.aborted && write.current());}});
+    write.used=false;
     return true;
   }
   if(!sender.url || new URL(sender.url).origin!==new URL(t.url).origin || !simulatorURL(t.url)) throw Error('Origen del adaptador no autorizado');

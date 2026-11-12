@@ -56,7 +56,7 @@ export class AleksAutomation {
     const blockers=proposalFillMessages(proposal);
     if(blockers.length)throw Error(blockers.join(' '));
     this.proposal=proposal;
-    this.state.phase='LISTO';this.state.answer=proposal.result.proposal.answers[0].value;
+    this.state.phase='LISTO';this.state.answer=proposal.context.fields.map(field=>proposal.result.proposal.answers.find(answer=>answer.field_key===field.key)!.value).join('; ');
     this.state.message='Respuesta preparada. El siguiente paso la escribirá y pulsará Verificar o Entregar.';
   }
 

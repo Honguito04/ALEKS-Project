@@ -1,4 +1,6 @@
-import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist';
+import { assistContext,fillAssistAnswer,type FieldAnswer,type NativeInput } from './aleks-assist';
+import { answerRoots } from './aleks-two-editors';
+import { inspectEditorRoot } from './aleks-single-editor';
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
 import { visible,disabled } from './aleks-dom';
@@ -78,7 +80,7 @@ export class AleksSubmission {
     if(observation.markerCount && !observation.labelCount)return 'Se encontró «Temas restantes», pero no el botón visible «Continuar en Mi ruta». Revisa ALEKS.';
     return 'La pantalla de fin de tema conserva un ejercicio, resultado o control incompatible. No se pulsó «Continuar en Mi ruta».';
   }
-  async submit(fingerprint:string,value:string,signal:AbortSignal,nativeInput?:NativeInput):Promise<{status:'accepted'}> {
+  async submit(fingerprint:string,value:string|FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput):Promise<{status:'accepted'}> {
     if(this.phase!=='idle')throw Error('Esta entrega ya fue iniciada; no se vuelve a pulsar Verificar.');
     this.phase='submitting';const generation=this.generation;
     let feedbackObserver:MutationObserver|undefined;
@@ -93,14 +95,21 @@ export class AleksSubmission {
       if(targets.length!==1 || disabled(targets[0]))throw Error('No hay un único botón Verificar o Entregar habilitado.');
       const target=targets[0];
       const roots=[...this.document.querySelectorAll<HTMLElement>('.ansed_root')].filter(root=>visible(root) && !root.closest('#algoPrompt') && root.querySelector('input.ansed_input[aria-label="Answer Editor"]'));
-      if(roots.length!==1)throw Error('No hay un único recuadro reconocido para esta entrega.');
+      const pair=Array.isArray(value);
+      const ordered=answerRoots(this.document),inputs=ordered.map(root=>root.querySelector('input.ansed_input'));
+      if(roots.length!==(pair?2:1))throw Error('No hay un único recuadro reconocido para esta entrega.');
       const root=roots[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
       await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
       const editor=inspectAleksEditor(this.document);
       const freshTargets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
-      if(!root.isConnected || !visible(root) || editor.singleEditor.status!=='observed' || editor.singleEditor.disabled ||
-        editor.singleEditor.readback.status!=='readable' || editor.singleEditor.readback.value!==value || editor.singleEditor.readback.fixed_unit!==fixedUnit ||
+      const valid=Array.isArray(value)?ordered.every((node,i)=>{
+        const field=inspectEditorRoot(node),current=answerRoots(this.document);
+        return current.length===2 && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && document.activeElement===inputs[1] && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
+          field.readback.value===value.find(answer=>answer.field_key===`field_${i+1}`)?.value && !field.readback.fixed_unit;
+      }):editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
+        editor.singleEditor.readback.value===value && editor.singleEditor.readback.fixed_unit===fixedUnit;
+      if(!root.isConnected || !visible(root) || !valid ||
         freshTargets.length!==1 || freshTargets[0]!==target || disabled(target) || alerts(this.document).length ||
         editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('El recuadro o los controles cambiaron antes de verificar. No se entregó la respuesta.');
       // Ocultar/mostrar un resultado antiguo no acredita otra entrega. Solo
@@ -172,7 +181,7 @@ export class AleksSubmission {
           const context=await assistContext(this.document);this.check(signal,generation);
           if(resolveAleksRoute(this.document).observation.labelCount)continue;
           const editor=inspectAleksEditor(this.document);
-          if((context.can_fill_integer || context.can_fill_fraction) && editor.singleEditor.readback.status==='empty') {this.phase='idle';return;}
+          if((context.can_fill_integer || context.can_fill_fraction) && answerRoots(this.document).every(root=>inspectEditorRoot(root).readback.status==='empty')) {this.phase='idle';return;}
           if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
             // Un nuevo ejercicio visual también puede terminar el avance. El
             // coordinador decide si su formato admite otra entrega.

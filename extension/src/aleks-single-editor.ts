@@ -17,7 +17,12 @@ export function inspectSingleEditor(document:Document):SingleEditorObservation {
   const fail=(status:SingleEditorObservation['status'],reason:string):SingleEditorObservation=>({
     status,reason,rootCount:roots.size,autoSubmitSupported:false,readback:unsupported(reason)});
   if(roots.size!==1)return fail(roots.size?'ambiguous':'missing',roots.size?'Hay varios editores visuales; no se elige un recuadro sin sus etiquetas.':'No hay un editor visual único asociado al input conocido.');
-  const root=[...roots][0],inputs=root.querySelectorAll<HTMLInputElement>(INPUT);
+  return inspectEditorRoot([...roots][0]);
+}
+
+export function inspectEditorRoot(root:HTMLElement):SingleEditorObservation {
+  const fail=(status:SingleEditorObservation["status"],reason:string):SingleEditorObservation=>({status,reason,rootCount:1,autoSubmitSupported:false,readback:unsupported(reason)});
+  const inputs=root.querySelectorAll<HTMLInputElement>(INPUT);
   const trees=root.querySelectorAll<HTMLElement>(':scope > .ansed_tree');
   if(inputs.length!==1 || root.querySelector('.ansed_root') || trees.length!==1 || !painted(trees[0]))return fail('unsupported','El recuadro no conserva un único input y árbol visual reconocidos.');
   const readback=readNumber(root,trees[0]);

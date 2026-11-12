@@ -29,9 +29,10 @@ if(!window.__mathAssistantLoaded) {
   function nativeWriter(id:unknown):NativeInput|undefined {
     if(id===undefined)return;
     if(typeof id!=='string')throw Error('Escritura de teclado inválida');
+    let fieldIndex=0;
     return async check=>{
       nativeGuard={id,check};
-      try{await rpc('nativeType',{writeId:id});}finally{nativeGuard=undefined;}
+      try{await rpc('nativeType',{writeId:id,fieldIndex:fieldIndex++});}finally{nativeGuard=undefined;}
     };
   }
   const initialized=(async()=>{
@@ -62,7 +63,7 @@ if(!window.__mathAssistantLoaded) {
         }
         if(message.type==='automationSubmit' && !simulatorURL(location.href)) {
           if(!automationId || message.runId!==automationId)throw Error('Recorrido detenido o reemplazado.');
-          if(typeof message.fingerprint!=='string' || typeof message.value!=='string')throw Error('Propuesta inválida');
+          if(typeof message.fingerprint!=='string' || (typeof message.value!=='string' && !Array.isArray(message.value)))throw Error('Propuesta inválida');
           assistAbort=new AbortController();return await submission.submit(message.fingerprint,message.value,assistAbort.signal,nativeWriter(message.nativeWriteId));
         }
         if(message.type==='automationNext' && !simulatorURL(location.href)) {
@@ -70,7 +71,7 @@ if(!window.__mathAssistantLoaded) {
           assistAbort=new AbortController();await submission.next(assistAbort.signal);return true;
         }
         if(message.type==='assistFill' && !simulatorURL(location.href)) {
-          if(typeof message.fingerprint!=='string' || typeof message.value!=='string')throw Error('Propuesta inválida');
+          if(typeof message.fingerprint!=='string' || (typeof message.value!=='string' && !Array.isArray(message.value)))throw Error('Propuesta inválida');
           assistAbort=new AbortController();return await fillAssistAnswer(document,message.fingerprint,message.value,assistAbort.signal,nativeWriter(message.nativeWriteId));
         }
         else if(message.type==='start') await controller.start(limitsSchema.parse(message.limits) as Limits,message.authorization);

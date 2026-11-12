@@ -74,7 +74,7 @@ for(const [state,blocker] of [['occupied','editor_not_empty'],['readOnly','edito
     const result=await page.evaluate(async state=>{
       if(state==='occupied' || state==='unsupported')document.querySelector('.ansed_tree')!.innerHTML=`<span class="AnsedObject" style="position:absolute;left:2px;top:3px;height:24px">${state==='occupied'?'7':'π'}</span>`;
       if(state==='readOnly')document.querySelector<HTMLInputElement>('input')!.readOnly=true;
-      if(state==='multiple')document.body.append(document.querySelector('.ansed_root')!.cloneNode(true));
+      if(state==='multiple')document.body.append(document.querySelector('.ansed_root')!.cloneNode(true),document.querySelector('.ansed_root')!.cloneNode(true));
       if(state==='correct')document.body.insertAdjacentHTML('beforeend','<div style="display:inline-block;color:rgb(57,108,41)">Correcta</div>');
       if(state==='next')document.body.insertAdjacentHTML('beforeend','<button type="button" id="smt_bottomnav_button_input_learningCorrect" class="learningCorrect"><div class="textContent">Siguiente tema</div></button>');
       const context=await window.assistContext(document);

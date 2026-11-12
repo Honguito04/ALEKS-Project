@@ -764,3 +764,25 @@ it.each(['authorized','focus-lost','capability-revoked'] as const)('web → back
     vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',undefined);
   }
 });
+
+it('escribe dos campos por separado y rechaza repetir el índice de teclado',async()=>{
+  const answers=[{field_key:'field_2',value:'6',unit:''},{field_key:'field_1',value:'12',unit:''}];
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers}});
+  const context={...assistContext,fields:[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]};
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,data:message.type==='assistContext'?context:true}));
+  expect((await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true})).ok).toBe(true);
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  let writeId='';
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type!=='assistFill')return {ok:true,data:true};
+    expect(message.value).toEqual(answers);writeId=String(message.nativeWriteId);
+    for(const fieldIndex of [0,1]) {
+      expect((await send({scope:'content',type:'nativeType',writeId,fieldIndex,value:'999'},content())).ok).toBe(true);
+      expect((await send({scope:'content',type:'nativeType',writeId,fieldIndex},content())).ok).toBe(false);
+    }
+    return {ok:true,data:{written:true}};
+  });
+  expect((await nativeFill(proposal.id)).ok).toBe(true);
+  expect(nativeCommand.mock.calls.map(call=>call[2].text).filter(Boolean)).toEqual(['1','2','6']);
+  expect((await send({scope:'content',type:'nativeType',writeId,fieldIndex:2},content())).ok).toBe(false);
+});

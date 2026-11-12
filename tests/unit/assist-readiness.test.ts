@@ -61,3 +61,17 @@ describe('diagnóstico compartido de escritura',()=>{
     expect(captureFillPolicy({...candidate.context,diagram_required:true},candidate.result,true).fill_blockers).toContain('image_based_proposal');
   });
 });
+
+it.each(['correct','reversed','missing','duplicate','unknown','units','invalid','fraction-disabled'])('dos respuestas por clave: %s',mode=>{
+  const candidate=proposal();candidate.context.fields=[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}];
+  candidate.result.proposal.answers=[{field_key:'field_1',value:'12',unit:''},{field_key:'field_2',value:'1/2',unit:''}];
+  const answers=candidate.result.proposal.answers;
+  if(mode==='reversed')answers.reverse();
+  if(mode==='missing')answers.pop();
+  if(mode==='duplicate')answers[1].field_key='field_1';
+  if(mode==='unknown')answers[1].field_key='field_3';
+  if(mode==='units')answers[1].unit='cm²';
+  if(mode==='invalid')answers[1].value='1; 2';
+  if(mode==='fraction-disabled')candidate.context.can_fill_fraction=false;
+  expect(proposalFillBlockers(candidate)).toEqual(['correct','reversed'].includes(mode)?[]:[mode==='fraction-disabled'?'fraction_control':'answer_format']);
+});

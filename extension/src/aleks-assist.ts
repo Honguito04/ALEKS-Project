@@ -2,6 +2,8 @@ import { assistContextSchema,type AssistContext,type FillBlocker } from './share
 import { readAleksPrompt } from './aleks-prompt';
 import { inspectAleksEditor } from './aleks-editor';
 import { visible,disabled } from './aleks-dom';
+import { answerRoots,fillTwoAnswers } from './aleks-two-editors';
+import { inspectEditorRoot } from './aleks-single-editor';
 import { parseSupportedAnswer } from './answer-format';
 
 export async function assistContext(document:Document,allowImage=false):Promise<AssistContext> {
@@ -15,11 +17,19 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   if(roots.size>12)throw Error('Hay demasiados recuadros para esta consulta.');
   const fields=editor.circleTable.status==='observed'?editor.circleTable.fields.map(field=>({key:field.kind,label:field.label})):
     roots.size>1?[...roots].sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top || a.getBoundingClientRect().left-b.getBoundingClientRect().left)
-      .map((_,i)=>({key:`field_${i+1}`,label:`Recuadro ${i+1} en orden visual de arriba abajo e izquierda a derecha; asociación sin validar`})):
+      .map((_,i)=>({key:`field_${i+1}`,label:`Recuadro ${i+1} en orden visual de arriba abajo e izquierda a derecha; una respuesta por campo`})):
       [{key:'answer',label:single.readback.unitLabel?`Respuesta del ejercicio (unidad predefinida: ${single.readback.unitLabel}; escribe solo el número)`:'Respuesta del ejercicio'}];
   const fill_blockers:FillBlocker[]=[];
   if(!readable)fill_blockers.push('unreadable_prompt');
-  if(single.status!=='observed')fill_blockers.push(single.status==='ambiguous'?'multiple_editors':single.status==='missing'?'editor_missing':'editor_structure');
+  const pair=answerRoots(document);
+  const pairRead=pair.map(inspectEditorRoot);
+  const two=pair.length===2 && editor.circleTable.status!=='observed';
+  if(two) {
+    if(pairRead.some(field=>field.status!=='observed'))fill_blockers.push('editor_structure');
+    if(pairRead.some(field=>field.disabled))fill_blockers.push('editor_disabled');
+    if(pairRead.some(field=>field.readback.status==='readable'))fill_blockers.push('editor_not_empty');
+    if(pairRead.some(field=>field.readback.status==='unsupported' || field.readback.fixed_unit))fill_blockers.push('unsupported_readback');
+  } else if(single.status!=='observed')fill_blockers.push(single.status==='ambiguous'?'multiple_editors':single.status==='missing'?'editor_missing':'editor_structure');
   else {
     if(single.disabled)fill_blockers.push('editor_disabled');
     if(single.readback.status==='readable')fill_blockers.push('editor_not_empty');
@@ -35,7 +45,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   // Verificar y el menú pueden aparecer al enfocar. No son utilizados para
   // introducir el número y no forman parte de esta huella de escritura.
   const source=JSON.stringify([prompt.fingerprint,fallback,fields,fill_blockers,editor.inputDiagnostics.presentCount,
-    single.status,single.rootCount,single.disabled,single.readback,editor.circleTable]);
+    single.status,single.rootCount,single.disabled,single.readback,editor.circleTable,two?pairRead:undefined]);
   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)))].map(value=>value.toString(16).padStart(2,'0')).join('');
   return assistContextSchema.parse({fingerprint,statement:readable?prompt.statement:'No fue posible leer el enunciado como texto estructurado. Interpreta únicamente el ejercicio visible en la captura adjunta; si faltan datos, indícalo.',
     fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,can_fill_fraction,fill_blockers,
@@ -46,8 +56,10 @@ export async function assistContext(document:Document,allowImage=false):Promise<
  * Se solicita esa escritura una vez y se exige su representación visual.
  * Los eventos sintéticos deben comprobarse en cada instalación de ALEKS.
  */
+export type FieldAnswer={field_key:string;value:string};
 export type NativeInput=(guard:()=>Promise<void>)=>Promise<void>;
-export async function fillAssistAnswer(document:Document,fingerprint:string,value:string,signal:AbortSignal,nativeInput?:NativeInput) {
+export async function fillAssistAnswer(document:Document,fingerprint:string,value:string|FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
+  if(Array.isArray(value))return fillTwoAnswers(document,fingerprint,value,signal,nativeInput);
   if(!parseSupportedAnswer(value))throw Error('La respuesta debe ser un entero o una fracción reducida no negativa, sin unidad.');
   return fillScalar(document,fingerprint,value,signal,nativeInput);
 }

@@ -121,3 +121,50 @@ test('dos ejercicios sucesivos se entregan una vez cada uno y exigen respuesta n
   });
   expect(result).toEqual({submits:2,nexts:2});
 });
+
+for(const mode of ['correct','reversed-answers','missing','duplicate-key','wrong-value','focus','abort','replace','reorder','changed-first','prompt','occupied','readonly','no-readback'] as const) {
+  test(`dos recuadros: ${mode}`,async({page})=>{
+    const result=await page.evaluate(async mode=>{
+      const first=document.querySelector<HTMLElement>('.ansed_root')!;
+      const second=first.cloneNode(true) as HTMLElement;first.after(second);
+      const roots=[first,second],abort=new AbortController(),driver=new window.AleksSubmission(document,250);
+      let clicks=0,error='',duplicate='',seen:string[]=[];
+      roots.forEach((root,i)=>{
+        const input=root.querySelector<HTMLInputElement>('input')!;
+        input.addEventListener('input',()=>{
+          if(mode==='no-readback' && i===1)return;
+          const span=document.createElement('span');span.className='AnsedObject';span.textContent=mode==='wrong-value' && i===1?'9':input.value;
+          span.style.cssText='position:absolute;left:2px;top:3px;height:24px';root.querySelector('.ansed_tree')!.replaceChildren(span);input.value='';
+          if(i===1) {
+            if(mode==='focus')document.querySelector<HTMLButtonElement>('.checkAnswer')!.focus();
+            if(mode==='abort')abort.abort();
+            if(mode==='replace')first.replaceWith(first.cloneNode(true));
+            if(mode==='reorder')second.after(first);
+            if(mode==='changed-first')first.querySelector('span')!.textContent='7';
+            if(mode==='prompt')document.querySelector('#algoPrompt')!.textContent='Otro ejercicio';
+          }
+        });
+      });
+      if(mode==='occupied')first.querySelector('.ansed_tree')!.innerHTML='<span class="AnsedObject" style="position:absolute;left:2px;top:3px;height:24px">8</span>';
+      if(mode==='readonly')second.querySelector<HTMLInputElement>('input')!.readOnly=true;
+      const context=await window.assistContext(document);
+      const submit=document.querySelector<HTMLButtonElement>('.checkAnswer')!;
+      submit.addEventListener('click',()=>{
+        clicks++;seen=roots.map(root=>root.querySelector('.ansed_tree')!.textContent!);submit.remove();
+        document.body.insertAdjacentHTML('beforeend','<div id="result_feedback_alert" aria-live="polite"><div style="display:inline-block;color:rgb(57,108,41)">Correcta</div></div><button type="button" id="smt_bottomnav_button_input_learningCorrect" class="learningCorrect"><div class="textContent">Siguiente</div></button>');
+      });
+      let answers=[{field_key:'field_1',value:'12'},{field_key:mode==='duplicate-key'?'field_1':'field_2',value:'6'}];
+      if(mode==='reversed-answers')answers.reverse();
+      if(mode==='missing')answers.pop();
+      try {
+        await driver.submit(context.fingerprint,answers,abort.signal);
+        try{await driver.submit(context.fingerprint,answers,abort.signal);}catch(e){duplicate=(e as Error).message;}
+      }catch(e){error=(e as Error).message;}
+      return {clicks,error,duplicate,seen,fields:context.fields};
+    },mode);
+    if(mode==='correct' || mode==='reversed-answers') {
+      expect(result).toMatchObject({clicks:1,error:'',seen:['12','6']});expect(result.duplicate).toContain('ya fue iniciada');
+      expect(result.fields.map(field=>field.key)).toEqual(['field_1','field_2']);
+    } else {expect(result.clicks).toBe(0);expect(result.error).not.toBe('');}
+  });
+}
