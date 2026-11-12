@@ -15,13 +15,13 @@ export function answerRoots(document:Document):HTMLElement[] {
 /** Orden visual estable. Nunca concatena dos respuestas ni selecciona unidades. */
 export async function fillTwoAnswers(document:Document,fingerprint:string,answers:FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
   signal.throwIfAborted();
+  const promptNode=document.querySelector('#algoPrompt'),prompt=await readAleksPrompt(document);signal.throwIfAborted();
   const context=await assistContext(document);signal.throwIfAborted();
   const roots=answerRoots(document),inputs=roots.map(root=>root.querySelector<HTMLInputElement>('input.ansed_input')!);
   if(context.fingerprint!==fingerprint || !context.can_fill_integer || roots.length!==2 || answers.length!==2 ||
     new Set(answers.map(answer=>answer.field_key)).size!==2 ||
     context.fields.some(field=>!answers.some(answer=>answer.field_key===field.key && parseSupportedAnswer(answer.value))))throw Error('Se necesitan dos respuestas válidas, una por campo del ejercicio actual.');
   const values=context.fields.map(field=>answers.find(answer=>answer.field_key===field.key)!.value);
-  const prompt=await readAleksPrompt(document),promptNode=document.querySelector('#algoPrompt');
   let completed=0;
   const guard=async(index:number)=>{
     signal.throwIfAborted();
@@ -37,7 +37,7 @@ export async function fillTwoAnswers(document:Document,fingerprint:string,answer
     if(index>=0 && document.activeElement!==inputs[index])throw Error('Cambió el foco del editor. Se detuvo la escritura.');
   };
   for(let i=0;i<2;i++) {
-    await guard(-1);inputs[i].focus();await guard(i);
+    await guard(i===0?-1:i-1);inputs[i].focus();await guard(i);
     if(nativeInput)await nativeInput(()=>guard(i));
     else {
       const proceed=inputs[i].dispatchEvent(new InputEvent('beforeinput',{bubbles:true,cancelable:true,inputType:'insertText',data:values[i]}));

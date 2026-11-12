@@ -1,6 +1,13 @@
 # Validación ejecutada
 
-Actualización: 11 de noviembre de 2026 (UTC). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+Actualización: 12 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+
+## Dos recuadros ALEKS (12 de noviembre)
+
+- Compilaciones de extensión y web y TypeScript correctos; **241 pruebas unitarias pasadas** sobre la versión actual del puente web.
+- **116 pruebas de navegador pasadas**: 108 ALEKS (incluidas 14 de dos campos) y 8 del puente web. Una respuesta por clave, orden de respuestas intercambiado, campos ausentes o duplicados, lectura incorrecta o ausente, pérdida de foco, cancelación, sustitución y reordenación de editores, cambio del primer valor y cambio del enunciado. Se conserva la regresión de unidades fijas, resultados nuevos, avance y continuación de ruta.
+- El teclado conserva autorización por pestaña y comprueba un índice de un uso por campo: repetir el primer índice no consume ni escribe el segundo valor. El puente web transporta las dos respuestas estructuradas.
+- Editores y transporte de Chrome sintéticos: no prueba una sesión autenticada de ALEKS. La selección de unidades como cm² en dos recuadros sigue pendiente del HTML.
 
 ## Revisión 0.5.0: puente web, extensión y ALEKS (11 de noviembre)
 

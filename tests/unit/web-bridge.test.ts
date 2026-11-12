@@ -167,3 +167,17 @@ it('si no se puede persistir el diario no entrega y retira el permiso de teclado
   expect(deps.setNative).toHaveBeenLastCalledWith(7,false);
   expect(deps.deliver).not.toHaveBeenCalled();expect(posted).toBe(0);
 });
+
+it('el puente entrega dos respuestas por clave sin concatenarlas',async()=>{
+  const pair={...context,fields:[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]};
+  const answers=[{field_key:'field_2',value:'6',unit:''},{field_key:'field_1',value:'12',unit:''}];
+  (deps.send as ReturnType<typeof vi.fn>).mockImplementation(async(_id,type)=>type==='assistContext'?pair:{});
+  const original=fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async(url:string,init?:RequestInit)=>{
+    if(!url.endsWith('/session') && init?.method!=='POST' && init?.method!=='DELETE')return Response.json({status:'completed',provider_calls:1,result:{fingerprint,model:'test',provider:'gemini',provider_calls:1,verified:false,verification:'none',proposal:{status:'proposed',answers,explanation:'Dos respuestas',missing_information:[]}}});
+    return original(url,init);
+  });
+  const p=await connect();expect((await p.request('start',{fingerprint,limits,nativeKeyboard:true})).ok).toBe(true);
+  await vi.waitFor(()=>expect(deps.deliver).toHaveBeenCalledTimes(1));
+  expect(deps.deliver).toHaveBeenCalledWith(7,'automationSubmit',expect.objectContaining({value:answers}),expect.any(Function));
+});
