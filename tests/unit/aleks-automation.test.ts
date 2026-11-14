@@ -141,7 +141,7 @@ describe('recorrido ALEKS por fases',()=>{
   it.each(['fingerprint','unit','multiple','diagram','occupied','no-answer'] as const)('no entrega una propuesta incompatible: %s',async reason=>{
     const {run,deps}=harness();const candidate=proposal();
     if(reason==='fingerprint')candidate.result.fingerprint='b'.repeat(64);
-    if(reason==='unit')candidate.result.proposal.answers[0].unit='cm';
+    if(reason==='unit')candidate.result.proposal.answers[0].unit='mm';
     if(reason==='multiple')candidate.context.fill_blockers=['multiple_editors'];
     if(reason==='diagram')candidate.context.fill_blockers=['diagram_required'];
     if(reason==='occupied')candidate.context.fill_blockers=['editor_not_empty'];

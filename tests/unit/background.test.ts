@@ -176,10 +176,10 @@ it('transporta la unidad predefinida en la etiqueta y escribe solo el número',a
   expect(tabsSend.mock.calls.at(-1)?.[1]).toMatchObject({type:'assistFill',value:'7'});
 });
 it('explica el valor o unidad incompatible antes de pedir escritura al adaptador',async()=>{
-  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'15/64',unit:'cm'}]}});
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',value:'15/64',unit:'mm'}]}});
   const response=await send({scope:'ui',type:'assist',tabId:7,includeImage:false}),calls=tabsSend.mock.calls.length;
   const blocked=await send({scope:'ui',type:'assistFill',tabId:7,proposalId:response.data.id});
-  expect(blocked.ok).toBe(false);expect(blocked.error).toContain('La respuesta incluye la unidad "cm"');
+  expect(blocked.ok).toBe(false);expect(blocked.error).toContain('La respuesta incluye la unidad "mm"');
   expect(tabsSend).toHaveBeenCalledTimes(calls);
 });
 function prepareAssist(result=assistResult) {
@@ -214,7 +214,7 @@ it('descarta propuestas si el contexto cambia durante el modelo',async()=>{
   const result=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
   expect(result.ok).toBe(false);expect(result.error).toContain('cambió');
 });
-it.each([{value:'alert(1)',unit:''},{value:'1/2',unit:''},{value:'12',unit:'cm'}])('no ejecuta ni introduce una propuesta fuera del entero sin unidad %j',async answer=>{
+it.each([{value:'alert(1)',unit:''},{value:'1/2',unit:''},{value:'12',unit:'mm'}])('no ejecuta ni introduce una propuesta fuera del entero sin unidad %j',async answer=>{
   prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers:[{field_key:'answer',...answer}]}});
   const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
   const calls=tabsSend.mock.calls.length;
@@ -785,4 +785,20 @@ it.each([false,true])('escribe dos campos por separado y rechaza repetir el índ
   expect((await nativeFill(proposal.id)).ok).toBe(true);
   expect(nativeCommand.mock.calls.map(call=>call[2].text).filter(Boolean)).toEqual(['1','2','6']);
   expect((await send({scope:'content',type:'nativeType',writeId,fieldIndex:2},content())).ok).toBe(false);
+});
+
+it('conserva cm² en un campo y teclea únicamente el decimal de la propuesta',async()=>{
+  const answers=[{field_key:'answer',value:'169,56',unit:'cm²'}];
+  prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers}});
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,data:message.type==='assistContext'?assistContext:true}));
+  await send({scope:'ui',type:'nativeKeyboard',tabId:7,enabled:true});
+  const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
+    if(message.type!=='assistFill')return {ok:true,data:true};
+    expect(message.value).toEqual(answers);
+    const typed=await send({scope:'content',type:'nativeType',writeId:message.nativeWriteId,fieldIndex:0},content());
+    return typed.ok?{ok:true,data:{written:true}}:typed;
+  });
+  expect((await nativeFill(proposal.id)).ok).toBe(true);
+  expect(nativeCommand.mock.calls.map(call=>call[2].text).filter(Boolean)).toEqual(['1','6','9',',','5','6']);
 });

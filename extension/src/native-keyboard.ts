@@ -33,7 +33,7 @@ export async function typeNativeAnswer(tabId:number,value:string,deps:NativeKeyb
     current();
     for(const character of value) {
       await checked();await deps.guard();current();
-      const key={key:character,code:character==='/'?'Slash':`Digit${character}`,windowsVirtualKeyCode:character==='/'?191:character.charCodeAt(0)};
+      const key={key:character,code:character==='/'?'Slash':character===','?'Comma':character==='.'?'Period':`Digit${character}`,windowsVirtualKeyCode:character==='/'?191:character===','?188:character==='.'?190:character.charCodeAt(0)};
       await checked();
       try {await chrome.debugger.sendCommand(target,'Input.dispatchKeyEvent',{type:'keyDown',...key,text:character,unmodifiedText:character});}
       catch {throw Error('Chrome no pudo escribir el siguiente carácter. Revisa el recuadro; no se reintentará.');}

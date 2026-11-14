@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { ALEKS_ORIGINS,assistContextSchema,assistResultSchema,type AssistContext,type AssistView } from './shared';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
-import { captureFillPolicy } from './assist-readiness';
+import { answerPayload,captureFillPolicy } from './assist-readiness';
 
 declare const __BRIDGE_WEB_ORIGIN__:string;
 export const BRIDGE_WEB_ORIGIN=typeof __BRIDGE_WEB_ORIGIN__==='string'?__BRIDGE_WEB_ORIGIN__:'';
@@ -254,7 +254,7 @@ export class WebBridge {
         ledger.add(proposal.context.fingerprint);this.submitted.set(t.id,ledger);
         await save(run.view);await ensure();
         return this.deps.deliver(t.id,'automationSubmit',{
-        fingerprint:proposal.context.fingerprint,value:proposal.context.fields.length===2?proposal.result.proposal.answers:proposal.result.proposal.answers[0].value,runId:run.view.id},current);},
+        fingerprint:proposal.context.fingerprint,value:answerPayload(proposal),runId:run.view.id},current);},
       next:async()=>{
         await ensure();await this.deps.send(t.id,'automationNext',{runId:run.view.id},current);await ensure();
         const next=await this.read(c,epoch);

@@ -13,7 +13,7 @@ export const fillBlockerMessages:Record<FillBlocker,string>={
   result_present:'Se observa un resultado o un botón de avance. Abre un ejercicio sin resolver y vuelve a consultar.',
   diagram_required:'Esta respuesta depende de un diagrama que la escritura asistida no valida.',
   image_based_proposal:'La propuesta depende de una captura. Si el ejercicio se resuelve solo con el texto, desmarca la captura y vuelve a consultar.',
-  answer_format:'La escritura admite un entero o una fracción reducida no negativa por recuadro (hasta doce dígitos por componente). La unidad, si existe, debe estar ya mostrada y reconocida en ALEKS.',
+  answer_format:'La escritura admite un entero, decimal o una fracción reducida no negativa por recuadro (hasta doce dígitos por componente). La unidad debe estar predefinida o tener un botón cm/cm²/cm³ reconocido.',
   fraction_control:'La lectura actual no confirmó un editor vacío compatible con fracciones. Vuelve a leer la actividad.',
   no_answer:'No hay una respuesta estructurada disponible para introducir.',
   unknown:'Esta consulta no confirmó que pueda escribir. Vuelve a leer la actividad y consultar.'
@@ -49,7 +49,7 @@ export function proposalFillBlockers(view:AssistView):FillBlocker[] {
 
 function unitMatches(view:AssistView) {
   const unit=view.result.proposal.answers[0]?.unit;
-  return unit==='' || Boolean(view.context.fixed_unit && answerUnit(unit || '')===view.context.fixed_unit);
+  return unit==='' || (!view.context.fixed_unit && ['cm','cm^2','cm^3'].includes(answerUnit(unit || '') || '')) || Boolean(view.context.fixed_unit && answerUnit(unit || '')===view.context.fixed_unit);
 }
 
 /** Acota el diagnóstico y hace visibles los caracteres de control/formato. */
@@ -60,18 +60,23 @@ function quotedDiagnostic(value:string):string {
 
 function answerFormatMessage(view:AssistView):string {
   const answers=view.result.proposal.answers;
-  if(view.context.fields.length===2)return 'Se necesitan exactamente dos respuestas con claves field_1 y field_2, unidad vacía o cm/cm²/cm³ y con un entero o fracción reducida por campo.';
+  if(view.context.fields.length===2)return 'Se necesitan exactamente dos respuestas con claves field_1 y field_2, unidad vacía o cm/cm²/cm³ y con un entero, decimal o fracción reducida por campo.';
   if(answers.length!==1)return `Se recibieron ${answers.length} respuestas; la escritura necesita una sola respuesta asociada al recuadro.`;
   const answer=answers[0],reasons:string[]=[];
   if(answer.field_key!=='answer')reasons.push(`El campo recibido es ${quotedDiagnostic(answer.field_key)}; no corresponde al recuadro «answer».`);
   if(!unitMatches(view))reasons.push(view.context.fixed_unit?
     `La unidad propuesta ${quotedDiagnostic(answer.unit)} no coincide con la unidad predefinida ${quotedDiagnostic(view.context.fixed_unit)}.`:
     `La respuesta incluye la unidad ${quotedDiagnostic(answer.unit)}; no se reconoció una unidad predefinida en el recuadro.`);
-  if(!parseSupportedAnswer(answer.value))reasons.push(`El valor recibido ${quotedDiagnostic(answer.value)} no tiene el formato admitido: entero o fracción reducida no negativa (por ejemplo, 15/64), hasta doce dígitos por componente.`);
+  if(!parseSupportedAnswer(answer.value))reasons.push(`El valor recibido ${quotedDiagnostic(answer.value)} no tiene el formato admitido: entero, decimal o fracción reducida no negativa (por ejemplo, 15/64), hasta doce dígitos por componente.`);
   return reasons.join(' ') || fillBlockerMessages.answer_format;
 }
 
 /** Mismos motivos concretos en el panel, la escritura y el recorrido. */
 export function proposalFillMessages(view:AssistView):string[] {
   return proposalFillBlockers(view).map(blocker=>blocker==='answer_format'?answerFormatMessage(view):fillBlockerMessages[blocker]);
+}
+
+export function answerPayload(view:AssistView) {
+  const answers=view.result.proposal.answers;
+  return view.context.fields.length===2 || (!view.context.fixed_unit && Boolean(answers[0]?.unit))?answers:answers[0].value;
 }

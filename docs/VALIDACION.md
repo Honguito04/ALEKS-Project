@@ -2,6 +2,14 @@
 
 Actualización: 12 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
 
+## Decimal y unidad en un solo recuadro
+
+251 pruebas unitarias y 106 de navegador pasadas; TypeScript y compilaciones de extensión y web correctos.
+
+Se reprodujo el bloqueo de la propuesta `169,56 cm²`: el contrato de escritura rechazaba decimales y solo seleccionaba unidades en ejercicios con dos campos. Ahora el mismo adaptador admite uno o dos campos con cm/cm²/cm³. El número conserva su separador al escribir; la lectura admite punto o coma decimal equivalentes sin redondeo ni conversión de unidades. Hasta doce dígitos a cada lado del separador; se rechazan separadores mezclados, signos y expresiones. El separador se interpreta como decimal, nunca como agrupación de miles.
+
+La regresión usa la propuesta exacta y comprueba el número representado, el clic en cm² y una única entrega, tanto si el editor muestra coma como punto. El worker conserva la unidad como metadato y el teclado de Chrome emite solo el número. Se conservan las comprobaciones de foco, cancelación, enunciado, lectura visual y entrega única. Pruebas sintéticas; la representación real de ALEKS debe coincidir con la estructura reconocida.
+
 ## Selección de cm, cm² y cm³ (12 de noviembre)
 
 **247 pruebas unitarias y 104 de navegador pasadas**; compilaciones de extensión y web y TypeScript correctos. Las pruebas de navegador cubren escritura asistida, lectura del editor, unidades fijas y entrega, incluidas 11 nuevas variantes de selección de unidad.

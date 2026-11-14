@@ -169,16 +169,17 @@ for(const mode of ['correct','reversed-answers','missing','duplicate-key','wrong
   });
 }
 
-for(const mode of ['cm-square','cm-cube','missing','disabled','duplicate','no-unit','wrong-exponent','wrong-field','focus','cancel','changed-number'] as const) {
+for(const mode of ['single-decimal','single-dot-render','cm-square','cm-cube','missing','disabled','duplicate','no-unit','wrong-exponent','wrong-field','focus','cancel','changed-number'] as const) {
   test(`unidad por recuadro: ${mode}`,async({page})=>{
     const result=await page.evaluate(async mode=>{
       const first=document.querySelector<HTMLElement>('.ansed_root')!,second=first.cloneNode(true) as HTMLElement;first.after(second);
-      const roots=[first,second],abort=new AbortController();let clicks=0,error='',unitClicks=0,seen:string[]=[];
+      if(mode.startsWith('single-'))second.remove();
+      const roots=mode.startsWith('single-')?[first]:[first,second],abort=new AbortController();let clicks=0,error='',unitClicks=0,seen:string[]=[];
       for(const root of roots) {
         root.style.width='200px';root.style.height='62px';
         const tree=root.querySelector<HTMLElement>('.ansed_tree')!;tree.style.width='200px';tree.style.height='62px';
         const input=root.querySelector<HTMLInputElement>('input')!;
-        input.addEventListener('input',()=>{tree.innerHTML=`<span class="AnsedObject" style="position:absolute;font-family:'Times New Roman';left:10px;top:23px;height:26px">${input.value}</span>`;input.value='';});
+        input.addEventListener('input',()=>{tree.innerHTML=`<span class="AnsedObject" style="position:absolute;font-family:'Times New Roman';left:10px;top:23px;height:26px">${mode==='single-dot-render'?input.value.replace(',','.'):input.value}</span>`;input.value='';});
       }
       const menu=document.querySelector('.aleks-editor-menu')!;menu.replaceChildren();
       for(const [unit,label] of [['cm','Centímetros'],['cm^2','Centímetros cuadrados'],['cm^3','Centímetros cúbicos']]) {
@@ -189,7 +190,7 @@ for(const mode of ['cm-square','cm-cube','missing','disabled','duplicate','no-un
           const root=roots[mode==='wrong-field'?1-index:index];
           if(mode!=='no-unit') {
             const power=mode==='wrong-exponent'?'3':unit.slice(-1);
-            root.querySelector('.ansed_tree')!.insertAdjacentHTML('beforeend',`<span class="AnsedObject" style="position:absolute;font-family:'Times New Roman';left:43px;top:23px;height:26px">cm</span>${unit==='cm'?'':`<span class="AnsedObject" style="position:absolute;font-family:'Times New Roman';left:65px;top:10px;height:24px">${power}</span>`}`);
+            root.querySelector('.ansed_tree')!.insertAdjacentHTML('beforeend',`<span class="AnsedObject" style="position:absolute;font-family:'Times New Roman';left:80px;top:23px;height:26px">cm</span>${unit==='cm'?'':`<span class="AnsedObject" style="position:absolute;font-family:'Times New Roman';left:102px;top:10px;height:24px">${power}</span>`}`);
           }
           if(mode==='focus')button.focus();
           if(mode==='cancel')abort.abort();
@@ -204,11 +205,12 @@ for(const mode of ['cm-square','cm-cube','missing','disabled','duplicate','no-un
         document.body.insertAdjacentHTML('beforeend','<div id="result_feedback_alert" aria-live="polite"><div style="display:inline-block;color:rgb(57,108,41)">Correcta</div></div><button type="button" id="smt_bottomnav_button_input_learningCorrect" class="learningCorrect"><div class="textContent">Siguiente</div></button>');
       });
       const context=await window.assistContext(document);
-      const answers=[{field_key:'field_2',value:'6',unit:mode==='cm-cube'?'cm³':'cm²'},{field_key:'field_1',value:'12',unit:'cm'}];
+      const answers=mode.startsWith('single-')?[{field_key:'answer',value:'169,56',unit:'cm²'}]:[{field_key:'field_2',value:'6',unit:mode==='cm-cube'?'cm³':'cm²'},{field_key:'field_1',value:'12',unit:'cm'}];
       try{await new window.AleksSubmission(document,300).submit(context.fingerprint,answers,abort.signal);}catch(e){error=(e as Error).message;}
       return {clicks,error,unitClicks,seen};
     },mode);
-    if(mode==='cm-square' || mode==='cm-cube')expect(result).toEqual({clicks:1,error:'',unitClicks:2,seen:['12cm',`6cm${mode==='cm-cube'?'3':'2'}`]});
+    if(mode.startsWith('single-'))expect(result).toEqual({clicks:1,error:'',unitClicks:1,seen:[mode==='single-dot-render'?'169.56cm2':'169,56cm2']});
+    else if(mode==='cm-square' || mode==='cm-cube')expect(result).toEqual({clicks:1,error:'',unitClicks:2,seen:['12cm',`6cm${mode==='cm-cube'?'3':'2'}`]});
     else {expect(result.clicks).toBe(0);expect(result.error).not.toBe('');}
   });
 }

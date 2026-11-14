@@ -10,19 +10,19 @@ beforeEach(()=>{
   vi.stubGlobal('chrome',{debugger:{attach,detach,sendCommand:command,onDetach:{
     addListener:vi.fn(fn=>{onDetach=fn;}),removeListener:vi.fn(fn=>{if(onDetach===fn)onDetach=undefined;})}}});
 });
-it.each(['12','1/5','0/1','999999999999/2'])('teclea %s sólo como dígitos/barra y suelta cada tecla',async value=>{
+it.each(['12','1/5','0/1','999999999999/2','169,56','169.56'])('teclea %s sólo como dígitos/barra y suelta cada tecla',async value=>{
   await typeNativeAnswer(7,value,deps);
   expect(attach).toHaveBeenCalledExactlyOnceWith({tabId:7},'1.3');
   expect(detach).toHaveBeenCalledExactlyOnceWith({tabId:7});
   expect(command).toHaveBeenCalledTimes(value.length*2);expect(deps.guard).toHaveBeenCalledTimes(value.length);
   for(let index=0;index<value.length;index++) {
-    const character=value[index],key={key:character,code:character==='/'?'Slash':`Digit${character}`,windowsVirtualKeyCode:character==='/'?191:character.charCodeAt(0)};
+    const character=value[index],key={key:character,code:character==='/'?'Slash':character===','?'Comma':character==='.'?'Period':`Digit${character}`,windowsVirtualKeyCode:character==='/'?191:character===','?188:character==='.'?190:character.charCodeAt(0)};
     expect(command.mock.calls[index*2]).toEqual([{tabId:7},'Input.dispatchKeyEvent',{type:'keyDown',...key,text:character,unmodifiedText:character}]);
     expect(command.mock.calls[index*2+1]).toEqual([{tabId:7},'Input.dispatchKeyEvent',{type:'keyUp',...key}]);
   }
   expect(onDetach).toBeUndefined();
 });
-it.each(['','alert(1)','1\n2','-1','1/0','2/4','1.5','9999999999999','1/9999999999999'])('rechaza texto no admitido: %s',async value=>{
+it.each(['','alert(1)','1\n2','-1','1/0','2/4','1.5.0','9999999999999','1/9999999999999'])('rechaza texto no admitido: %s',async value=>{
   await expect(typeNativeAnswer(7,value,deps)).rejects.toThrow('no admitida');expect(attach).not.toHaveBeenCalled();
 });
 it.each([-1,1.5,NaN])('rechaza una pestaña inválida %s',async tabId=>{

@@ -2,9 +2,9 @@ import { assistContextSchema,type AssistContext,type FillBlocker } from './share
 import { readAleksPrompt } from './aleks-prompt';
 import { inspectAleksEditor } from './aleks-editor';
 import { visible,disabled } from './aleks-dom';
-import { answerRoots,fillTwoAnswers } from './aleks-two-editors';
+import { answerRoots,fillEditorAnswers } from './aleks-two-editors';
 import { inspectEditorRoot } from './aleks-single-editor';
-import { parseSupportedAnswer } from './answer-format';
+import { parseSupportedAnswer,sameAnswer } from './answer-format';
 
 export async function assistContext(document:Document,allowImage=false):Promise<AssistContext> {
   const prompt=await readAleksPrompt(document);
@@ -59,8 +59,8 @@ export async function assistContext(document:Document,allowImage=false):Promise<
 export type FieldAnswer={field_key:string;value:string;unit?:string};
 export type NativeInput=(guard:()=>Promise<void>)=>Promise<void>;
 export async function fillAssistAnswer(document:Document,fingerprint:string,value:string|FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
-  if(Array.isArray(value))return fillTwoAnswers(document,fingerprint,value,signal,nativeInput);
-  if(!parseSupportedAnswer(value))throw Error('La respuesta debe ser un entero o una fracción reducida no negativa, sin unidad.');
+  if(Array.isArray(value))return fillEditorAnswers(document,fingerprint,value,signal,nativeInput);
+  if(!parseSupportedAnswer(value))throw Error('La respuesta debe ser un entero, decimal o una fracción reducida no negativa, sin unidad.');
   return fillScalar(document,fingerprint,value,signal,nativeInput);
 }
 
@@ -120,7 +120,7 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     const observation=inspectAleksEditor(document).singleEditor;
     if(observation.readback.selected_unit)throw Error('Apareció una unidad no solicitada durante la escritura.');
     if(observation.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad del recuadro cambió durante la escritura. No se entregó la respuesta.');
-    if(observation.status==='observed' && observation.readback.status==='readable' && observation.readback.value===value) {
+    if(observation.status==='observed' && observation.readback.status==='readable' && sameAnswer(observation.readback.value,value)) {
       const current=await readAleksPrompt(document);signal.throwIfAborted();
       if(current.fingerprint!==promptBefore.fingerprint)throw Error('El enunciado cambió durante la escritura.');
       if(inspectAleksEditor(document).singleEditor.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad cambió antes de confirmar la escritura.');

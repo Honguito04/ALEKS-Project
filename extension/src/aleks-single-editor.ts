@@ -32,7 +32,7 @@ export function inspectEditorRoot(root:HTMLElement):SingleEditorObservation {
 
 function readNumber(root:HTMLElement,tree:HTMLElement):SingleEditorObservation['readback'] {
   const allNodes=[...tree.children] as HTMLElement[];
-  if(allNodes.length>24 || [...tree.childNodes].some(node=>node.nodeType!==1 && node.textContent?.trim()))return unsupported('El árbol visual contiene texto o tokens adicionales.');
+  if(allNodes.length>32 || [...tree.childNodes].some(node=>node.nodeType!==1 && node.textContent?.trim()))return unsupported('El árbol visual contiene texto o tokens adicionales.');
   if(allNodes.some(node=>node.tagName!=='SPAN' || !node.classList.contains('AnsedObject') || !painted(node) ||
     [...node.childNodes].some(child=>child.nodeType!==3)))return unsupported('El árbol visual contiene un elemento no reconocido.');
   const cm=allNodes.filter(node=>node.textContent?.trim()==='cm' && node.ownerDocument.defaultView!.getComputedStyle(node).fontFamily!=='Verdana');
@@ -79,7 +79,7 @@ function readNumber(root:HTMLElement,tree:HTMLElement):SingleEditorObservation['
 
 function readNumericNodes(nodes:HTMLElement[],root:HTMLElement):SingleEditorObservation['readback'] {
   if(!nodes.length)return {status:'empty',reason:'Recuadro vacío.'};
-  if(nodes.some(node=>!/^\d{1,12}$/u.test(node.textContent?.trim() || '')))return unsupported('La respuesta no tiene el formato de entero o fracción simple admitido para esta lectura.');
+  if(nodes.some(node=>!/^([0-9.,]{1,25})$/u.test(node.textContent?.trim() || '')))return unsupported('La respuesta no tiene el formato de entero o fracción simple admitido para esta lectura.');
   const bounds=root.getBoundingClientRect(),rects=nodes.map(node=>node.getBoundingClientRect());
   if(rects.some(rect=>rect.width<=0 || rect.height<=0 || rect.left<bounds.left-1 || rect.right>bounds.right+1 || rect.top<bounds.top-1 || rect.bottom>bounds.bottom+1))return unsupported('Los dígitos no están completamente dentro del recuadro visible.');
   const rows:{nodes:HTMLElement[];rects:DOMRect[]}[]=[];
@@ -95,7 +95,7 @@ function readNumericNodes(nodes:HTMLElement[],root:HTMLElement):SingleEditorObse
     if(row.rects.some((rect,i)=>Math.abs(rect.bottom-first.bottom)>tolerance ||
       (i>0 && (rect.left<row.rects[i-1].right-1 || rect.left-row.rects[i-1].right>first.height*.25))))return unsupported('Los dígitos no forman un número continuo.');
     const value=row.nodes.map(node=>node.textContent!.trim()).join('');
-    if(!/^(0|[1-9]\d{0,11})$/u.test(value))return unsupported('El número excede el formato admitido.');
+    if(!parseSupportedAnswer(value) || value.includes('/'))return unsupported('El número excede el formato admitido.');
     values.push(value);
   }
   if(rows.length===1) {

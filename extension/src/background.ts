@@ -2,7 +2,7 @@ import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limit
 import { typeNativeAnswer } from './native-keyboard';
 import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
-import { captureFillPolicy,requireAssistImage,proposalFillMessages,fillBlockerMessages } from './assist-readiness';
+import { answerPayload,captureFillPolicy,requireAssistImage,proposalFillMessages,fillBlockerMessages } from './assist-readiness';
 import { WebBridge,BRIDGE_WEB_ORIGIN } from './web-bridge';
 
 type Auth = {token:string;mode:'demo'|'google'};
@@ -25,7 +25,7 @@ async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,c
   const epoch=nativeEpoch,tabEpoch=nativeTabEpoch.get(id)||0;
   const allowed=()=>current() && nativeTabs.has(id) && epoch===nativeEpoch && tabEpoch===(nativeTabEpoch.get(id)||0);
   const t=await tab(id);
-  const values=Array.isArray(data.value)?['field_1','field_2'].map(key=>(data.value as {field_key:string;value:string}[]).find(answer=>answer.field_key===key)?.value):[data.value];
+  const values=Array.isArray(data.value)?(data.value.length===1?['answer']:['field_1','field_2']).map(key=>(data.value as {field_key:string;value:string}[]).find(answer=>answer.field_key===key)?.value):[data.value];
   if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || values.some(value=>typeof value!=='string' || !parseSupportedAnswer(value)))throw Error('Respuesta no admitida por el teclado de Chrome.');
   if(!allowed() || nativeWrites.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
   if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión actualizada y concede el permiso de depuración de Chrome.');
@@ -218,7 +218,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           solve:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return handleUI({type:'assist',tabId:t.id,includeImage:false},true,()=>run.view.active);},
           submit:async proposal=>{
             await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');assistProposals.delete(t.id);assistWriters.add(t.id);
-            try{return await deliverAnswer(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:proposal.context.fields.length===2?proposal.result.proposal.answers:proposal.result.proposal.answers[0].value,runId:run.view.id},()=>run.view.active);}
+            try{return await deliverAnswer(t.id,'automationSubmit',{fingerprint:proposal.context.fingerprint,value:answerPayload(proposal),runId:run.view.id},()=>run.view.active);}
             finally{assistWriters.delete(t.id);}
           },
           next:async()=>{await ensureTab();if(!run.view.active)throw Error('Recorrido detenido.');return send(t.id,'automationNext',{runId:run.view.id},()=>run.view.active);},
@@ -339,7 +339,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
       if(blockers.length)throw Error(blockers.join(' '));
       const answers=proposal.result.proposal.answers;
       assistWriters.add(t.id);
-      try{return await deliverAnswer(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:proposal.context.fields.length===2?answers:answers[0].value});}
+      try{return await deliverAnswer(t.id,'assistFill',{fingerprint:proposal.context.fingerprint,value:answerPayload(proposal)});}
       finally{assistWriters.delete(t.id);}
     }
     case 'start': {

@@ -28,8 +28,8 @@ describe('diagnóstico compartido de escritura',()=>{
 
   it.each([
     {field_key:'otro',value:'15/64',unit:'',detail:'El campo recibido es "otro"'},
-    {field_key:'answer',value:'15/64',unit:'cm',detail:'La respuesta incluye la unidad "cm"'},
-    {field_key:'answer',value:'0.234375',unit:'',detail:'El valor recibido "0.234375"'},
+    {field_key:'answer',value:'15/64',unit:'mm',detail:'La respuesta incluye la unidad "mm"'},
+    {field_key:'answer',value:'0.23.45',unit:'',detail:'El valor recibido "0.23.45"'},
     {field_key:'answer',value:'30/128',unit:'',detail:'El valor recibido "30/128"'}
   ])('explica el dato concreto que impide escribir: $detail',({detail,...answer})=>{
     const candidate=proposal();candidate.result.proposal.answers=[answer];
@@ -79,5 +79,10 @@ it.each(['correct','reversed','missing','duplicate','unknown','units','invalid',
 it.each(['cm','cm²','cm^2','cm³','cm^3'])('admite selección por campo de %s',unit=>{
   const candidate=proposal();candidate.context.fields=[{key:'field_1',label:'1'},{key:'field_2',label:'2'}];
   candidate.result.proposal.answers=[{field_key:'field_1',value:'12',unit:'cm'},{field_key:'field_2',value:'6',unit}];
+  expect(proposalFillBlockers(candidate)).toEqual([]);
+});
+
+it('admite la propuesta reportada de un campo: 169,56 cm²',()=>{
+  const candidate=proposal();candidate.result.proposal.answers=[{field_key:'answer',value:'169,56',unit:'cm²'}];
   expect(proposalFillBlockers(candidate)).toEqual([]);
 });
