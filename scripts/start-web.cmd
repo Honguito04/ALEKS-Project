@@ -6,6 +6,8 @@ if errorlevel 1 (
   echo Instala Python 3.12 desde python.org y vuelve a abrir este archivo.
   goto fail
 )
+py -3.12 scripts\local-web-check.py port
+if errorlevel 1 goto fail
 where npm.cmd >nul 2>nul
 if errorlevel 1 (
   echo Instala Node.js 24 desde nodejs.org y vuelve a abrir este archivo.
@@ -25,12 +27,13 @@ set BRIDGE_WEB_ORIGIN=http://127.0.0.1:8000
 set BRIDGE_ALLOW_LOCAL=true
 call npm.cmd run build
 if errorlevel 1 goto fail
+.venv\Scripts\python.exe scripts\local-web-check.py build
+if errorlevel 1 goto fail
 if not exist .env copy .env.example .env >nul
 set WEB_PUBLIC_MODE=false
 set WEB_PUBLIC_URL=http://127.0.0.1:8000
 set WEB_DATABASE_URL=
 echo Abre http://127.0.0.1:8000/app/ en tu navegador cuando aparezca Application startup complete.
-echo Para usar ALEKS en Chrome de escritorio, carga la carpeta dist en chrome://extensions.
 echo Conserva esta ventana abierta. Para detener el servidor pulsa Ctrl+C.
 .venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --no-access-log
 if errorlevel 1 goto fail

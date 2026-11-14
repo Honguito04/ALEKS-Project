@@ -11,8 +11,9 @@ const event=()=>{
 };
 const contentMessages=event(),connections=event(),updated=event(),removed=event(),permissionsRemoved=event();
 const origin='https://demo.example.test';
-const metrics={submits:0,nexts:0,writes:0,creates:0,polls:0,deletes:0,cancels:0,sent:[] as {tabId:number;type:string}[]};
+const metrics={submits:0,nexts:0,writes:0,creates:0,polls:0,deletes:0,cancels:0,unitClicks:0,submittedValues:[] as string[][],sent:[] as {tabId:number;type:string}[]};
 let currentContext:any,holdProvider=false,releaseProvider:(()=>void)|undefined;
+let proposalAnswers:{field_key:string;value:string;unit:string}[]|undefined;
 let feedbackMode:'correct'|'incorrect'|'uncertain'='correct';
 const native=new Set<number>();
 const tab=(id:number)=>({id,windowId:1,active:id===7,title:'Fixture ALEKS',url:'https://latam-awu.aleks.com/fixture'} as chrome.tabs.Tab & {id:number;url:string});
@@ -39,7 +40,7 @@ input.addEventListener('input',()=>{
   document.querySelector('.ansed_tree')!.replaceChildren(glyph);input.value='';
 });
 verify.addEventListener('click',()=>{
-  metrics.submits++;verify.remove();
+  metrics.submits++;metrics.submittedValues.push([...document.querySelectorAll('.ansed_root > .ansed_tree')].map(tree=>tree.textContent || ''));verify.remove();
   const feedback=document.createElement('div');feedback.id='result_feedback_alert';feedback.setAttribute('aria-live','polite');
   feedback.style.cssText='display:inline-block;border:1px solid rgb(57,108,41)';
   feedback.innerHTML=`<div style="display:inline-block;color:rgb(57,108,41)">${feedbackMode==='correct'?'Correcta':feedbackMode==='incorrect'?'Incorrecta':'Revisa la respuesta'}</div>`;
@@ -53,6 +54,55 @@ verify.addEventListener('click',()=>{
   });
   document.body.append(feedback,next);
 });
+
+/** Synthetic renderer with public input/button events; production code determines
+ * whether the representation is valid before it can submit. */
+function configureAnswers(answers:{field_key:string;value:string;unit:string}[],options:{fixedUnit?:string;separator?:'comma'|'dot';fault?:'number'|'unit'|'first-unit'|'focus'}={}) {
+  proposalAnswers=answers;
+  const template=document.querySelector<HTMLElement>('.ansed_root')!.cloneNode(true) as HTMLElement;
+  document.querySelectorAll('.ansed_root').forEach(root=>root.remove());
+  const menu=document.querySelector<HTMLElement>('.aleks-editor-menu')!;menu.replaceChildren();
+  const roots:HTMLElement[]=[];
+  const glyph=(tree:Element,text:string,left:number,top:number,height:number,font='18px serif')=>{
+    const span=document.createElement('span');span.className='AnsedObject';span.textContent=text;
+    span.style.cssText=`position:absolute;left:${left}px;top:${top}px;height:${height}px;width:${text.length*9}px;font:${font}`;
+    tree.append(span);return span;
+  };
+  for(let i=0;i<answers.length;i++) {
+    const root=template.cloneNode(true) as HTMLElement;root.style.width='400px';root.style.height='64px';
+    const tree=root.querySelector<HTMLElement>('.ansed_tree')!;tree.replaceChildren();tree.style.width='400px';tree.style.height='64px';
+    if(options.fixedUnit)glyph(tree,options.fixedUnit,260,17,24,'14px Verdana');
+    const input=root.querySelector<HTMLInputElement>('input')!;
+    input.addEventListener('input',()=>{
+      metrics.writes++;let value=input.value;input.value='';
+      if(options.separator==='dot')value=value.replace(',','.');
+      if(options.separator==='comma')value=value.replace('.',',');
+      if(options.fault==='number')value='169,55';
+      tree.replaceChildren();
+      if(value.includes('/')) {
+        const [numerator,denominator]=value.split('/');
+        glyph(tree,numerator,100-numerator.length*4.5,5,18);
+        glyph(tree,denominator,100-denominator.length*4.5,35,18);
+      } else glyph(tree,value,10,17,24);
+      if(options.fixedUnit)glyph(tree,options.fixedUnit,260,17,24,'14px Verdana');
+      if(options.fault==='focus')verify.focus();
+    });
+    roots.push(root);menu.before(root);
+  }
+  for(const [unit,label] of [['cm','Centímetros'],['cm^2','Centímetros cuadrados'],['cm^3','Centímetros cúbicos']]) {
+    const button=document.createElement('button');button.setAttribute('aria-label',label);button.textContent=unit;
+    button.addEventListener('click',()=>{
+      metrics.unitClicks++;
+      const index=roots.findIndex(root=>root.contains(document.activeElement));
+      if(index<0)throw Error('No hay un editor activo en la prueba');
+      const tree=roots[index].querySelector('.ansed_tree')!;
+      glyph(tree,'cm',260,17,24);
+      if(unit!=='cm')glyph(tree,options.fault==='unit'?'3':unit.slice(-1),278,3,18,'16px serif');
+      if(options.fault==='first-unit' && index===1)roots[0].querySelector('.ansed_tree')!.lastElementChild!.textContent='mm';
+    });
+    menu.append(button);
+  }
+}
 
 globalThis.fetch=async(destination:RequestInfo|URL,init?:RequestInit)=>{
   const url=String(destination),method=init?.method||'GET';
@@ -70,7 +120,7 @@ globalThis.fetch=async(destination:RequestInfo|URL,init?:RequestInit)=>{
       if(init?.signal?.aborted)abort();else init?.signal?.addEventListener('abort',abort,{once:true});
     });
     return Response.json({status:'completed',result:{fingerprint:currentContext.fingerprint,model:'synthetic-cloud',provider:'gemini',provider_calls:1,
-      verified:false,verification:'none',proposal:{status:'proposed',answers:[{field_key:'answer',value:metrics.nexts?'20':'12',unit:''}],
+      verified:false,verification:'none',proposal:{status:'proposed',answers:proposalAnswers || [{field_key:'answer',value:metrics.nexts?'20':'12',unit:''}],
         explanation:'Proveedor simulado para probar transporte y acciones DOM.',missing_information:[]}}});
   }
   throw Error('Petición inesperada en la prueba: '+url);
@@ -99,7 +149,7 @@ void import('../../extension/src/content').then(()=>{
     },cancel:async()=>{metrics.cancels++;await contentRPC('stop');},setNative:(id:number,enabled:boolean)=>enabled?native.add(id):native.delete(id),
     legacyBusy:()=>false,focus:async()=>{}};
   const controller=new WebBridge(origin,deps);
-  const api={metrics,notices,connect,
+  const api={metrics,notices,connect,configureAnswers,
     request:(command:string,data:Record<string,unknown>={},requestId=crypto.randomUUID())=>new Promise<any>((resolve,reject)=>{
       const timeout=setTimeout(()=>{pending.delete(requestId);reject(Error('El puente no respondió al comando '+command));},10000);
       pending.set(requestId,message=>{clearTimeout(timeout);resolve(message);});port._messages.emit({requestId,command,...data});

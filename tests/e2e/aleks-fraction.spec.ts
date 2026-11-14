@@ -16,9 +16,9 @@ test.beforeEach(async({page})=>{
   });
 });
 
-test('gramática cerrada de enteros y fracciones reducidas con componentes acotados',async({page})=>{
-  const result=await page.evaluate(()=>({valid:['0','0/1','123','1/5','5/3','999999999999/2'].map(window.fractionTest.parseSupportedAnswer),
-    invalid:['0/2','2/4','1/0','1/-5','-1/5','1 / 5','01/5','1.5','π','alert(1)','1000000000000/3'].map(value=>Boolean(window.fractionTest.parseSupportedAnswer(value)))}));
+test('gramática cerrada de enteros, decimales y fracciones reducidas con componentes acotados',async({page})=>{
+  const result=await page.evaluate(()=>({valid:['0','0/1','123','1/5','5/3','999999999999/2','1.5','169,56'].map(window.fractionTest.parseSupportedAnswer),
+    invalid:['0/2','2/4','1/0','1/-5','-1/5','1 / 5','01/5','1.5,0','1,,5','π','alert(1)','1000000000000/3'].map(value=>Boolean(window.fractionTest.parseSupportedAnswer(value)))}));
   expect(result.valid.every(Boolean)).toBe(true);expect(result.invalid.some(Boolean)).toBe(false);
 });
 

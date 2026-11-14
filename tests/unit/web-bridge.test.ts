@@ -1,3 +1,4 @@
+import { WRITER_VERSION } from '../../extension/src/writer-version';
 import { beforeEach,afterEach,expect,it,vi } from 'vitest';
 import { WebBridge,BRIDGE_PORT,type BridgeDependencies } from '../../extension/src/web-bridge';
 
@@ -17,7 +18,7 @@ function port(overrides:Record<string,unknown>={}) {
   return {p,replies,send:(command:string,data:Record<string,unknown>={},id=crypto.randomUUID())=>{messages.emit({requestId:id,command,...data});return id;},
     async request(command:string,data:Record<string,unknown>={},id=crypto.randomUUID()) {messages.emit({requestId:id,command,...data});await vi.waitFor(()=>expect(replies.some(r=>r.requestId===id)).toBe(true));return replies.find(r=>r.requestId===id);}};
 }
-async function connect(id=7) {const p=port();expect((await p.request('connect',{token:'x'.repeat(43)})).ok).toBe(true);expect((await p.request('bind',{tabId:id})).ok).toBe(true);return p;}
+async function connect(id=7) {const p=port();expect((await p.request('connect',{writerVersion:WRITER_VERSION,token:'x'.repeat(43)})).ok).toBe(true);expect((await p.request('bind',{tabId:id})).ok).toBe(true);return p;}
 beforeEach(()=>{
   events={connections:event(),updated:event(),removed:event(),permissions:event(),alarms:event()};storage={};active=7;focused=true;answerContext=context;posted=0;
   vi.stubGlobal('chrome',{
@@ -60,7 +61,7 @@ it('duplica el mismo comando sin duplicar consulta ni entrega y rechaza reutiliz
   await vi.waitFor(()=>expect(p.replies.at(-1).ok).toBe(false));
 });
 it('una vinculación no roba la pestaña de otra conexión',async()=>{
-  await connect();const other=port();await other.request('connect',{token:'y'.repeat(43)});
+  await connect();const other=port();await other.request('connect',{writerVersion:WRITER_VERSION,token:'y'.repeat(43)});
   expect((await other.request('bind',{tabId:7})).ok).toBe(false);
   expect((await other.request('bind',{tabId:8})).ok).toBe(true);
 });
@@ -180,4 +181,10 @@ it('el puente entrega dos respuestas por clave sin concatenarlas',async()=>{
   const p=await connect();expect((await p.request('start',{fingerprint,limits,nativeKeyboard:true})).ok).toBe(true);
   await vi.waitFor(()=>expect(deps.deliver).toHaveBeenCalledTimes(1));
   expect(deps.deliver).toHaveBeenCalledWith(7,'automationSubmit',expect.objectContaining({value:answers}),expect.any(Function));
+});
+
+it.each([undefined,'0.5.0'])('rechaza la web antigua antes de consultar sesión o IA: %s',async writerVersion=>{
+  const p=port();const result=await p.request('connect',{token:'x'.repeat(43),...(writerVersion?{writerVersion}:{})});
+  expect(result).toMatchObject({ok:false});expect(result.error).toContain('versiones distintas');
+  expect(fetcher).not.toHaveBeenCalled();expect(deps.deliver).not.toHaveBeenCalled();
 });

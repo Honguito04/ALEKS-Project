@@ -1,3 +1,4 @@
+import { WRITER_VERSION } from '../../extension/src/writer-version';
 import { beforeEach,it,expect,vi } from 'vitest';
 import { BACKEND,ALEKS_ACTIVITY,allowedTab,type Exercise,type Run,type Limits } from '../../extension/src/shared';
 
@@ -31,7 +32,7 @@ beforeEach(async()=>{
     permissions:{contains:async()=>permitted,remove:vi.fn(async()=>true),onRemoved:{addListener:vi.fn()}},
     debugger:{attach:nativeAttach,sendCommand:nativeCommand,detach:nativeDetach,onDetach:{addListener:vi.fn(),removeListener:vi.fn()}},
     windows:{get:async()=>({id:1,focused:nativeFocused})},
-    tabs:{get:async(id:number)=>({id,url,title:'Simulador',windowId:1,active:id===nativeActiveTab}),query:async()=>[{id:nativeActiveTab,url}],sendMessage:tabsSend,onRemoved:{addListener:vi.fn()}},
+    tabs:{get:async(id:number)=>({id,url,title:'Simulador',windowId:1,active:id===nativeActiveTab}),query:async()=>[{id:nativeActiveTab,url}],sendMessage:async(...args:any[])=>({writerVersion:WRITER_VERSION,...await tabsSend(...args)}),onRemoved:{addListener:vi.fn()}},
     scripting:{executeScript:async()=>{}}
   });
   await import('../../extension/src/background');
@@ -298,6 +299,7 @@ it('cerrar sesión detiene una escritura asistida aunque no exista una ejecució
   const started=new Promise<void>(resolve=>{notifyStarted=resolve;});
   tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>{
     if(message.type==='assistFill')return new Promise(resolve=>{finish=resolve;notifyStarted();});
+    if(message.type==='writerVersion')return {ok:true,data:WRITER_VERSION};
     if(message.type==='stop'){finish({ok:false,error:'Cancelado'});return {ok:true,data:true};}
     throw Error('Operación inesperada');
   });
@@ -368,7 +370,7 @@ function prepareAutomation() {
     if(message.type==='status')return {ok:true,data:{detection:{origin:ALEKS_ACTIVITY}}};
     if(message.type==='automationSubmit')return {ok:true,data:state.submission};
     if(message.type==='automationNext'){state.index++;return {ok:true,data:true};}
-    if(message.type==='automationReset' || message.type==='stop')return {ok:true,data:true};
+    if(message.type==='writerVersion' || message.type==='automationReset' || message.type==='stop')return {ok:true,data:true};
     throw Error(`Comando inesperado: ${message.type}`);
   });
   fetchMock.mockImplementation(async(destination:string,request:RequestInit)=>{
@@ -744,7 +746,7 @@ it.each(['authorized','focus-lost','capability-revoked'] as const)('web → back
     return replies.find(r=>r.requestId===requestId);
   };
   try {
-    expect((await command('connect',{token:'x'.repeat(43)})).ok).toBe(true);
+    expect((await command('connect',{writerVersion:WRITER_VERSION,token:'x'.repeat(43)})).ok).toBe(true);
     expect((await command('bind',{tabId:7})).ok).toBe(true);
     expect((await command('start',{fingerprint:context.fingerprint,limits:{maxExercises:1,maxMinutes:1,maxAICalls:2},nativeKeyboard:true})).ok).toBe(true);
     if(boundary==='authorized'){
@@ -801,4 +803,21 @@ it('conserva cm² en un campo y teclea únicamente el decimal de la propuesta',a
   });
   expect((await nativeFill(proposal.id)).ok).toBe(true);
   expect(nativeCommand.mock.calls.map(call=>call[2].text).filter(Boolean)).toEqual(['1','6','9',',','5','6']);
+});
+
+it.each([undefined,'0.5.0'])('detecta un adaptador antiguo antes de consultar IA: %s',async writerVersion=>{
+  prepareAssist();tabsSend.mockResolvedValue({ok:true,data:assistContext,writerVersion});
+  const result=await send({scope:'ui',type:'assist',tabId:7,includeImage:false});
+  expect(result.ok).toBe(false);expect(result.error).toContain('Recarga ALEKS');
+  expect(fetchMock).not.toHaveBeenCalled();expect(nativeCommand).not.toHaveBeenCalled();
+  expect((await send({scope:'ui',type:'cancelAssist',tabId:7})).ok).toBe(true);
+});
+
+it('un adaptador que quedó antiguo tras consultar no recibe la orden de escritura',async()=>{
+  prepareAssist();const proposal=(await send({scope:'ui',type:'assist',tabId:7,includeImage:false})).data;
+  tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>)=>({ok:true,writerVersion:message.type==='writerVersion'?'0.5.0':WRITER_VERSION,data:true}));
+  const result=await nativeFill(proposal.id);
+  expect(result.ok).toBe(false);expect(result.error).toContain('Recarga ALEKS');
+  expect(tabsSend.mock.calls.some(([,message])=>message.type==='assistFill')).toBe(false);
+  expect(nativeCommand).not.toHaveBeenCalled();
 });

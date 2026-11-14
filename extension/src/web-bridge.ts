@@ -1,3 +1,4 @@
+import { WRITER_VERSION,UPDATE_WRITER_MESSAGE } from './writer-version';
 import { z } from 'zod';
 import { ALEKS_ORIGINS,assistContextSchema,assistResultSchema,type AssistContext,type AssistView } from './shared';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
@@ -8,7 +9,7 @@ export const BRIDGE_WEB_ORIGIN=typeof __BRIDGE_WEB_ORIGIN__==='string'?__BRIDGE_
 export const BRIDGE_PORT='aleks-web-bridge-v1';
 const base={requestId:z.uuid()};
 export const bridgeCommandSchema=z.discriminatedUnion('command',[
-  z.object({...base,command:z.literal('connect'),token:z.string().regex(/^[A-Za-z0-9_-]{43}$/)}).strict(),
+  z.object({...base,command:z.literal('connect'),writerVersion:z.string().max(40).optional(),token:z.string().regex(/^[A-Za-z0-9_-]{43}$/)}).strict(),
   z.object({...base,command:z.literal('list')}).strict(),
   z.object({...base,command:z.literal('bind'),tabId:z.number().int().nonnegative()}).strict(),
   z.object({...base,command:z.literal('read')}).strict(),
@@ -93,7 +94,7 @@ export class WebBridge {
     const state=c.run?.view;
     const automation=state?.canContinue?{...state,canContinue:false,
       message:`Límite autorizado alcanzado. ${state.accepted} respuesta(s) confirmadas por ALEKS. Para otro recorrido, avanza manualmente y vuelve a leer la actividad desde la web.`}:state;
-    return {connected:Boolean(c.alive && c.token),...(c.tab?{tab:{id:c.tab.id,title:c.tab.title||'ALEKS'}}:{}),
+    return {writerVersion:WRITER_VERSION,connected:Boolean(c.alive && c.token),...(c.tab?{tab:{id:c.tab.id,title:c.tab.title||'ALEKS'}}:{}),
     ...(c.context?{context:c.context}:{}),...(c.proposal?{proposal:c.proposal}:{}),...(automation?{automation}:{}),
     providerCalls:c.providerCalls,providerCallsUncertain:c.providerCallsUncertain,...(this.interrupted?{interrupted:this.interrupted}:{})};}
   private progress(c:Connection){this.post(c,{event:'progress',value:this.view(c)});}
@@ -308,6 +309,7 @@ export class WebBridge {
       return {connected:false};
     }
     if(command.command==='connect') {
+      if(command.writerVersion!==WRITER_VERSION)throw Error(`La web y la extensión tienen versiones distintas. Esta extensión necesita la web ${WRITER_VERSION}. ${UPDATE_WRITER_MESSAGE}`);
       if(c.token)throw Error('La conexión ya está vinculada.');
       if(!await chrome.permissions.contains({origins:[this.origin+'/*']}))throw Error('Autoriza el servidor web desde el panel de la extensión.');
       c.token=command.token;await this.session(c);this.assert(c,epoch);return this.view(c);

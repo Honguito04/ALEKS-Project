@@ -21,6 +21,7 @@ jobs:
       - run: npm run build
       - run: npm run build:web
       - run: npm test
+      - run: python scripts/test_local_web_check.py
       - run: python -m pytest backend/tests -q
       - run: npx playwright install --with-deps chromium
       - name: Flujo del simulador en Chromium

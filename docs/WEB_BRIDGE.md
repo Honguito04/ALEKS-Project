@@ -4,6 +4,10 @@ La web conserva tu cuenta y consulta la IA del servidor. La extensión conecta s
 
 La automatización requiere **Chrome de escritorio 116 o posterior**, la extensión cargada y la pestaña ALEKS disponible en el mismo equipo. Un celular puede usar la demo web para consultar ejercicios, pero no cargar esta extensión ni automatizar ALEKS. Cerrar o suspender el navegador interrumpe la conexión; ningún recorrido se reanuda automáticamente después de reiniciar.
 
+## Actualización de versiones
+
+Desde 0.5.1 la conexión muestra **Web 0.5.1 · Extensión 0.5.1** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
+
 ## Primera prueba en Windows
 
 1. Instala Python 3.12, Node.js 24 y Chrome. Descarga o actualiza este repositorio conservando tu archivo `.env`.

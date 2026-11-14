@@ -82,13 +82,18 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     .filter(input=>{const root=input.closest<HTMLElement>('.ansed_root');return root && visible(root) && !root.closest('#algoPrompt');});
   if(inputs.length!==1)throw Error('No hay un único recuadro al que escribir.');
   const input=inputs[0],root=input.closest<HTMLElement>('.ansed_root')!,previousBuffer=input.value;
+  const checkInput=()=>{
+    signal.throwIfAborted();
+    if(!root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root || root.querySelector('input.ansed_input')!==input ||
+      !visible(root) || disabled(input) || input.readOnly || document.activeElement!==input)throw Error('El editor o su foco cambió durante la escritura.');
+  };
   input.focus();
-  const focused=await assistContext(document);signal.throwIfAborted();
+  const focused=await assistContext(document);checkInput();
   if(!root.isConnected || focused.fingerprint!==fingerprint || !focused.can_fill_integer)throw Error('La página cambió al enfocar el editor.');
   if(nativeInput) {
     const guard=async()=>{
       signal.throwIfAborted();
-      const current=await readAleksPrompt(document);signal.throwIfAborted();
+      const current=await readAleksPrompt(document);checkInput();
       const editor=inspectAleksEditor(document);
       if(current.fingerprint!==promptBefore.fingerprint || !root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root ||
         document.activeElement!==input || disabled(input) || input.readOnly || !visible(root) ||
@@ -103,7 +108,7 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
     const proceed=input.dispatchEvent(intent);
     signal.throwIfAborted();
     const afterIntent=await readAleksPrompt(document);
-    signal.throwIfAborted();
+    checkInput();
     if(afterIntent.fingerprint!==promptBefore.fingerprint || !root.isConnected)throw Error('El enunciado cambió antes de escribir.');
     if(proceed) {
       const readback=inspectAleksEditor(document).singleEditor.readback;
@@ -115,15 +120,16 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
   }
   const deadline=Date.now()+1600;
   while(Date.now()<deadline) {
-    signal.throwIfAborted();
-    if(!root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root || !visible(root) || disabled(input) || input.readOnly)throw Error('El editor desapareció o cambió durante la escritura.');
+    checkInput();
     const observation=inspectAleksEditor(document).singleEditor;
     if(observation.readback.selected_unit)throw Error('Apareció una unidad no solicitada durante la escritura.');
     if(observation.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad del recuadro cambió durante la escritura. No se entregó la respuesta.');
     if(observation.status==='observed' && observation.readback.status==='readable' && sameAnswer(observation.readback.value,value)) {
-      const current=await readAleksPrompt(document);signal.throwIfAborted();
+      const current=await readAleksPrompt(document);checkInput();
       if(current.fingerprint!==promptBefore.fingerprint)throw Error('El enunciado cambió durante la escritura.');
-      if(inspectAleksEditor(document).singleEditor.readback.fixed_unit!==before.fixed_unit)throw Error('La unidad cambió antes de confirmar la escritura.');
+      const confirmed=inspectAleksEditor(document).singleEditor;
+      if(confirmed.status!=='observed' || confirmed.readback.status!=='readable' || !sameAnswer(confirmed.readback.value,value) ||
+        confirmed.readback.selected_unit || confirmed.readback.fixed_unit!==before.fixed_unit)throw Error('La respuesta o su unidad cambió antes de confirmar la escritura.');
       return {written:true,display:value,submitted:false};
     }
     await new Promise(resolve=>setTimeout(resolve,50));

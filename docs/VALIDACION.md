@@ -1,6 +1,19 @@
 # Validación ejecutada
 
-Actualización: 12 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+Actualización: 14 de noviembre de 2026 (UTC). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+
+## Revisión 0.5.1: versiones compatibles, decimales y recorrido web
+
+- **257 pruebas unitarias pasadas**, TypeScript y compilaciones de extensión y web correctos. El paquete local declara la versión 0.5.1 y autoriza únicamente `http://127.0.0.1:8000/*` para el puente.
+- **10 pruebas de la interfaz web pasadas** con backend real y puerto Chrome simulado: el botón de inicio permite uno o dos campos, incluidas propuestas `169,56 cm²`, y una extensión antigua muestra instrucciones de actualización.
+- La pasada completa ejecutó **372 casos de navegador**: 371 pasaron y uno conservaba la expectativa obsoleta de rechazar `1.5`. Se corrigió esa expectativa para admitir decimales y rechazar separadores mezclados; la repetición del archivo completo pasó sus **23 casos**. No quedaron fallos sin resolver.
+- **3 pruebas del comprobador de inicio pasadas**: puerto ocupado sin cerrar el servidor existente, liberación del puerto de prueba y rechazo de compilación antigua o incompleta. El informe muestra la ruta exacta de `dist` sin leer la clave de `.env`.
+
+Las nuevas regresiones recorren el puente y el escritor de producción con `169,56 cm²`, representación con punto, dos respuestas en orden invertido, fracción con cm³, decimal con unidad fija y respuestas sin unidad. Comprueban ambos campos antes de una única entrega. Cambios en el número, unidad o primer campo impiden verificar. Se reprodujo y corrigió también una pérdida de foco durante la escritura escalar; ahora se vuelve a comprobar el foco, la identidad del input y la lectura después de cada espera relevante.
+
+El error antiguo de formato no se reproduce con el escritor actualizado. La web, el worker y el adaptador de la pestaña intercambian su versión: se rechaza un componente antiguo antes de consultar IA y se hace otra comprobación sin escritura antes de enviar órdenes que modifican ALEKS. Detener y cancelar siguen disponibles. La web muestra **Web 0.5.1 · Extensión 0.5.1** para identificar la instalación conectada.
+
+La actualización de Windows conserva `.env` y `.runtime`, compila ambos componentes y exige recargar la extensión y las pestañas. Se revisaron los archivos `.cmd`, pero no se ejecutaron en Windows. Los editores ALEKS, el transporte Chrome y la IA de estas regresiones son sintéticos; no se operó una cuenta ALEKS autenticada ni el navegador local del usuario. El backend no cambió y no se repitió su suite.
 
 ## Decimal y unidad en un solo recuadro
 

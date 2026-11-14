@@ -109,7 +109,7 @@ export class AleksSubmission {
         const field=inspectEditorRoot(node),current=answerRoots(this.document);
         return current.length===ordered.length && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && document.activeElement===inputs.at(-1) && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
           sameAnswer(field.readback.value,value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`))?.value) && !field.readback.fixed_unit && field.readback.selected_unit===answerUnit(value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`))?.unit || '');
-      }):editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
+      }):ordered.length===1 && root.querySelector('input.ansed_input')===inputs[0] && document.activeElement===inputs[0] && editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
         sameAnswer(editor.singleEditor.readback.value,value) && !editor.singleEditor.readback.selected_unit && editor.singleEditor.readback.fixed_unit===fixedUnit;
       if(!root.isConnected || !visible(root) || !valid ||
         freshTargets.length!==1 || freshTargets[0]!==target || disabled(target) || alerts(this.document).length ||

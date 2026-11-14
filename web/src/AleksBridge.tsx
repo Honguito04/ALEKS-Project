@@ -1,3 +1,4 @@
+import { WRITER_VERSION,UPDATE_WRITER_MESSAGE } from '../../extension/src/writer-version';
 import { useEffect, useRef, useState, type MutableRefObject } from 'react';
 import { z } from 'zod';
 import type { AssistContext, AssistView } from '../../extension/src/shared';
@@ -10,7 +11,7 @@ import './bridge.css';
 const EXTENSION_ID = 'fjjgjakbpjhhegekcjogilmfheaicjge';
 const PORT_NAME = 'aleks-web-bridge-v1';
 type Tab = { id: number; title: string; active?: boolean };
-type Snapshot = { connected: boolean; tab?: Tab; context?: AssistContext; proposal?: AssistView;
+type Snapshot = { connected: boolean; writerVersion?: string; tab?: Tab; context?: AssistContext; proposal?: AssistView;
   automation?: AutomationView; providerCalls?: number; providerCallsUncertain?: boolean; interrupted?: string };
 type Api = <T>(path: string, method?: string, body?: unknown) => Promise<T>;
 type Pending = { resolve(value: unknown): void; reject(reason: Error): void; timer: ReturnType<typeof setTimeout> };
@@ -20,7 +21,7 @@ const proposalSchema = z.object({ id: z.uuid(), context: assistContextSchema, re
 const automationSchema = z.object({ id: z.uuid(), phase: z.enum(['LEYENDO', 'RESOLVIENDO', 'LISTO', 'ENVIANDO', 'CORRECTA', 'AVANZANDO', 'DETENIDO', 'COMPLETADO']),
   active: z.boolean(), busy: z.boolean(), canContinue: z.boolean(), accepted: z.number().int().min(0).max(100), aiCalls: z.number().int().min(0).max(100),
   started: z.number(), limits: automationLimitsSchema, message: z.string().max(4000), answer: z.string().max(500).optional() }).strict();
-const snapshotSchema = z.object({ connected: z.boolean(), tab: tabSchema.optional(), context: assistContextSchema.optional(),
+const snapshotSchema = z.object({ connected: z.boolean(), writerVersion:z.string().max(40).optional(), tab: tabSchema.optional(), context: assistContextSchema.optional(),
   proposal: proposalSchema.optional(), automation: automationSchema.optional(), providerCalls: z.number().int().nonnegative().optional(), providerCallsUncertain: z.boolean().optional(), interrupted: z.string().max(1000).optional() }).strict();
 
 export default function AleksBridge({ userId, csrfToken, request, disconnectRef, suspended }: {
@@ -92,6 +93,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     if (message.event === 'progress' && message.value && typeof message.value === 'object') {
       const state = snapshotSchema.safeParse(message.value);
       if (!state.success) { disconnect('La extensión devolvió un estado incompatible. Actualízala antes de volver a vincular.'); return; }
+      if (state.data.writerVersion!==WRITER_VERSION) { disconnect(`La versión de la extensión cambió. ${UPDATE_WRITER_MESSAGE}`); return; }
       if (!state.data.connected) { disconnect(); return; }
       setSnapshot(state.data); return;
     }
@@ -100,7 +102,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     if (!item) return;
     clearTimeout(item.timer); pending.current.delete(message.requestId);
     if (message.ok === true) item.resolve(message.value);
-    else item.reject(new Error(typeof message.error === 'string' ? message.error : 'La extensión rechazó la orden. Vuelve a leer la pestaña.'));
+    else item.reject(new Error(message.error==='Comando del puente no admitido.' ? `La extensión conectada no reconoce esta versión de la web. ${UPDATE_WRITER_MESSAGE}` : typeof message.error === 'string' ? message.error : 'La extensión rechazó la orden. Vuelve a leer la pestaña.'));
   }
 
   async function connect() {
@@ -125,7 +127,8 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
         void chrome.runtime.lastError;
         if (port.current === current) disconnect('La extensión se desconectó o no autorizó este sitio. El recorrido queda detenido. Vuelve a conectar y leer la pestaña; no hay reanudación automática.');
       });
-      const status = snapshotSchema.parse(await command<Snapshot>('connect', { token: capability.token }));
+      const status = snapshotSchema.parse(await command<Snapshot>('connect', { token: capability.token, writerVersion:WRITER_VERSION }));
+      if(status.writerVersion!==WRITER_VERSION)throw new Error(`La extensión conectada es anterior o incompatible con la web ${WRITER_VERSION}. ${UPDATE_WRITER_MESSAGE}`);
       if (!status.connected) throw new Error('La extensión no confirmó la vinculación.');
       if (epoch !== lifecycle.current) return;
       setSnapshot(status); setConnected(true); setExpires(capability.expires_at);
@@ -173,7 +176,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const context = snapshot?.context;
   const proposal = snapshot?.proposal;
   const automation = snapshot?.automation;
-  const eligible = Boolean(context && context.fields.length === 1 && !context.diagram_required &&
+  const eligible = Boolean(context && [1,2].includes(context.fields.length) && !context.diagram_required &&
     (context.can_fill_integer || context.can_fill_fraction) && !context.fill_blockers.length);
   const blockers = proposal ? proposalFillMessages(proposal) : [];
   const numericLimits = { maxExercises: Number(limits.maxExercises), maxMinutes: Number(limits.maxMinutes), maxAICalls: Number(limits.maxAICalls) };
@@ -186,6 +189,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     <fieldset disabled={suspended}>
     <div className="section-heading"><div><span className="step-label">EXTENSIÓN / ALEKS</span><h2 id="bridge-title">Trabaja en tu pestaña ALEKS</h2></div><span className={`bridge-badge ${connected ? 'is-connected' : ''}`}>{connected ? 'Conectada' : 'Sin vínculo'}</span></div>
     <p className="muted">La web controla únicamente la pestaña que vincules. La extensión lee el ejercicio y ejecuta las teclas, la verificación y el avance; las consultas usan tu cuenta y sus cuotas en la nube.</p>
+    <p className="field-help">Web {WRITER_VERSION}{snapshot?.writerVersion ? ` · Extensión ${snapshot.writerVersion}` : ''}</p>
     {error && <p className="message error" role="alert">{error}</p>}
     <p className="message status bridge-status" role="status" aria-live="polite">{notice}</p>
     {!connected ? <div className="bridge-connect"><button className="secondary" disabled={Boolean(busy)} onClick={() => void connect()}>{busy ? 'Conectando extensión…' : 'Conectar extensión ALEKS'}</button><p className="field-help">Necesitas Chrome de escritorio, la extensión actualizada y este origen autorizado en su compilación. No se conecta automáticamente.</p></div> : <>
@@ -198,7 +202,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
       </>}
       {context && <div className="bridge-context"><h3>Actividad observada</h3><p className="bridge-statement">{context.statement}</p><dl className="bridge-diagnostics"><div><dt>Campos</dt><dd>{context.fields.map(field => field.label).join(' · ')}</dd></div><div><dt>Unidad predefinida</dt><dd>{context.fixed_unit || 'Sin unidad reconocida'}</dd></div><div><dt>Formato</dt><dd>{eligible ? 'Editor vacío compatible' : 'Requiere revisión; no se autoriza escritura automática'}</dd></div><div><dt>Huella de actividad</dt><dd><code>{context.fingerprint}</code></dd></div></dl></div>}
       {proposal && <div className="bridge-proposal"><p className={`verification-tag ${proposal.result.verified ? 'verified' : 'unverified'}`}>{proposal.result.verified ? 'Resultado comprobado' : 'Propuesta de IA sin verificar'}</p>{proposal.result.proposal.answers.map(answer => <p key={answer.field_key}><strong>{answer.value}</strong> {answer.unit}</p>)}<p>{proposal.result.proposal.explanation}</p>{proposal.result.proposal.missing_information.map((information, index) => <p className="field-help" key={index}>{information}</p>)}{blockers.length > 0 && <p className="result-caution">{blockers.join(' ')}</p>}</div>}
-      <div className="bridge-authorization"><h3>Autoriza un recorrido limitado</h3><p className="field-help">Texto con un único editor vacío; admite enteros y fracciones reducidas compatibles, con la unidad fija ya mostrada. Diagramas, varios campos y formatos no compatibles requieren revisión manual.</p>
+      <div className="bridge-authorization"><h3>Autoriza un recorrido limitado</h3><p className="field-help">Texto con uno o dos recuadros vacíos: enteros, decimales con punto o coma y fracciones reducidas. Conserva unidades fijas y permite seleccionar cm, cm² o cm³. Diagramas y otros formatos requieren revisión manual.</p>
         <fieldset disabled={Boolean(busy) || running} className="bridge-limits">{([
           ['maxExercises', 'Máximo de respuestas', 100], ['maxMinutes', 'Máximo de minutos', 120], ['maxAICalls', 'Máximo de llamadas IA', 100],
         ] as const).map(([key, label, max]) => <div key={key}><label htmlFor={`bridge-${key}`}>{label}</label><input id={`bridge-${key}`} type="number" min="1" max={max} step="1" value={limits[key]} onChange={event => { setLimits(previous => ({ ...previous, [key]: event.target.value })); setAuthorized(false); }} /></div>)}</fieldset>

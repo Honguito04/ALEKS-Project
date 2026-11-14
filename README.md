@@ -4,9 +4,11 @@ La nueva **demo web independiente** tiene registro e inicio de sesión, consulta
 
 Extensión Chrome Manifest V3, panel lateral en español, backend FastAPI + SymPy y simulador local con diez ejercicios básicos originales y una actividad de volúmenes con unidades.
 
-**La versión 0.4.5 prioriza la pestaña activa al abrir el panel y distingue las causas que detienen el teclado.** Comprueba pestaña y ventana antes de gastar IA al iniciar un recorrido con teclado de Chrome. Conserva la lectura MathML y los sufijos predefinidos como «hora(s)» de 0.4.4. Mantiene el avance mediante «Siguiente» y «Continuar en Mi ruta», los contadores y límites. Admite ejercicios de texto con un entero, decimal no negativo o una fracción reducida en uno o dos recuadros vacíos compatibles (doce dígitos por componente). Diagramas, más de dos recuadros y otros formatos siguen requiriendo adaptación; las unidades que se introducen con botones conservan su revisión manual. El usuario confirmó escritura, verificación y avance hasta el fin de un tema; los cambios nuevos se prueban aquí con fixtures. Google identifica al usuario de esta aplicación; no inicia sesión en ALEKS.
+**La versión 0.5.1 identifica y comprueba la versión de la web, la extensión y el adaptador de ALEKS antes de consultar la IA.** Admite enteros, decimales con punto o coma y fracciones reducidas en uno o dos recuadros; conserva las unidades fijas y permite seleccionar cm, cm² o cm³. Lee cada valor y su unidad antes de entregar, conservando los controles de foco, cancelación y entregas únicas. Diagramas, expresiones y otros formatos requieren adaptación.
 
-Para usar el teclado, marca **Usar teclado de Chrome para esta pestaña**. El permiso `debugger`, añadido en 0.4.0, permite enviar esas teclas; la conexión se abre al escribir y se cierra al terminar. Chrome muestra un aviso de depuración mientras está conectada. El código restringe la operación a la respuesta numérica de la pestaña ALEKS seleccionada. **Desde 0.4.3, esta actualización solo requiere reemplazar extension, compilar y recargarla; el backend sigue en 0.4.2.** Sigue [los pasos para Windows](docs/IA_GENERAL.md#actualizar-a-045-en-windows).
+Para actualizar en Windows, sigue [Actualizar sin perder la configuración](docs/WEB.md#actualizar-la-instalacion-local-de-windows): detén el servidor y, si usas Git, ejecuta `scripts\update-web.cmd` en la misma carpeta. Si usas ZIP, descarga el proyecto nuevo y sigue la guía para conservar `.env` y `.runtime`. El iniciador muestra la carpeta exacta `dist` que debes recargar en `chrome://extensions`. Recarga también ALEKS y la web. Al conectar debe verse **Web 0.5.1 · Extensión 0.5.1**. Reiniciar una copia antigua no descarga el código nuevo.
+
+El teclado de Chrome requiere activar **Usar teclado de Chrome** y conceder el permiso `debugger`. Envía solamente los caracteres numéricos de la propuesta a la pestaña autorizada y se desconecta al terminar.
 
 ¿Es tu primera instalación y no tienes experiencia en programación? Sigue la [guía desde cero para Windows](docs/GUIA_DESDE_CERO.md): incluye descarga, instalación, primera prueba y lectura en ALEKS.
 
@@ -125,14 +127,14 @@ Las pruebas del navegador ejecutan **el adaptador y controlador de producción c
 
 Consulta [docs/VALIDACION.md](docs/VALIDACION.md) para los resultados ejecutados y pendientes, y [docs/PLAN.md](docs/PLAN.md) para criterios y decisiones.
 
-## Recorrido ALEKS 0.4.1
+## Recorrido ALEKS desde el panel de la extensión
 
 El ejercicio de dos cajas se comprueba exactamente: `4/(1+4) × 3/(9+3) = 1/5`. Este comprobador reconoce la plantilla completa y variantes numéricas, sin llamar a Ollama. Otros problemas siguen usando el modelo. El lector y el escritor admiten fracciones reducidas `a/b`: el usuario confirmó que ALEKS convierte ese texto en una fracción vertical. La extensión exige leer ambos componentes antes de verificar; un `input.value` o el texto literal `1/5` sin conversión no acreditan escritura.
 
 Cuando el modelo no devuelve una respuesta, el recorrido muestra su motivo concreto. **Preparar diagnóstico del editor** y **Copiar diagnóstico** producen un informe acotado de símbolos, posiciones y botones conocidos, sin HTML completo, enlaces de sesión o datos de cuenta. No se otorga acceso genérico a funciones internas de ALEKS.
 
 
-Sigue [la actualización paso a paso para Windows](docs/IA_GENERAL.md#actualizar-a-041-en-windows). Copia **backend** y **extension**, reinicia el backend, ejecuta `npm.cmd run build`, recarga la extensión en `chrome://extensions` y actualiza ALEKS con **F5**. Conserva `.env`, `.venv` y `node_modules`. El panel y `/health` identifican el backend en ejecución como **0.4.1**; actualizar solo la extensión no carga los comprobadores nuevos del servidor.
+Para actualizar, usa [la guía de Windows](docs/WEB.md#actualizar-la-instalacion-local-de-windows), que compila la web y la extensión y conserva tu configuración. Para controlar ALEKS desde la web con IA en la nube, sigue [la guía del puente web](docs/WEB_BRIDGE.md). Los pasos siguientes corresponden al panel lateral y su proveedor local.
 
 1. Abre el ejercicio en `https://latam-awu.aleks.com` y deja vacío su recuadro. En el panel pulsa **Autorizar sitio ALEKS**, selecciona esa pestaña y pulsa **Leer actividad seleccionada**.
 2. Comprueba que el backend y Ollama estén disponibles. Entra en demostración o inicia sesión en el asistente; ALEKS utiliza tu sesión propia en su pestaña.

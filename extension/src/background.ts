@@ -1,3 +1,4 @@
+import { WRITER_VERSION } from './writer-version';
 import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
 import { typeNativeAnswer } from './native-keyboard';
 import { parseSupportedAnswer } from './answer-format';
@@ -110,8 +111,18 @@ async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean) {
   if(!browserWindow.focused)throw Error('La ventana de Chrome que contiene ALEKS no está en primer plano. Vuelve a esa ventana y revisa el recuadro antes de iniciar de nuevo.');
 }
 async function send(id:number,type:string,data:Record<string,unknown>={},isCurrent=()=>true) {
-  await tab(id);if(!isCurrent())throw Error('Recorrido detenido.');
-  const response=await chrome.tabs.sendMessage(id,{scope:'adapter',type,...data});
+  const t=await tab(id);if(!isCurrent())throw Error('Recorrido detenido.');
+  // Read-only handshake before a write: an old adapter must never receive it.
+  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext'].includes(type)) {
+    const version=await chrome.tabs.sendMessage(id,{scope:'adapter',type:'writerVersion'}).catch(()=>undefined);
+    if(version?.writerVersion!==WRITER_VERSION)throw Error(`La pestaña ALEKS conserva un adaptador antiguo. Recarga ALEKS para cargar la versión ${WRITER_VERSION} y vuelve a leer el ejercicio.`);
+    if(!isCurrent())throw Error('Recorrido detenido.');
+  }
+  const response=await chrome.tabs.sendMessage(id,{scope:'adapter',type,...data}).catch(error=>{
+    if(!simulatorURL(t.url))throw Error('La pestaña ALEKS no responde a la extensión actual. Recarga esa pestaña y vuelve a vincularla antes de iniciar otro recorrido.');
+    throw error;
+  });
+  if(!simulatorURL(t.url) && !['stop','pause'].includes(type) && response?.writerVersion!==WRITER_VERSION)throw Error(`La pestaña ALEKS conserva un adaptador antiguo. Recarga ALEKS para cargar la versión ${WRITER_VERSION} y vuelve a leer el ejercicio.`);
   if(!response?.ok) throw Error(response?.error || 'El adaptador no respondió');return response.data;
 }
 async function attach(id:unknown) {

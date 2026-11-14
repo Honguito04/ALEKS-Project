@@ -1,3 +1,4 @@
+import { WRITER_VERSION } from '../../extension/src/writer-version';
 /** UI real con cuentas/backend reales y puerto Chrome simulado.
  * No carga la extensión ni opera una cuenta ALEKS autenticada. */
 import { test, expect, type Page, type Route } from '@playwright/test';
@@ -12,14 +13,14 @@ test.beforeAll(async({request})=>{
   expect(registered.status()).toBe(201);
 });
 
-async function prepare(page: Page) {
-  await page.addInitScript(() => {
+async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean}={}) {
+  await page.addInitScript(({version,legacy,fields,decimal}) => {
     const context = { fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
-      fields:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:true,can_fill_fraction:true,fill_blockers:[] };
+      fields:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:true,can_fill_fraction:true,fill_blockers:[] };
     const proposal = {id:'00000000-0000-4000-8000-000000000021',context,
       result:{fingerprint:context.fingerprint,model:'mock-gemini',provider:'gemini',provider_calls:1,verified:false,verification:'none',
-        proposal:{status:'proposed',answers:[{field_key:'answer',value:'12',unit:''}],explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
-    let state:any={connected:true,providerCalls:0},listeners:((message:any)=>void)[]=[],disconnects:(()=>void)[]=[];
+        proposal:{status:'proposed',answers:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
+    let state:any={connected:true,writerVersion:version,providerCalls:0},listeners:((message:any)=>void)[]=[],disconnects:(()=>void)[]=[];
     let deferred:any;
     const api:any={commands:[],disconnections:0,holdPreview:false,
       emit:(data:any)=>listeners.forEach(fn=>fn(data)),
@@ -37,9 +38,9 @@ async function prepare(page: Page) {
           api.commands.push(message);
           let value:any;
           switch(message.command){
-            case 'connect':state={connected:true,providerCalls:0};value=state;break;
+            case 'connect':if(legacy){queueMicrotask(()=>api.emit({requestId:message.requestId,ok:false,error:'Comando del puente no admitido.'}));return;}state={connected:true,writerVersion:version,providerCalls:0};value=state;break;
             case 'list':value=[{id:7,title:'Álgebra',active:true},{id:8,title:'Probabilidad'}];break;
-            case 'bind':state={connected:true,providerCalls:0,tab:{id:message.tabId,title:message.tabId===7?'Álgebra':'Probabilidad'}};value=state;break;
+            case 'bind':state={connected:true,writerVersion:version,providerCalls:0,tab:{id:message.tabId,title:message.tabId===7?'Álgebra':'Probabilidad'}};value=state;break;
             case 'read':state={...state,context};value={context};break;
             case 'preview':if(api.holdPreview){deferred=message;return;}state={...state,proposal,providerCalls:1};api.progress({});value={proposal};break;
             case 'start':state={...state,automation:{id:'00000000-0000-4000-8000-000000000022',phase:'LISTO',active:true,busy:false,canContinue:false,accepted:0,aiCalls:2,started:Date.now(),limits:message.limits,message:'ALEKS activado para usar el teclado.'}};value={automation:state.automation};break;
@@ -50,13 +51,14 @@ async function prepare(page: Page) {
           queueMicrotask(()=>api.emit({requestId:message.requestId,ok:true,value}));
         }};
     }}}});
-  });
+  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false});
   await page.goto('/app/');
   await page.getByLabel('Correo electrónico').fill(account);
   await page.getByLabel('Contraseña',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
   await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
   await page.getByRole('button',{name:'Conectar extensión ALEKS'}).click();
+  if(options.legacy || (options.version!==undefined && options.version!==WRITER_VERSION))return;
   await expect(page.getByLabel('Pestaña ALEKS que autorizas')).toBeVisible();
 }
 
@@ -148,3 +150,27 @@ test('nueva lectura retira la propuesta anterior de la interfaz',async({page})=>
   await page.getByRole('button',{name:'Leer actividad ALEKS'}).click();
   await expect(page.getByText('Propuesta simulada para probar la interfaz del puente.')).toHaveCount(0);
 });
+
+for(const options of [{version:'0.5.0'},{version:''},{legacy:true}]) {
+  test(`avisa de extensión antigua y bloquea el recorrido: ${JSON.stringify(options)}`,async({page})=>{
+    await prepare(page,options);
+    await expect(page.getByRole('alert')).toContainText('update-web.cmd');
+    await expect(page.getByText(`Web ${WRITER_VERSION}`,{exact:true})).toBeVisible();
+    const commands=await page.evaluate(()=>(window as any).bridgeMock.commands.map((c:any)=>c.command));
+    expect(commands).toEqual(['connect']);
+    await expect(page.getByRole('button',{name:'Autorizar e iniciar recorrido'})).toHaveCount(0);
+  });
+}
+for(const fields of [1,2]) {
+  test(`autoriza decimales con cm² para ${fields} campo(s) con versiones vigentes`,async({page})=>{
+    await prepare(page,{fields,decimal:true});await bindRead(page);
+    await page.getByRole('button',{name:'Consultar vista previa'}).click();
+    await expect(page.locator('.bridge-proposal strong')).toHaveText(Array(fields).fill('169,56'));
+    await page.getByLabel('Usar teclado de Chrome en la pestaña vinculada').check();
+    await page.getByLabel('Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites').check();
+    await expect(page.getByRole('button',{name:'Autorizar e iniciar recorrido'})).toBeEnabled();
+    await page.getByRole('button',{name:'Autorizar e iniciar recorrido'}).click();
+    expect(await page.evaluate(()=>(window as any).bridgeMock.commands.filter((c:any)=>c.command==='start').length)).toBe(1);
+    await expect(page.getByText(`Web ${WRITER_VERSION} · Extensión ${WRITER_VERSION}`,{exact:true})).toBeVisible();
+  });
+}

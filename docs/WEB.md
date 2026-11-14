@@ -4,7 +4,7 @@ La web permite crear una cuenta, pegar un enunciado, adjuntar una imagen JPEG/PN
 
 ## Windows: primera prueba
 
-Instala Python **3.12** desde python.org y Node.js **24** desde nodejs.org. Descarga la version actual del repositorio y extrae el ZIP completo en una carpeta nueva. No copies `.env`, `.venv` ni `node_modules` de otra instalacion.
+Instala Python **3.12** desde python.org y Node.js **24** desde nodejs.org. Descarga la version actual del repositorio y extrae el ZIP completo en una carpeta nueva. Para una primera instalacion, crea tu propia configuracion. Si estas actualizando, conserva tu `.env` y los datos de `.runtime` como se indica abajo; no copies `.venv` ni `node_modules`.
 
 En la carpeta extraida abre `scripts` y haz doble clic en **start-web.cmd**. El archivo instala dependencias, compila la web e inicia el servidor. La primera vez necesita Internet y puede tardar varios minutos. Cuando aparezca `Application startup complete`, abre **http://127.0.0.1:8000/app/** en Chrome o Edge. Conserva la ventana abierta.
 
@@ -17,6 +17,16 @@ Tambien puedes ejecutarlo desde PowerShell, situado en la carpeta del proyecto:
 Crea una cuenta con una contrasena de al menos doce caracteres, pulsa **Probar un ejemplo** y **Consultar**: debe aparecer **12** como resultado comprobado. Este ejemplo no requiere Gemini. Los ejercicios generales y las imagenes requieren configurar la clave y modelo del backend. No existe recuperacion por correo.
 
 Si el puerto 8000 esta ocupado, revisa si ya dejaste otra ventana del servidor abierta. Para detener tu servidor pulsa Ctrl+C en su ventana. Este inicio es local: para usar la web desde celulares por Internet sigue el despliegue descrito mas abajo.
+
+## Actualizar la instalacion local de Windows
+
+Deten primero el servidor anterior con **Ctrl+C**. Actualizar el codigo no recarga una extension que ya esta abierta en Chrome.
+
+Si clonaste el proyecto con Git, ejecuta **`scripts\update-web.cmd`** en la misma carpeta. Comprueba que no haya cambios locales en archivos del proyecto, actualiza `main` con `git pull --ff-only` y ejecuta la compilacion y el servidor. Conserva `.env` y `.runtime`; no vuelve a pedir la clave ni el modelo. Si encuentra un conflicto o cambios locales, se detiene sin descartarlos.
+
+Si usas ZIP, descarga la version actual desde **Code → Download ZIP** en la rama `main` y extraela en una carpeta nueva. Con el servidor detenido, copia **tu archivo `.env`** y **tu carpeta `.runtime`** de la instalacion anterior a la nueva, para conservar configuracion y datos locales. Ejecuta `scripts\start-web.cmd` de la carpeta nueva. Guarda la instalacion anterior hasta comprobar que esta funciona. Los archivos `.env.example` y `.env.web.example` son ejemplos y no sustituyen a tu `.env`.
+
+El iniciador muestra la **version compilada** y la **ruta completa de `dist`**. En `chrome://extensions`, comprueba que uses esa carpeta y pulsa **Recargar**. Si la extension esta cargada desde la carpeta antigua, quita esa copia y usa **Cargar descomprimida** con el nuevo `dist`. Despues recarga las pestanas de ALEKS y de la web y vuelve a vincularlas. La conexion debe mostrar **Web 0.5.1 · Extension 0.5.1**. Si el puerto 8000 ya esta ocupado, el iniciador se detiene antes de instalar o compilar: cierra tu servidor anterior con Ctrl+C. No finaliza procesos automaticamente.
 
 ## Desarrollo local
 

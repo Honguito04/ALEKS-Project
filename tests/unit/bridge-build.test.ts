@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { WRITER_VERSION } from '../../extension/src/writer-version';
 import { describe, expect, it } from 'vitest';
 import { bridgeOrigin } from '../../vite.config';
 
@@ -22,4 +24,8 @@ describe('origen permitido al compilar el puente web', () => {
   ])('rechaza configuración insegura: %s', value => {
     expect(() => bridgeOrigin(value, true)).toThrow('BRIDGE_WEB_ORIGIN');
   });
+});
+
+it('el manifiesto y el contrato de escritura tienen la misma versión',()=>{
+  expect(JSON.parse(readFileSync('extension/public/manifest.json','utf8')).version).toBe(WRITER_VERSION);
 });

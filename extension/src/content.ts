@@ -1,3 +1,4 @@
+import { WRITER_VERSION } from './writer-version';
 import { Controller } from './controller';
 import { SimulatorAdapter, PendingAleksAdapter } from './adapters';
 import { simulatorURL, type Limits, type Run, limitsSchema } from './shared';
@@ -45,6 +46,7 @@ if(!window.__mathAssistantLoaded) {
     if(sender.id!==chrome.runtime.id || message?.scope!=='adapter') return;
     void (async()=>{
       await initialized;
+      if(message.type==='writerVersion')return WRITER_VERSION;
       if(message.type==='nativeGuard') {
         if(!nativeGuard || nativeGuard.id!==message.writeId)throw Error('No hay una escritura de teclado vigente.');
         await nativeGuard.check();return true;
@@ -79,7 +81,7 @@ if(!window.__mathAssistantLoaded) {
         else throw Error('Comando de adaptador desconocido');
         return true;
       } finally {busy=false;assistAbort=undefined;}
-    })().then(data=>reply({ok:true,data})).catch(error=>reply({ok:false,error:error.message}));
+    })().then(data=>reply({ok:true,data,writerVersion:WRITER_VERSION})).catch(error=>reply({ok:false,error:error.message,writerVersion:WRITER_VERSION}));
     return true;
   });
 }
