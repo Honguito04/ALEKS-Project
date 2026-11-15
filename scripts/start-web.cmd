@@ -29,13 +29,9 @@ call npm.cmd run build
 if errorlevel 1 goto fail
 .venv\Scripts\python.exe scripts\local-web-check.py build
 if errorlevel 1 goto fail
-if not exist .env copy .env.example .env >nul
-set WEB_PUBLIC_MODE=false
-set WEB_PUBLIC_URL=http://127.0.0.1:8000
-set WEB_DATABASE_URL=
 echo Abre http://127.0.0.1:8000/app/ en tu navegador cuando aparezca Application startup complete.
 echo Conserva esta ventana abierta. Para detener el servidor pulsa Ctrl+C.
-.venv\Scripts\python.exe -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --no-access-log
+.venv\Scripts\python.exe scripts\local-web-profile.py
 if errorlevel 1 goto fail
 exit /b 0
 :fail

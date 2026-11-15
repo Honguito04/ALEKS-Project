@@ -1,6 +1,7 @@
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 from urllib.parse import urlsplit
+import os
 
 
 def normalize_web_origin(value: str) -> str:
@@ -18,7 +19,7 @@ def normalize_web_origin(value: str) -> str:
 
 
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(env_file=".env", extra="ignore")
+    model_config = SettingsConfigDict(env_file=os.environ.get("ALEKS_ENV_FILE", ".env"), extra="ignore")
     database_path: str = ".runtime/assistant.sqlite3"
     backend_public_url: str = "http://127.0.0.1:8000"
     # Lista separada por comas. No se permite el comodín *.

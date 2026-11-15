@@ -4,9 +4,11 @@ La web permite crear una cuenta, pegar un enunciado, adjuntar una imagen JPEG/PN
 
 ## Windows: primera prueba
 
-Instala Python **3.12** desde python.org y Node.js **24** desde nodejs.org. Descarga la version actual del repositorio y extrae el ZIP completo en una carpeta nueva. Para una primera instalacion, crea tu propia configuracion. Si estas actualizando, conserva tu `.env` y los datos de `.runtime` como se indica abajo; no copies `.venv` ni `node_modules`.
+Instala Python **3.12** desde python.org y Node.js **24** desde nodejs.org. Descarga la version actual del repositorio y extrae el ZIP completo en una carpeta nueva. Si estas actualizando desde una version anterior al perfil persistente, conserva tu `.env` y los datos de `.runtime` como se indica abajo; no copies `.venv` ni `node_modules`.
 
 En la carpeta extraida abre `scripts` y haz doble clic en **start-web.cmd**. El archivo instala dependencias, compila la web e inicia el servidor. La primera vez necesita Internet y puede tardar varios minutos. Cuando aparezca `Application startup complete`, abre **http://127.0.0.1:8000/app/** en Chrome o Edge. Conserva la ventana abierta.
+
+El iniciador guarda las cuentas y la configuracion fuera del ZIP, en **`%LOCALAPPDATA%\ALEKS-Project`**. Muestra las rutas completas de `.runtime` y `.env` en la consola. Para editar la clave o el modelo, abre **`scripts\edit-local-config.cmd`**, guarda y reinicia el servidor. Las actualizaciones siguientes reutilizan ese perfil; no vuelvas a crear la cuenta. El `.env` de la carpeta del codigo se importa solamente al preparar el perfil por primera vez.
 
 Tambien puedes ejecutarlo desde PowerShell, situado en la carpeta del proyecto:
 
@@ -24,9 +26,13 @@ Deten primero el servidor anterior con **Ctrl+C**. Actualizar el codigo no recar
 
 Si clonaste el proyecto con Git, ejecuta **`scripts\update-web.cmd`** en la misma carpeta. Comprueba que no haya cambios locales en archivos del proyecto, actualiza `main` con `git pull --ff-only` y ejecuta la compilacion y el servidor. Conserva `.env` y `.runtime`; no vuelve a pedir la clave ni el modelo. Si encuentra un conflicto o cambios locales, se detiene sin descartarlos.
 
-Si usas ZIP, descarga la version actual desde **Code → Download ZIP** en la rama `main` y extraela en una carpeta nueva. Con el servidor detenido, copia **tu archivo `.env`** y **tu carpeta `.runtime`** de la instalacion anterior a la nueva, para conservar configuracion y datos locales. Ejecuta `scripts\start-web.cmd` de la carpeta nueva. Guarda la instalacion anterior hasta comprobar que esta funciona. Los archivos `.env.example` y `.env.web.example` son ejemplos y no sustituyen a tu `.env`.
+Si usas ZIP, descarga la version actual desde **Code → Download ZIP** en la rama `main` y extraela en una carpeta nueva. Ejecuta `scripts\start-web.cmd`: usa automaticamente el mismo perfil de `%LOCALAPPDATA%\ALEKS-Project`. Conserva ese perfil aunque borres ZIP antiguos. Los archivos `.env.example` y `.env.web.example` son ejemplos y no sustituyen a tu configuracion.
 
-El iniciador muestra la **version compilada** y la **ruta completa de `dist`**. En `chrome://extensions`, comprueba que uses esa carpeta y pulsa **Recargar**. Si la extension esta cargada desde la carpeta antigua, quita esa copia y usa **Cargar descomprimida** con el nuevo `dist`. Despues recarga las pestanas de ALEKS y de la web y vuelve a vincularlas. La conexion debe mostrar **Web 0.5.1 · Extension 0.5.1**. Si el puerto 8000 ya esta ocupado, el iniciador se detiene antes de instalar o compilar: cierra tu servidor anterior con Ctrl+C. No finaliza procesos automaticamente.
+**Primera actualizacion desde una version antigua:** con el servidor detenido, copia **tu `.env` y tu carpeta `.runtime`** al nuevo proyecto antes del primer inicio. El iniciador los importa al perfil persistente una sola vez y conserva los originales. Usa el respaldo de SQLite para incluir las transacciones confirmadas que esten en el archivo WAL. Si tu configuracion usa una base de datos personalizada, el iniciador se detiene para evitar cambiarla; conserva el procedimiento de despliegue de esa base.
+
+**Si despues de actualizar ya aparece «Correo o contraseña incorrectos»:** no crees otra cuenta. Deten el servidor, localiza la carpeta anterior que contiene `.runtime` y abre **`scripts\restore-local-data.cmd`** del proyecto nuevo e indica su ruta completa; tambien puedes arrastrar esa carpeta sobre el archivo. Tambien puedes ejecutar `scripts\restore-local-data.cmd "C:\ruta de la carpeta anterior"`. Inicia de nuevo con `start-web.cmd` y usa tu cuenta anterior. La recuperacion conserva una copia de la base vacia anterior y rechaza reemplazar un perfil que ya tiene cuentas o datos del panel, incluidas sesiones Google. En ese caso conserva ambas carpetas: no borres ninguna base para forzar la importacion. La configuracion existente se conserva; solo se sustituye si aun es la plantilla original sin modificar. Si se elimino la carpeta con la base original y no existe respaldo, no es posible recuperar sus cuentas a partir del ZIP de GitHub.
+
+El iniciador muestra la **version compilada** y la **ruta completa de `dist`**. En `chrome://extensions`, comprueba que uses esa carpeta y pulsa **Recargar**. Si la extension esta cargada desde la carpeta antigua, quita esa copia y usa **Cargar descomprimida** con el nuevo `dist`. Despues recarga las pestanas de ALEKS y de la web y vuelve a vincularlas. La conexion debe mostrar **Web 0.5.2 · Extension 0.5.2**. Si el puerto 8000 ya esta ocupado, el iniciador se detiene antes de instalar o compilar: cierra tu servidor anterior con Ctrl+C. No finaliza procesos automaticamente.
 
 ## Desarrollo local
 
@@ -137,3 +143,9 @@ La configuración pública falla al arrancar si el origen no es HTTPS o no exist
 - Imagen Docker construida y probada: arranque local, HTML, cookie HttpOnly, recursos compilados con origen público HTTPS y bloqueo de rutas heredadas. Proxy Vite de desarrollo probado con registro y eliminación reales; origen ajeno rechazado.
 
 Sin llamadas a Gemini real, recursos remotos creados ni publicación. Faltan configurar secretos, confirmar cuota gratuita y condiciones de Render/Gemini, y comprobar el despliegue real siguiendo esta guía. Las pruebas PostgreSQL locales no acreditan acceso a Neon remoto.
+
+## Auditoria local con Reticle
+
+La instrumentacion de la web se activa solo en desarrollo y con `RETICLE_ENABLED=true`; no se incluye en `build:web`. Inicia el backend local, ejecuta `npx @reticlehq/server serve --headless` y despues `RETICLE_ENABLED=true npm run dev:web`. Abre `http://127.0.0.1:5174/app/` mediante una sesion de Reticle. El plugin conserva las herramientas de React y no captura cuerpos de peticiones, que pueden incluir contrasenas. Usa una base aislada y cuentas de prueba para las auditorias.
+
+Los resultados y limites de la auditoria de cuentas estan en [VALIDACION.md](VALIDACION.md).

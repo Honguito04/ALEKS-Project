@@ -6,7 +6,7 @@ La automatización requiere **Chrome de escritorio 116 o posterior**, la extensi
 
 ## Actualización de versiones
 
-Desde 0.5.1 la conexión muestra **Web 0.5.1 · Extensión 0.5.1** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
+Desde 0.5.1 la conexión muestra **Web 0.5.2 · Extensión 0.5.2** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
 
 ## Primera prueba en Windows
 

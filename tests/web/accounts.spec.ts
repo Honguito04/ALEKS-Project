@@ -55,6 +55,26 @@ test('contraseña incorrecta al eliminar conserva la sesión; eliminar revoca la
   await expect(page.getByRole('alert')).toContainText(/credenciales|correo|contraseña/i);
 });
 
+test('una cuenta existente permite reintentar una contraseña corta y volver a entrar sin registrarse', async ({ page }) => {
+  const address = email();
+  await register(page, address);
+  await page.getByRole('button', { name: 'Cerrar sesión' }).click();
+  await expect(page.getByText(/este formulario no inicia sesión con Google/)).toBeVisible();
+  await page.getByText('¿Tu cuenta dejó de funcionar después de actualizar?', { exact: true }).click();
+  await expect(page.getByText(/No hace falta crear otra cuenta/)).toBeVisible();
+  await page.getByLabel('Correo electrónico').fill(address);
+  await page.getByLabel('Contraseña', { exact: true }).fill('x');
+  const rejected = page.waitForResponse(r => r.url().endsWith('/web-api/login'));
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+  expect((await rejected).status()).toBe(401);
+  await expect(page.getByRole('alert')).toHaveText('Correo o contraseña incorrectos');
+  await page.getByLabel('Contraseña', { exact: true }).fill(password);
+  await page.getByRole('button', { name: 'Entrar', exact: true }).click();
+  await expect(page.getByText(address, { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page.getByText(address, { exact: true })).toBeVisible();
+});
+
 test('cancelar mientras se crea una consulta descarta su resultado tardío', async ({ page }) => {
   await register(page, email());
   let release!: () => void;

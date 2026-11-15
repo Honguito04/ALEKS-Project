@@ -245,6 +245,7 @@ export default function App() {
           <span className="step-label">TU ESPACIO PERSONAL</span>
           <h2>{mode === 'login' ? 'Continúa aprendiendo' : 'Empieza con una cuenta'}</h2>
           <p className="muted">{mode === 'login' ? 'Entra para consultar y revisar tus ejercicios.' : 'Solo necesitas un correo y una contraseña segura.'}</p>
+          <p className="field-help">Usa la contraseña que creaste en esta aplicación. Puedes usar tu correo Gmail; este formulario no inicia sesión con Google ni usa su contraseña.</p>
           <form onSubmit={authenticate}>
             <label htmlFor="email">Correo electrónico</label><input id="email" type="email" autoComplete="email" maxLength={254} value={email} onChange={event => setEmail(event.target.value)} required />
             <label htmlFor="password">Contraseña</label><input id="password" type="password" autoComplete={mode === 'login' ? 'current-password' : 'new-password'} minLength={mode === 'register' ? 12 : undefined} maxLength={128} value={password} onChange={event => setPassword(event.target.value)} required />
@@ -253,6 +254,7 @@ export default function App() {
           </form>
           <p className="auth-switch">{mode === 'login' ? '¿Primera vez aquí?' : '¿Ya tienes una cuenta?'} <button className="inline-button" onClick={() => { setMode(mode === 'login' ? 'register' : 'login'); setPassword(''); setError(''); }} disabled={authBusy}>{mode === 'login' ? 'Crear una cuenta' : 'Iniciar sesión'}</button></p>
           <p className="privacy-note">No hay recuperación de contraseña por correo en esta demo. Conserva tu contraseña en un gestor seguro.</p>
+          <details className="account-recovery"><summary>¿Tu cuenta dejó de funcionar después de actualizar?</summary><p>Si descargaste otro ZIP, tus cuentas pueden seguir en la carpeta anterior. Detén el servidor y ejecuta <code>scripts\restore-local-data.cmd</code> en la carpeta nueva; indica la carpeta de la instalación anterior. Después inicia la web con <code>scripts\start-web.cmd</code> y entra con tu contraseña habitual.</p><p>Conserva la carpeta anterior hasta recuperar tus datos. No hace falta crear otra cuenta.</p></details>
         </div>
         <aside className="welcome-aside">
           <div className="math-paper" aria-hidden="true"><span className="paper-caption">ENTENDER EL PORQUÉ</span><span className="paper-expression">4 × 3 = <strong>12</strong></span><span className="paper-line" /><span className="paper-small">Un paso. Una idea más clara.</span><span className="paper-check">✓</span></div>

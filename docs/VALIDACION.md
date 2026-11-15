@@ -1,6 +1,21 @@
 # Validación ejecutada
 
-Actualización: 14 de noviembre de 2026 (UTC). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+Actualización: 15 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+
+
+## Revisión 0.5.2: cuentas persistentes y auditoría con Reticle
+
+**416 pruebas de backend, 257 unitarias, 18 de navegador web y 3 del comprobador de inicio pasadas**. TypeScript y compilaciones de extensión y web correctos. Se omitieron seis pruebas PostgreSQL porque no se configuró una base de prueba; queda la advertencia existente de Starlette/httpx. No se modificó el escritor ALEKS ni se repitió su suite completa.
+
+Se confirmó que una instalación ZIP nueva creaba una base de cuentas vacía al usar una ruta relativa. El iniciador de Windows utiliza ahora `%LOCALAPPDATA%\ALEKS-Project` para los datos y `.env`. Doce regresiones de perfil incluyen registro real, migración, reinicio, otro ZIP y acceso con el mismo identificador y contraseña; copia de transacciones WAL mediante SQLite backup; conservación de configuración; y rechazo de sobrescritura de cuentas o sesiones/datos del panel. `restore-local-data.cmd` recupera una instalación anterior detenida y `edit-local-config.cmd` abre la configuración que realmente usa el servidor. Los originales permanecen disponibles.
+
+La web utiliza cuentas propias de correo y contraseña, incluso cuando el correo es Gmail. Google OAuth pertenece al panel de extensión. Se aclaró esa diferencia en el formulario. Se corrigió además el login con contraseña corta: respondía 422 antes de comprobar credenciales y contabilizar el intento; ahora devuelve el rechazo 401 habitual y permite reintentar. El registro mantiene el mínimo de doce caracteres.
+
+Se usó Reticle mediante su transporte MCP HTTP local, sobre Vite y FastAPI reales con cuentas sintéticas. `reticle_act` devolvió `verified: "yes"` para registro (POST 201 y acceso visible), consulta del ejemplo (POST 202 y resultado 12), cierre de sesión, rechazo de contraseña incorrecta (POST 401 y aviso) y entrada posterior correcta (POST 200 y acceso visible). Después de reiniciar el backend y recargar la pestaña, `reticle_assert` confirmó el control de sesión visible con `verified: "yes"`; esta última comprobación acredita presencia, no todos los canales de la aplicación.
+
+Reticle encontró texto con contraste insuficiente en el acceso y el área de trabajo. Se ajustaron los colores; la última inspección de la vista autenticada devolvió `audit: []`. Esa inspección visual no equivale a una certificación completa de accesibilidad. La instrumentación web es opcional en desarrollo (`RETICLE_ENABLED=true`), no captura cuerpos de solicitudes y no se incluye en la compilación de producción. El servidor Reticle 3.10.2 advirtió que el SDK instalado es 3.9.0; los recorridos citados sí emitieron sus veredictos.
+
+No se ejecutaron Windows, Google OAuth real ni una cuenta ALEKS autenticada. La recuperación necesita la base de la instalación anterior; un ZIP de GitHub no contiene los usuarios del equipo. Las pruebas de interfaz adicionales conservan cancelación, sesión vencida, eliminación, imagen, cuota y compatibilidad del puente con uno o dos campos.
 
 ## Revisión 0.5.1: versiones compatibles, decimales y recorrido web
 

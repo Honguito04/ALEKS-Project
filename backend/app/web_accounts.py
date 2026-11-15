@@ -63,6 +63,11 @@ class Credentials(BaseModel):
         return value
 
 
+class LoginCredentials(Credentials):
+    # The registration policy must not hide an incorrect login behind a 422.
+    password: str = Field(min_length=1, max_length=128)
+
+
 class PasswordConfirmation(BaseModel):
     model_config = ConfigDict(extra="forbid")
     password: str = Field(min_length=1, max_length=128)
@@ -179,7 +184,7 @@ async def register(body: Credentials, request: Request, response: Response, sess
 
 
 @router.post("/login")
-async def login(body: Credentials, request: Request, response: Response, session=Depends(require_csrf)):
+async def login(body: LoginCredentials, request: Request, response: Response, session=Depends(require_csrf)):
     client = request.client.host if request.client else "unknown"
     _throttle([(f"login:{client}", 3600, 100), (f"login-email:{body.email}", 900, 10)])
     with web_db() as conn:

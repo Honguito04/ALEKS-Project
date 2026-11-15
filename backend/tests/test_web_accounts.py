@@ -130,6 +130,26 @@ def test_login_rate_limit_persists(web_client):
     assert web_client.post("/web-api/login", headers=h, json={"email": "user@example.org", "password": PASSWORD}).status_code == 429
 
 
+@pytest.mark.parametrize("password", ["x", "short pass!"])
+def test_short_login_password_is_an_auth_failure_and_counts_as_an_attempt(web_client, password):
+    register(web_client)
+    h = headers(web_client)
+    response = web_client.post("/web-api/login", headers=h, json={"email": "user@example.org", "password": password})
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Correo o contraseña incorrectos"
+    with web_db() as conn:
+        attempts = conn.execute("SELECT used FROM web_throttle WHERE bucket=?", (digest("login-email:user@example.org"),)).fetchone()
+    assert attempts["used"] == 1
+    assert web_client.post("/web-api/login", headers=h, json={"email": "user@example.org", "password": PASSWORD}).status_code == 200
+
+
+def test_registration_still_requires_twelve_characters(web_client):
+    response = web_client.post("/web-api/register", headers=headers(web_client), json={"email": "user@example.org", "password": "short pass!"})
+    assert response.status_code == 422
+    with web_db() as conn:
+        assert conn.execute("SELECT COUNT(*) AS n FROM web_users").fetchone()["n"] == 0
+
+
 def test_registration_is_throttled(web_client):
     h = headers(web_client)
     for _ in range(3):
