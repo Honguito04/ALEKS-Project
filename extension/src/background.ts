@@ -219,7 +219,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
           if(context.fill_blockers.includes('result_present'))throw Error(automations.get(t.id)?.view.canContinue?
             'La respuesta anterior ya fue confirmada. Aumenta el máximo de respuestas y pulsa Continuar desde la respuesta correcta.':
             'ALEKS muestra un resultado anterior. Pulsa Siguiente en ALEKS y lee el nuevo ejercicio antes de iniciar otro recorrido.');
-          throw Error(context.fill_blockers.map(blocker=>fillBlockerMessages[blocker]).join(' ') || 'El recorrido necesita un único recuadro vacío y un enunciado legible.');
+          throw Error(context.fill_blockers.map(blocker=>fillBlockerMessages[blocker]).join(' ') || 'El recorrido necesita uno o dos recuadros vacíos compatibles y un enunciado legible.');
         }
         const seed=m.proposalId===undefined?undefined:assistProposals.get(t.id);
         if(m.proposalId!==undefined && (!seed || seed.id!==m.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta cambió; vuelve a consultar.');

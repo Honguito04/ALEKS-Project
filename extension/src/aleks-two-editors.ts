@@ -6,12 +6,8 @@ import { visible,disabled } from './aleks-dom';
 import { answerUnit } from './answer-units';
 import { parseSupportedAnswer,sameAnswer } from './answer-format';
 
-export function answerRoots(document:Document):HTMLElement[] {
-  return [...new Set([...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')]
-    .map(input=>input.closest<HTMLElement>('.ansed_root'))
-    .filter((root):root is HTMLElement=>Boolean(root && visible(root) && !root.closest('#algoPrompt'))))]
-    .sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top || a.getBoundingClientRect().left-b.getBoundingClientRect().left);
-}
+import { answerRoots,probabilityRowOrder } from './aleks-answer-roots';
+export { answerRoots } from './aleks-answer-roots';
 
 /** Orden visual estable. Nunca concatena dos respuestas. Selecciona únicamente los botones de cm aportados. */
 export async function fillEditorAnswers(document:Document,fingerprint:string,answers:FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
@@ -22,6 +18,7 @@ export async function fillEditorAnswers(document:Document,fingerprint:string,ans
   if(context.fingerprint!==fingerprint || !context.can_fill_integer || ![1,2].includes(roots.length) || answers.length!==roots.length || context.fields.length!==roots.length ||
     new Set(answers.map(answer=>answer.field_key)).size!==roots.length ||
     context.fields.some(field=>!answers.some(answer=>answer.field_key===field.key && parseSupportedAnswer(answer.value))))throw Error('Se necesita una respuesta válida por cada campo del ejercicio actual.');
+  const eventOrder=probabilityRowOrder(roots)?.join();
   const units=context.fields.map(field=>{
     const raw=answers.find(answer=>answer.field_key===field.key)?.unit || '';
     const unit=raw?answerUnit(raw):undefined;
@@ -34,7 +31,7 @@ export async function fillEditorAnswers(document:Document,fingerprint:string,ans
     signal.throwIfAborted();
     const current=await readAleksPrompt(document);signal.throwIfAborted();
     const now=answerRoots(document),editor=inspectAleksEditor(document);
-    if(document.querySelector('#algoPrompt')!==promptNode || current.fingerprint!==prompt.fingerprint || now.length!==roots.length || now.some((root,i)=>root!==roots[i]) ||
+    if(document.querySelector('#algoPrompt')!==promptNode || current.fingerprint!==prompt.fingerprint || now.length!==roots.length || now.some((root,i)=>root!==roots[i]) || probabilityRowOrder(now)?.join()!==eventOrder ||
       editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('El ejercicio o los recuadros cambiaron durante la escritura.');
     for(let i=0;i<roots.length;i++) {
       const field=inspectEditorRoot(roots[i]);

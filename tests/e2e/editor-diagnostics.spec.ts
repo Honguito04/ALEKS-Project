@@ -83,3 +83,27 @@ test('no declara habilitado un control duplicado ajeno ni un Fraction deshabilit
   expect(report.controls).toContainEqual({label:'Fraction',count:1,visible:1,enabled:0});
   expect(report.controls).toContainEqual({label:'Start over',count:1,visible:0,enabled:0});
 });
+
+test('cuando el selector no coincide, distingue buffers en el enunciado y fuera sin exportar etiquetas ni valores',async({page})=>{
+  const report=await page.evaluate(()=>{
+    const root=document.querySelector('.ansed_root')!;
+    document.querySelector('#algoPrompt')!.append(root);
+    const other=document.createElement('textarea');other.className='ansed_input';
+    other.value='PRIVATE_BUFFER';other.setAttribute('aria-label','PRIVATE_LABEL');document.body.append(other);
+    return window.editorDiagnostics(document);
+  });
+  expect(report).toMatchObject({version:2,inputCount:0,candidateCounts:{buffersInsidePrompt:1,buffersOutsidePrompt:1,textareas:1,rootsOutsidePrompt:0}});
+  expect(JSON.stringify(report)).not.toContain('PRIVATE');
+});
+
+test('cuenta los dos inputs P(A)/P(B) sin confundir las fórmulas de sus etiquetas con recuadros',async({page})=>{
+  const rows=await readFile('tests/fixtures/aleks-probability-rows.html','utf8');
+  await page.evaluate(rows=>{
+    document.querySelector('.ansed_root')!.remove();
+    document.body.insertAdjacentHTML('beforeend',rows);
+  },rows);
+  const report=await page.evaluate(()=>window.editorDiagnostics(document));
+  expect(report).toMatchObject({version:2,status:'observed',rootCount:2,visibleRootCount:2,inputCount:2,truncated:false});
+  expect(report.editors.map(editor=>editor.inputCount)).toEqual([1,1]);
+  expect(report.editors.map(editor=>editor.treeCount)).toEqual([1,1]);
+});

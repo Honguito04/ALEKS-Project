@@ -3,6 +3,8 @@ import { painted,visible,disabled } from './aleks-dom';
 import { inspectCircleTable,inspectEditorMenu } from './aleks-circle';
 import { inspectSingleEditor } from './aleks-single-editor';
 
+import { knownAnswerInputs } from './aleks-answer-roots';
+
 function inputBlockers(element:HTMLInputElement) {
   const reasons=new Set<keyof EditorObservation['inputDiagnostics']['blockedBy']>();
   const view=element.ownerDocument.defaultView;
@@ -96,7 +98,7 @@ function observeResult(document:Document,next:ControlObservation,nextTopic:Contr
  * La respuesta visible y la presencia del botón no demuestran un envío aceptado.
  */
 export function inspectAleksEditor(document:Document):EditorObservation {
-  const matches=[...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')];
+  const matches=knownAnswerInputs(document);
   const inputs=matches.filter(visible);
   const blockedBy={noLayout:0,hiddenAttribute:0,displayNone:0,visibilityHidden:0,opacityZero:0,noView:0};
   for(const input of matches)for(const reason of inputBlockers(input))blockedBy[reason]++;

@@ -5,21 +5,26 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 
 const account=`bridge-${crypto.randomUUID()}@example.com`;
+const eventAccount=`bridge-events-${crypto.randomUUID()}@example.com`;
 const password='Prueba-bridge-segura-42';
 test.beforeAll(async({request})=>{
+  // Distinct journeys use separate users; do not exhaust the real per-user
+  // login throttle while testing the bridge instead of authentication.
+  for(const email of [account,eventAccount]){
   const session=await request.get('/web-api/session').then(r=>r.json());
-  const registered=await request.post('/web-api/register',{data:{email:account,password},
+  const registered=await request.post('/web-api/register',{data:{email,password},
     headers:{Origin:'http://127.0.0.1:8000','X-CSRF-Token':session.csrf_token}});
   expect(registered.status()).toBe(201);
+  }
 });
 
-async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean}={}) {
-  await page.addInitScript(({version,legacy,fields,decimal}) => {
+async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean}={}) {
+  await page.addInitScript(({version,legacy,fields,decimal,events,blocked}) => {
     const context = { fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
-      fields:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:true,can_fill_fraction:true,fill_blockers:[] };
+      fields:events?[{key:'field_1',label:'P(A)'},{key:'field_2',label:'P(B)'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
     const proposal = {id:'00000000-0000-4000-8000-000000000021',context,
       result:{fingerprint:context.fingerprint,model:'mock-gemini',provider:'gemini',provider_calls:1,verified:false,verification:'none',
-        proposal:{status:'proposed',answers:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
+        proposal:{status:'proposed',answers:events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'13/18',unit:''}]:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
     let state:any={connected:true,writerVersion:version,providerCalls:0},listeners:((message:any)=>void)[]=[],disconnects:(()=>void)[]=[];
     let deferred:any;
     const api:any={commands:[],disconnections:0,holdPreview:false,
@@ -51,9 +56,9 @@ async function prepare(page: Page, options:{version?:string;legacy?:boolean;fiel
           queueMicrotask(()=>api.emit({requestId:message.requestId,ok:true,value}));
         }};
     }}}});
-  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false});
+  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false,events:options.events??false,blocked:options.blocked??false});
   await page.goto('/app/');
-  await page.getByLabel('Correo electrónico').fill(account);
+  await page.getByLabel('Correo electrónico').fill(options.events?eventAccount:account);
   await page.getByLabel('Contraseña',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
   await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
@@ -74,7 +79,7 @@ test('puerto simulado: vinculación concreta, propuesta, límites, estado y dete
   await prepare(page);await bindRead(page);
   await page.getByRole('button',{name:'Consultar vista previa'}).click();
   await expect(page.getByText('Propuesta simulada para probar la interfaz del puente.')).toBeVisible();
-  await page.getByLabel('Máximo de respuestas',{exact:true}).fill('2');
+  await page.getByLabel('Máximo de ejercicios',{exact:true}).fill('2');
   await page.getByLabel('Usar teclado de Chrome en la pestaña vinculada').check();
   await page.getByLabel('Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites').check();
   await page.getByRole('button',{name:'Autorizar e iniciar recorrido'}).click();
@@ -116,7 +121,7 @@ test('puerto simulado: cambiar pestaña requiere nueva lectura y autorización; 
   await page.getByRole('button',{name:'Leer actividad ALEKS'}).click();
   await page.getByLabel('Usar teclado de Chrome en la pestaña vinculada').check();
   await page.getByLabel('Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites').check();
-  await page.getByLabel('Máximo de respuestas',{exact:true}).fill('0');
+  await page.getByLabel('Máximo de ejercicios',{exact:true}).fill('0');
   await expect(page.getByRole('button',{name:'Autorizar e iniciar recorrido'})).toBeDisabled();
   expect(await page.evaluate(()=>(window as any).bridgeMock.commands.filter((c:any)=>c.command==='bind').map((c:any)=>c.tabId))).toEqual([7,8]);
 });
@@ -172,5 +177,28 @@ for(const fields of [1,2]) {
     await page.getByRole('button',{name:'Autorizar e iniciar recorrido'}).click();
     expect(await page.evaluate(()=>(window as any).bridgeMock.commands.filter((c:any)=>c.command==='start').length)).toBe(1);
     await expect(page.getByText(`Web ${WRITER_VERSION} · Extensión ${WRITER_VERSION}`,{exact:true})).toBeVisible();
+  });
+}
+
+for (const blocked of [false, true]) {
+  test(`muestra ambas probabilidades por clave y exige dos editores compatibles (bloqueo: ${blocked})`, async ({ page }) => {
+    await prepare(page, { events: true, blocked });
+    await bindRead(page);
+    const consent = page.getByRole('checkbox', { name: /Autorizo escribir/ });
+    if (blocked) {
+      await expect(consent).toBeDisabled();
+      await expect(page.locator('#bridge-fill-blockers')).toContainText(/recuadro/);
+    }
+    await page.getByRole('button', { name: 'Consultar vista previa' }).click();
+    const answers = page.locator('.bridge-proposal p').filter({ has: page.locator('strong') });
+    await expect(answers).toHaveText(['P(A): 13/18', 'P(B): 1/2']);
+    if (blocked) {
+      await expect(page.locator('#bridge-fill-blockers')).not.toContainText('compatible con fracciones');
+      await expect(consent).toBeDisabled();
+      return;
+    }
+    await page.getByLabel('Usar teclado de Chrome en la pestaña vinculada').check();
+    await consent.check();
+    await expect(page.getByRole('button', { name: 'Autorizar e iniciar recorrido' })).toBeEnabled();
   });
 }

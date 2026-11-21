@@ -4,7 +4,30 @@ import { inspectAleksEditor } from './aleks-editor';
 import { visible,disabled } from './aleks-dom';
 import { answerRoots,fillEditorAnswers } from './aleks-two-editors';
 import { inspectEditorRoot } from './aleks-single-editor';
+import { probabilityRowOrder } from './aleks-answer-roots';
 import { parseSupportedAnswer,sameAnswer } from './answer-format';
+
+// Una definición de A y B también puede preceder a una sola pregunta sobre
+// A ∩ B. Solo la petición explícita de probabilidades separadas crea campos.
+function requestedEventLabels(statement: string): Map<string, string> | undefined {
+  const request = /\bprobabilidad(?:es)?\s+de\s+cada\s+(?:uno\s+de\s+los\s+(?:siguientes\s+)?)?(?:sucesos?|eventos?)\s*:\s*/iu.exec(statement);
+  if (!request) return;
+  const body = statement.slice(request.index + request[0].length)
+    .split(/\s+(?:escrib(?:e|a|ir)|expres(?:a|e|ar))\s+las\s+respuestas\b/iu)[0];
+  const markers = [...body.matchAll(/\b(?:suceso|evento)\s+([a-z])\s*:\s*/giu)];
+  if (markers.length < 2 || markers[0].index !== 0) return;
+
+  const labels = new Map<string, string>();
+  for (const [index, marker] of markers.entries()) {
+    const name = marker[1].toUpperCase();
+    const definition = body.slice(marker.index + marker[0].length, markers[index + 1]?.index).trim();
+    if (!definition || labels.has(name)) return;
+    const label = 'P(' + name + '): ' + definition;
+    labels.set(name, label.length > 200 ? label.slice(0, 199) + '…' : label);
+  }
+  if (labels.size > 12) throw Error('Hay demasiados sucesos para esta consulta.');
+  return labels;
+}
 
 export async function assistContext(document:Document,allowImage=false):Promise<AssistContext> {
   const prompt=await readAleksPrompt(document);
@@ -12,19 +35,40 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   const readable=prompt.status==='readable' && Boolean(prompt.statement && prompt.fingerprint);
   if(!readable && (!allowImage || prompts.length!==1))throw Error('No hay un enunciado legible. Si el ejercicio está visible, incluye su captura para consultar a la IA.');
   const editor=inspectAleksEditor(document),single=editor.singleEditor;
-  const roots=new Set([...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')]
-    .map(input=>input.closest<HTMLElement>('.ansed_root')).filter((root):root is HTMLElement=>root!==null && visible(root) && !root.closest('#algoPrompt')));
-  if(roots.size>12)throw Error('Hay demasiados recuadros para esta consulta.');
-  const fields=editor.circleTable.status==='observed'?editor.circleTable.fields.map(field=>({key:field.kind,label:field.label})):
-    roots.size>1?[...roots].sort((a,b)=>a.getBoundingClientRect().top-b.getBoundingClientRect().top || a.getBoundingClientRect().left-b.getBoundingClientRect().left)
-      .map((_,i)=>({key:`field_${i+1}`,label:`Recuadro ${i+1} en orden visual de arriba abajo e izquierda a derecha; una respuesta por campo`})):
-      [{key:'answer',label:single.readback.unitLabel?`Respuesta del ejercicio (unidad predefinida: ${single.readback.unitLabel}; escribe solo el número)`:'Respuesta del ejercicio'}];
+  const pair=answerRoots(document);
+  if(pair.length>12)throw Error('Hay demasiados recuadros para esta consulta.');
+  const definitions = readable ? requestedEventLabels(prompt.statement!) : undefined;
+  const rowOrder = probabilityRowOrder(pair);
+  // Generic unlabelled editors cannot establish which event belongs to which
+  // box. Keep separate answers for preview, but require the confirmed rows to
+  // write to an explicitly named probability event.
+  const mismatch = Boolean(definitions && (definitions.size !== pair.length ||
+    !rowOrder || rowOrder.some(event => !definitions.has(event))));
+  let fields: AssistContext['fields'];
+  if (editor.circleTable.status === 'observed') {
+    fields = editor.circleTable.fields.map(field => ({ key: field.kind, label: field.label }));
+  } else if (definitions || rowOrder || pair.length > 1) {
+    let labels: string[];
+    if (rowOrder && !mismatch) {
+      labels = rowOrder.map(event => definitions?.get(event) ?? 'P(' + event + ')');
+    } else if (definitions) {
+      labels = [...definitions.values()];
+    } else {
+      labels = pair.map((_, i) => `Recuadro ${i + 1} en orden visual de arriba abajo e izquierda a derecha; una respuesta por campo`);
+    }
+    fields = labels.map((label, i) => ({ key: `field_${i + 1}`, label }));
+  } else {
+    fields = [{ key: 'answer', label: single.readback.unitLabel
+      ? `Respuesta del ejercicio (unidad predefinida: ${single.readback.unitLabel}; escribe solo el número)`
+      : 'Respuesta del ejercicio' }];
+  }
   const fill_blockers:FillBlocker[]=[];
   if(!readable)fill_blockers.push('unreadable_prompt');
-  const pair=answerRoots(document);
   const pairRead=pair.map(inspectEditorRoot);
   const two=pair.length===2 && editor.circleTable.status!=='observed';
-  if(two) {
+  if(mismatch) {
+    fill_blockers.push('field_count_mismatch');
+  } else if(two) {
     if(pairRead.some(field=>field.status!=='observed'))fill_blockers.push('editor_structure');
     if(pairRead.some(field=>field.disabled))fill_blockers.push('editor_disabled');
     if(pairRead.some(field=>field.readback.status==='readable'))fill_blockers.push('editor_not_empty');
@@ -49,7 +93,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)))].map(value=>value.toString(16).padStart(2,'0')).join('');
   return assistContextSchema.parse({fingerprint,statement:readable?prompt.statement:'No fue posible leer el enunciado como texto estructurado. Interpreta únicamente el ejercicio visible en la captura adjunta; si faltan datos, indícalo.',
     fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,can_fill_fraction,fill_blockers,
-    ...(single.readback.fixed_unit?{fixed_unit:single.readback.fixed_unit}:{})});
+    ...(fields.length===1 && single.readback.fixed_unit?{fixed_unit:single.readback.fixed_unit}:{})});
 }
 
 /** El usuario confirmó la conversión automática de a/b en fracción vertical.
@@ -78,10 +122,9 @@ async function fillScalar(document:Document,fingerprint:string,value:string,sign
   const before=await assistContext(document);
   if(before.fingerprint!==fingerprint || !before.can_fill_integer)throw Error('El ejercicio o el recuadro cambió. Vuelve a consultar a la IA.');
   const promptBefore=await readAleksPrompt(document);
-  const inputs=[...document.querySelectorAll<HTMLInputElement>('input.ansed_input[aria-label="Answer Editor"][type="text"]')]
-    .filter(input=>{const root=input.closest<HTMLElement>('.ansed_root');return root && visible(root) && !root.closest('#algoPrompt');});
-  if(inputs.length!==1)throw Error('No hay un único recuadro al que escribir.');
-  const input=inputs[0],root=input.closest<HTMLElement>('.ansed_root')!,previousBuffer=input.value;
+  const roots=answerRoots(document);
+  if(roots.length!==1)throw Error('No hay un único recuadro al que escribir.');
+  const root=roots[0],input=root.querySelector<HTMLInputElement>('input.ansed_input')!,previousBuffer=input.value;
   const checkInput=()=>{
     signal.throwIfAborted();
     if(!root.isConnected || !input.isConnected || input.closest('.ansed_root')!==root || root.querySelector('input.ansed_input')!==input ||

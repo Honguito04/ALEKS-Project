@@ -55,6 +55,18 @@ describe('diagnóstico compartido de escritura',()=>{
     expect(proposalFillMessages(candidate).join(' ')).toContain('editor vacío compatible con fracciones');
   });
 
+  it.each([1,2])('no añade un diagnóstico de fracción si falta el editor: %s campos',count=>{
+    const candidate=proposal();
+    candidate.context.can_fill_fraction=false;
+    candidate.context.fill_blockers=['editor_missing'];
+    if(count===2){
+      candidate.context.fields=[{key:'field_1',label:'P(A)'},{key:'field_2',label:'P(B)'}];
+      candidate.result.proposal.answers=[{field_key:'field_1',value:'13/18',unit:''},{field_key:'field_2',value:'1/2',unit:''}];
+    }
+    expect(proposalFillBlockers(candidate)).toEqual(['editor_missing']);
+    expect(proposalFillMessages(candidate)).toHaveLength(1);
+  });
+
   it('no convierte un cálculo exacto de ruleta en una propuesta visual por adjuntar una captura',()=>{
     const candidate=proposal();candidate.result={...candidate.result,provider:'deterministic',provider_calls:0,verified:true,verification:'independent_spins'};
     expect(captureFillPolicy(candidate.context,candidate.result,true)).toEqual(candidate.context);

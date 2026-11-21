@@ -1,9 +1,10 @@
 import type { SingleEditorObservation } from './shared';
-import { painted,visible,disabled } from './aleks-dom';
+import { painted,disabled } from './aleks-dom';
 import { parseSupportedAnswer } from './answer-format';
 import { answerUnit } from './answer-units';
 
-const INPUT='input.ansed_input[aria-label="Answer Editor"][type="text"]';
+import { answerRoots,TEXT_EDITOR_INPUT } from './aleks-answer-roots';
+
 const unsupported=(reason:string):SingleEditorObservation['readback']=>({status:'unsupported',reason});
 
 /** Diagnóstico de un único editor visual, sin exigir controles de unidades.
@@ -11,20 +12,18 @@ const unsupported=(reason:string):SingleEditorObservation['readback']=>({status:
  * El buffer del input, canvas y los IDs dinámicos no se leen.
  */
 export function inspectSingleEditor(document:Document):SingleEditorObservation {
-  const roots=new Set([...document.querySelectorAll<HTMLInputElement>(INPUT)]
-    .map(input=>input.closest<HTMLElement>('.ansed_root'))
-    .filter((root):root is HTMLElement=>root!==null && visible(root) && !root.closest('#algoPrompt')));
+  const roots=answerRoots(document);
   const fail=(status:SingleEditorObservation['status'],reason:string):SingleEditorObservation=>({
-    status,reason,rootCount:roots.size,autoSubmitSupported:false,readback:unsupported(reason)});
-  if(roots.size!==1)return fail(roots.size?'ambiguous':'missing',roots.size?'Hay varios editores visuales; no se elige un recuadro sin sus etiquetas.':'No hay un editor visual único asociado al input conocido.');
-  return inspectEditorRoot([...roots][0]);
+    status,reason,rootCount:roots.length,autoSubmitSupported:false,readback:unsupported(reason)});
+  if(roots.length!==1)return fail(roots.length?'ambiguous':'missing',roots.length?'Hay varios editores visuales; no se elige un recuadro sin sus etiquetas.':'No hay un editor visual único asociado al input conocido.');
+  return inspectEditorRoot(roots[0]);
 }
 
 export function inspectEditorRoot(root:HTMLElement):SingleEditorObservation {
   const fail=(status:SingleEditorObservation["status"],reason:string):SingleEditorObservation=>({status,reason,rootCount:1,autoSubmitSupported:false,readback:unsupported(reason)});
-  const inputs=root.querySelectorAll<HTMLInputElement>(INPUT);
+  const inputs=root.querySelectorAll<HTMLInputElement>(TEXT_EDITOR_INPUT);
   const trees=root.querySelectorAll<HTMLElement>(':scope > .ansed_tree');
-  if(inputs.length!==1 || root.querySelector('.ansed_root') || trees.length!==1 || !painted(trees[0]))return fail('unsupported','El recuadro no conserva un único input y árbol visual reconocidos.');
+  if(inputs.length!==1 || root.querySelectorAll('input,textarea,select').length!==1 || root.querySelector('.ansed_root') || trees.length!==1 || !painted(trees[0]))return fail('unsupported','El recuadro no conserva un único input y árbol visual reconocidos.');
   const readback=readNumber(root,trees[0]);
   return {status:'observed',reason:'Un recuadro visual reconocido. Falta validar su correspondencia con el enunciado y la interacción del editor.',
     rootCount:1,disabled:disabled(inputs[0]) || inputs[0].readOnly,autoSubmitSupported:false,readback};

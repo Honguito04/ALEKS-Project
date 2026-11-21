@@ -1,7 +1,19 @@
 # Validación ejecutada
 
-Actualización: 15 de noviembre de 2026 (America/Lima). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
+Actualización: 21 de noviembre de 2026 (UTC). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
 
+
+## Revisión 0.5.3: dos probabilidades con etiquetas P(A) y P(B)
+
+**420 pruebas de backend y 259 unitarias pasadas; 390 pruebas de navegador de la extensión y 20 de la web pasadas.** Se omitieron las seis pruebas PostgreSQL sin base de prueba. Compilaron la extensión y la web; pasaron tres pruebas del iniciador local.
+
+El HTML aportado usa inputs `aria-label="P(A) = "` y `aria-label="P(B) = "`. El selector anterior solo aceptaba `Answer Editor`, por lo que contaba cero recuadros y enviaba un único campo a la IA. El nuevo reconocimiento contrasta la etiqueta del input con las fórmulas MathML de su fila; los paréntesis pueden estar dibujados en canvas y no aparecer en `textContent`. Se excluyen los árboles decorativos y se conserva el rechazo de estructuras ambiguas.
+
+Las claves siguen el orden visual de las filas, con la definición del suceso correcto, incluso si B aparece antes que A. La petición explícita de la probabilidad de cada suceso conserva respuestas separadas cuando faltan los editores o su asociación con A y B no está confirmada, sin autorizar escritura. El backend exige todas las claves, únicas, antes de publicar una propuesta. La web muestra cada resultado asociado a su campo, explica el bloqueo junto a la casilla de autorización desde la lectura inicial y denomina el límite «Máximo de ejercicios».
+
+El fixture reproduce la tabla aportada, con dos filas, cuatro celdas por fila, etiquetas MathML bajo `aria-hidden` y buffers invisibles. Las regresiones comprueban fracciones verticales en ambos campos antes de una única entrega, respuesta del proveedor y filas invertidas, pérdida de foco, cancelación, cambio del primer valor y cambios de identidad de las filas, incluso manteniendo los mismos nodos. El diagnóstico cuenta ahora ambos editores y añade contadores acotados para distinguir futuros cambios de selector, sin exportar texto libre, valores ni atributos privados.
+
+Las pruebas usan Chromium y el código de producción de lectura, escritura, entrega y puente. El renderizador ALEKS, las APIs de extensión y el proveedor de IA se simulan donde corresponde; los resultados `13/18` y `1/2` son datos de prueba para este ejercicio, no una nueva regla matemática incorporada al producto. No se operó una cuenta ALEKS real ni se ejecutaron Windows o llamadas facturables. Esta compatibilidad corresponde al HTML aportado y a los formatos previamente probados; otros diseños pueden requerir adaptación.
 
 ## Revisión 0.5.2: cuentas persistentes y auditoría con Reticle
 

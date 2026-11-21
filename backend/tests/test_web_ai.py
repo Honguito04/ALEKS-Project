@@ -141,6 +141,35 @@ def test_recognized_math_and_missing_diagram_need_no_provider_or_quota(web_clien
     assert gemini[0] == [] and usage() == {}
 
 
+@pytest.mark.parametrize("returned_keys,accepted", [
+    (["field_2", "field_1"], True),
+    (["field_1"], False),
+    (["field_1", "field_1", "field_2"], False),
+    (["field_1", "field_2", "other"], False),
+])
+def test_two_probability_events_require_one_answer_per_requested_key(web_client, gemini, returned_keys, accepted):
+    fields = [{"key": "field_1", "label": "Suceso A"}, {"key": "field_2", "label": "Suceso B"}]
+    context = {**CONTEXT, "statement": "Se lanza dos veces un dado y se suman sus valores. "
+               "Suceso A: la suma es mayor que 5. Suceso B: la suma es impar. Escribe las probabilidades exactas.",
+               "fields": fields}
+    values = {"field_1": "13/18", "field_2": "1/2", "other": "1/3"}
+    calls, outputs = gemini
+    outputs.append({**PROPOSAL, "answers": [{"field_key": key, "value": values[key], "unit": ""} for key in returned_keys],
+                    "explanation": "De 36 resultados, 26 superan 5 y 18 son impares."})
+    account = register(web_client)
+    job = completed(web_client, create(web_client, account, context=context))
+    assert len(calls) == 1
+    payload = json.loads(calls[0].content)
+    assert json.loads(payload["contents"][0]["parts"][0]["text"])["fields"] == fields
+    if accepted:
+        assert job["status"] == "completed"
+        answers = job["result"]["proposal"]["answers"]
+        assert {item["field_key"]: item["value"] for item in answers} == {"field_1": "13/18", "field_2": "1/2"}
+    else:
+        assert job["status"] == "error" and job["error"]["code"] == "invalid_output"
+        assert "result" not in job
+
+
 def test_visual_requires_arithmetic_and_second_review_but_is_not_verified(web_client, gemini):
     calls, outputs = gemini
     outputs.extend([VISUAL, {"status": "consistent", "issues": [], "missing_information": []}])

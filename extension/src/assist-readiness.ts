@@ -5,6 +5,7 @@ import type { AssistContext,AssistResult,AssistView,FillBlocker } from './shared
 export const fillBlockerMessages:Record<FillBlocker,string>={
   unreadable_prompt:'No se pudo leer el enunciado como texto. La escritura asistida necesita esa lectura.',
   editor_missing:'No se encontró un recuadro visual asociado. Abre el ejercicio y vuelve a leer la actividad.',
+  field_count_mismatch:'No se reconoció un recuadro correspondiente a cada suceso del enunciado. Puedes consultar los resultados. Para escribirlos, la extensión necesita identificar un recuadro por suceso.',
   multiple_editors:'Hay varios recuadros. La escritura admite uno o dos recuadros reconocidos.',
   editor_structure:'No se reconoce una estructura única del editor para comprobar lo escrito.',
   editor_disabled:'El recuadro está deshabilitado o es de solo lectura.',
@@ -39,11 +40,11 @@ export function proposalFillBlockers(view:AssistView):FillBlocker[] {
   else if(view.context.fields.length===2 && view.context.fields.every(field=>/^field_[12]$/.test(field.key))) {
     if(proposal.answers.length!==2 || new Set(proposal.answers.map(answer=>answer.field_key)).size!==2 ||
       view.context.fields.some(field=>!proposal.answers.some(answer=>answer.field_key===field.key && (answer.unit==='' || ['cm','cm^2','cm^3'].includes(answerUnit(answer.unit) || '')) && parseSupportedAnswer(answer.value))))blockers.push('answer_format');
-    else if(proposal.answers.some(answer=>parseSupportedAnswer(answer.value)?.kind==='fraction') && !view.context.can_fill_fraction)blockers.push('fraction_control');
+    else if(proposal.answers.some(answer=>parseSupportedAnswer(answer.value)?.kind==='fraction') && !view.context.can_fill_fraction && !view.context.fill_blockers.length)blockers.push('fraction_control');
   }
   else if(proposal.answers.length!==1 || proposal.answers[0].field_key!=='answer' || !unitMatches(view) ||
     !parseSupportedAnswer(proposal.answers[0].value))blockers.push('answer_format');
-  else if(parseSupportedAnswer(proposal.answers[0].value)?.kind==='fraction' && !view.context.can_fill_fraction)blockers.push('fraction_control');
+  else if(parseSupportedAnswer(proposal.answers[0].value)?.kind==='fraction' && !view.context.can_fill_fraction && !view.context.fill_blockers.length)blockers.push('fraction_control');
   return [...new Set(blockers)];
 }
 

@@ -1,7 +1,7 @@
 import { sameAnswer } from './answer-format';
 import { assistContext,fillAssistAnswer,type FieldAnswer,type NativeInput } from './aleks-assist';
 import { answerUnit } from './answer-units';
-import { answerRoots } from './aleks-two-editors';
+import { answerRoots,probabilityRowOrder } from './aleks-answer-roots';
 import { inspectEditorRoot } from './aleks-single-editor';
 import { inspectAleksEditor } from './aleks-editor';
 import { readAleksPrompt } from './aleks-prompt';
@@ -96,18 +96,17 @@ export class AleksSubmission {
       const targets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
       if(targets.length!==1 || disabled(targets[0]))throw Error('No hay un único botón Verificar o Entregar habilitado.');
       const target=targets[0];
-      const roots=[...this.document.querySelectorAll<HTMLElement>('.ansed_root')].filter(root=>visible(root) && !root.closest('#algoPrompt') && root.querySelector('input.ansed_input[aria-label="Answer Editor"]'));
-      const pair=Array.isArray(value);
       const ordered=answerRoots(this.document),inputs=ordered.map(root=>root.querySelector('input.ansed_input'));
-      if(roots.length!==(pair?value.length:1))throw Error('No hay un único recuadro reconocido para esta entrega.');
-      const root=roots[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
+      const eventOrder=probabilityRowOrder(ordered)?.join();
+      if(ordered.length!==(Array.isArray(value)?value.length:1) || !ordered.length)throw Error('Los recuadros no corresponden a todas las respuestas de esta entrega.');
+      const root=ordered[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
       await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
       const editor=inspectAleksEditor(this.document);
       const freshTargets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
       const valid=Array.isArray(value)?ordered.every((node,i)=>{
         const field=inspectEditorRoot(node),current=answerRoots(this.document);
-        return current.length===ordered.length && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && document.activeElement===inputs.at(-1) && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
+        return probabilityRowOrder(current)?.join()===eventOrder && current.length===ordered.length && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && document.activeElement===inputs.at(-1) && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
           sameAnswer(field.readback.value,value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`))?.value) && !field.readback.fixed_unit && field.readback.selected_unit===answerUnit(value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`))?.unit || '');
       }):ordered.length===1 && root.querySelector('input.ansed_input')===inputs[0] && document.activeElement===inputs[0] && editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
         sameAnswer(editor.singleEditor.readback.value,value) && !editor.singleEditor.readback.selected_unit && editor.singleEditor.readback.fixed_unit===fixedUnit;

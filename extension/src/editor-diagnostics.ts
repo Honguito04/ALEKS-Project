@@ -1,8 +1,8 @@
 import { painted,visible,disabled } from './aleks-dom';
 import { inspectAleksRoute } from './aleks-route';
 import { inspectSingleEditor } from './aleks-single-editor';
+import { knownAnswerInputs, TEXT_EDITOR_INPUT } from './aleks-answer-roots';
 
-const INPUT='input.ansed_input[aria-label="Answer Editor"][type="text"]';
 const knownClasses=['ansed_root','ansed_tree','AnsedObject','ansed_canvas','ansed_caret','ansed_input'];
 const knownTags=new Set(['DIV','SPAN','INPUT','CANVAS','SVG','I','B','SUP','SUB','MATH','MROW','MN','MO','MFRAC']);
 const numeric=(value:number)=>Number.isFinite(value)?Math.round(Math.max(-10000,Math.min(10000,value))*10)/10:0;
@@ -27,7 +27,7 @@ interface DiagnosticNode {
  * Las coordenadas son relativas al editor; no se envía el informe a un servidor.
  */
 export function editorDiagnostics(document:Document) {
-  const inputs=[...document.querySelectorAll<HTMLInputElement>(INPUT)].filter(input=>!input.closest('#algoPrompt'));
+  const inputs=knownAnswerInputs(document).filter(input=>!input.closest('#algoPrompt'));
   const roots=[...new Set(inputs.map(input=>input.closest<HTMLElement>('.ansed_root')).filter((root):root is HTMLElement=>root!==null))];
   let truncated=roots.length>12,nodeBudget=60;
   const node=(element:HTMLElement,root:DOMRect,depth:number):DiagnosticNode|undefined=>{
@@ -55,7 +55,7 @@ export function editorDiagnostics(document:Document) {
   };
   const editors=roots.slice(0,12).map((root,index)=>{
     const rect=root.getBoundingClientRect(),trees=[...root.querySelectorAll<HTMLElement>(':scope > .ansed_tree')];
-    const editorInputs=[...root.querySelectorAll<HTMLInputElement>(INPUT)];
+    const editorInputs=inputs.filter(input=>input.closest('.ansed_root')===root);
     return {index:index+1,box:{width:numeric(rect.width),height:numeric(rect.height)},visibility:visibility(root),
       inputCount:editorInputs.length,treeCount:trees.length,
       inputs:editorInputs.slice(0,4).map(input=>({visibility:visibility(input),readOnly:input.readOnly,box:bounds(input,rect)})),
@@ -77,9 +77,18 @@ export function editorDiagnostics(document:Document) {
       return {label,count:buttons.length,visible:buttons.filter(visible).length,enabled:buttons.filter(button=>visible(button) && !disabled(button)).length};
     })
   ];
-  if(roots.slice(0,12).some(root=>root.querySelectorAll(INPUT).length>4 || root.querySelectorAll(':scope > .ansed_tree').length>2))truncated=true;
+  if(roots.slice(0,12).some(root=>root.querySelectorAll(TEXT_EDITOR_INPUT).length>4 || root.querySelectorAll(':scope > .ansed_tree').length>2))truncated=true;
   const {fixed_unit,unitLabel}=inspectSingleEditor(document).readback;
-  return {version:1,title:'Diagnóstico del editor ALEKS',status:roots.length?'observed':'missing',rootCount:roots.length,
+  // Counts distinguish a selector mismatch from an editor inside the statement.
+  // Omit values, arbitrary attribute text and the contents of unrecognised roots.
+  const buffers=[...document.querySelectorAll('input.ansed_input, textarea.ansed_input')];
+  const candidateCounts={
+    buffersInsidePrompt:buffers.filter(input=>input.closest('#algoPrompt')).length,
+    buffersOutsidePrompt:buffers.filter(input=>!input.closest('#algoPrompt')).length,
+    textareas:buffers.filter(input=>input.tagName==='TEXTAREA').length,
+    rootsOutsidePrompt:[...document.querySelectorAll('.ansed_root')].filter(root=>!root.closest('#algoPrompt')).length,
+  };
+  return {version:2,candidateCounts,title:'Diagnóstico del editor ALEKS',status:roots.length?'observed':'missing',rootCount:roots.length,
     visibleRootCount:roots.filter(visible).length,inputCount:inputs.length,frameCount:document.querySelectorAll('iframe,frame').length,
     truncated,editors,controls,routeTransition:inspectAleksRoute(document),...(fixed_unit?{fixedUnit:{unit:fixed_unit,label:unitLabel}}:{})};
 }
