@@ -6,7 +6,7 @@ La automatización requiere **Chrome de escritorio 116 o posterior**, la extensi
 
 ## Actualización de versiones
 
-Desde 0.5.1 la conexión muestra **Web 0.5.3 · Extensión 0.5.3** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
+Desde 0.5.1 la conexión muestra **Web 0.5.4 · Extensión 0.5.4** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
 
 ## Primera prueba en Windows
 
@@ -31,6 +31,8 @@ Al alcanzar un límite no se pulsa Siguiente. Para otro recorrido, avanza manual
 La escritura automática admite uno o dos recuadros numéricos vacíos, con una respuesta por campo y lectura de ambos antes de verificar: entero, decimal no negativo o fracción reducida, con doce dígitos por componente. Los sufijos fijos, como `hora(s)`, conservan sus comprobaciones originales. En uno o dos recuadros permite seleccionar cm, cm² o cm³ mediante sus botones y exige leer el número y su unidad en cada campo. No habilita gráficos, más de dos recuadros, otras unidades interactivas o respuestas de formato arbitrario. Adjuntar una imagen en la demo conserva el flujo de consulta y revisión visual; no habilita un recorrido automático sobre diagramas.
 
 La versión 0.5.3 reconoce la tabla aportada de dos filas con `P(A) =` y `P(B) =`: contrasta la etiqueta de cada input con el MathML de su fila, sin depender de los IDs dinámicos. La vista previa muestra cada resultado junto al suceso correspondiente. Si el enunciado pide explícitamente la probabilidad de cada suceso y faltan sus recuadros, la consulta conserva los resultados separados, pero la autorización indica el motivo del bloqueo. Las etiquetas incompatibles o un cambio de identidad durante la escritura impiden entregar. Otros diseños de tabla necesitan su propio HTML para adaptar y probar el reconocimiento.
+
+La versión 0.5.4 abrevia la etiqueta de cada valor en la vista previa: `P(A): 13/18` y `P(B): 1/2`. El panel lateral identifica ambos valores y llama «ejercicios» al límite de entregas: los dos recuadros de una actividad cuentan como un ejercicio completo.
 
 **Resultado comprobado** identifica un comprobador matemático independiente admitido. **Propuesta de IA sin verificar** no acredita que el proveedor haya entendido o resuelto bien el problema; la revisión visual o aritmética de una propuesta no convierte la lectura en evidencia independiente. ALEKS es quien califica una entrega.
 

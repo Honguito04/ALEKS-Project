@@ -21,7 +21,7 @@ test.beforeAll(async({request})=>{
 async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean}={}) {
   await page.addInitScript(({version,legacy,fields,decimal,events,blocked}) => {
     const context = { fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
-      fields:events?[{key:'field_1',label:'P(A)'},{key:'field_2',label:'P(B)'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
+      fields:events?[{key:'field_1',label:'P(A): La suma es mayor que 5.'},{key:'field_2',label:'P(B): La suma es un número impar.'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
     const proposal = {id:'00000000-0000-4000-8000-000000000021',context,
       result:{fingerprint:context.fingerprint,model:'mock-gemini',provider:'gemini',provider_calls:1,verified:false,verification:'none',
         proposal:{status:'proposed',answers:events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'13/18',unit:''}]:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};

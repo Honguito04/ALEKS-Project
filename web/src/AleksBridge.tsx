@@ -18,6 +18,8 @@ type Pending = { resolve(value: unknown): void; reject(reason: Error): void; tim
 type IssuedCapability = { id: string; csrf: string };
 const tabSchema = z.object({ id: z.number().int().nonnegative(), title: z.string().max(500), active: z.boolean().optional() }).strict();
 const proposalSchema = z.object({ id: z.uuid(), context: assistContextSchema, result: assistResultSchema }).strict();
+const conciseFieldLabel = (label: string) =>
+  /^(?:P\([A-Z]\)|Recuadro\s+[12])(?=\s|:|$)/u.exec(label)?.[0] ?? label.replace(/[.：:]\s*$/u, '');
 const automationSchema = z.object({ id: z.uuid(), phase: z.enum(['LEYENDO', 'RESOLVIENDO', 'LISTO', 'ENVIANDO', 'CORRECTA', 'AVANZANDO', 'DETENIDO', 'COMPLETADO']),
   active: z.boolean(), busy: z.boolean(), canContinue: z.boolean(), accepted: z.number().int().min(0).max(100), aiCalls: z.number().int().min(0).max(100),
   started: z.number(), limits: automationLimitsSchema, message: z.string().max(4000), answer: z.string().max(500).optional() }).strict();
@@ -182,7 +184,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const canAuthorize = eligible && blockers.length === 0;
   const answerRows = proposal?.context.fields.flatMap(field => {
     const answer = proposal.result.proposal.answers.find(answer => answer.field_key === field.key);
-    return answer ? [{ field, answer }] : [];
+    return answer ? [{ field, answer, label: conciseFieldLabel(field.label) }] : [];
   }) ?? [];
   const numericLimits = { maxExercises: Number(limits.maxExercises), maxMinutes: Number(limits.maxMinutes), maxAICalls: Number(limits.maxAICalls) };
   const validLimits = Number.isInteger(numericLimits.maxExercises) && numericLimits.maxExercises >= 1 && numericLimits.maxExercises <= 100 &&
@@ -206,7 +208,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
         <div className="bridge-actions"><button className="secondary" disabled={Boolean(busy) || running} onClick={() => void perform('read')}>Leer actividad ALEKS</button><button className="secondary" disabled={!context || Boolean(busy) || running} onClick={() => void perform('preview', { includeImage })}>{busy === 'preview' ? 'Consultando nube…' : 'Consultar vista previa'}</button><button className="inline-button" disabled={Boolean(busy)} onClick={() => void perform('status')}>Actualizar estado</button></div>
       </>}
       {context && <div className="bridge-context"><h3>Actividad observada</h3><p className="bridge-statement">{context.statement}</p><dl className="bridge-diagnostics"><div><dt>Respuestas solicitadas</dt><dd>{context.fields.map(field => field.label).join(' · ')}</dd></div><div><dt>Unidad predefinida</dt><dd>{context.fixed_unit || 'Sin unidad reconocida'}</dd></div><div><dt>Formato</dt><dd>{eligible ? (context.fields.length === 2 ? 'Dos recuadros vacíos compatibles' : 'Recuadro vacío compatible') : 'Escritura automática bloqueada'}</dd></div><div><dt>Huella de actividad</dt><dd><code>{context.fingerprint}</code></dd></div></dl></div>}
-      {proposal && <div className="bridge-proposal"><p className={`verification-tag ${proposal.result.verified ? 'verified' : 'unverified'}`}>{proposal.result.verified ? 'Resultado comprobado' : 'Propuesta de IA sin verificar'}</p>{answerRows.map(({ field, answer }) => <p key={field.key}>{answerRows.length > 1 && <span>{field.label}: </span>}<strong>{answer.value}</strong> {answer.unit}</p>)}<p>{proposal.result.proposal.explanation}</p>{proposal.result.proposal.missing_information.map((information, index) => <p className="field-help" key={index}>{information}</p>)}</div>}
+      {proposal && <div className="bridge-proposal"><p className={`verification-tag ${proposal.result.verified ? 'verified' : 'unverified'}`}>{proposal.result.verified ? 'Resultado comprobado' : 'Propuesta de IA sin verificar'}</p>{answerRows.map(({ field, answer, label }) => <p key={field.key}>{answerRows.length > 1 && <span>{label}: </span>}<strong>{answer.value}</strong> {answer.unit}</p>)}<p>{proposal.result.proposal.explanation}</p>{proposal.result.proposal.missing_information.map((information, index) => <p className="field-help" key={index}>{information}</p>)}</div>}
       <div className="bridge-authorization"><h3>Autoriza un recorrido limitado</h3><p className="field-help">Texto con uno o dos recuadros vacíos: enteros, decimales con punto o coma y fracciones reducidas. Conserva unidades fijas y permite seleccionar cm, cm² o cm³. Diagramas y otros formatos requieren revisión manual.</p>
         <fieldset disabled={Boolean(busy) || running} className="bridge-limits">{([
           ['maxExercises', 'Máximo de ejercicios', 100], ['maxMinutes', 'Máximo de minutos', 120], ['maxAICalls', 'Máximo de llamadas IA', 100],

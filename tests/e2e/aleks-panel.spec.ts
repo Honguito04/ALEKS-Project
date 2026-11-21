@@ -108,7 +108,7 @@ test('distingue el recorrido detenido de una nueva propuesta válida de 15/64',a
   await expect(status.getByText('Recorrido anterior · DETENIDO',{exact:true})).toBeVisible();
   await expect(status).toContainText('La consulta nueva se muestra arriba; su resultado no pertenece a este recorrido.');
   await expect(status).toContainText('La propuesta anterior no tenía un formato de respuesta admitido.');
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 3 llamadas IA');
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS · 3 llamadas IA');
   expect(await page.evaluate(()=>window.testPanelMessages.filter(message=>message.type==='automationStart' || message.type==='assistFill'))).toEqual([]);
 });
 

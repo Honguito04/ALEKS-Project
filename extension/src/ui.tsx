@@ -123,7 +123,7 @@ function App() {
   ].filter((reason):reason is string=>typeof reason==='string');
   return <main>
     <header><span className="eyebrow">ASISTENTE MATEMÁTICO</span><h1>Comprueba.<br/><em>Después avanza.</em></h1><p>Un laboratorio de resolución exacta con controles de sesión.</p></header>
-    <div className="banner">ALEKS · Recorrido automático para enteros y fracciones en un recuadro. Se avanza cuando ALEKS confirma «Correcta».</div>
+    <div className="banner">ALEKS · Recorrido automático para enteros y fracciones en uno o dos recuadros. Se avanza cuando ALEKS confirma «Correcta».</div>
     {bridgeOrigin && <section><h2>Conexión con la web</h2><p>Origen autorizado: <code>{bridgeOrigin}</code>. Inicia sesión en esa web para elegir la pestaña ALEKS y autorizar sus límites.</p>
       <button disabled={working} onClick={()=>{
         // La solicitud debe salir directamente del gesto del usuario.
@@ -225,17 +225,17 @@ function App() {
       <p>Resuelve, escribe, pulsa «Verificar» o «Entregar» y espera la confirmación de ALEKS. Después de «Correcta», pulsa «Siguiente» o «Siguiente tema». Si aparece «Temas restantes», pulsa «Continuar en Mi ruta» y espera el nuevo ejercicio.</p>
       <p className="small">Admite enteros, decimales y fracciones reducidas no negativas en uno o dos recuadros vacíos, con una respuesta por campo. Comprueba ambos antes de verificar. En uno o dos recuadros también admite seleccionar cm, cm² o cm³ y comprobar cada unidad. Si ALEKS muestra una unidad predefinida reconocida, la conserva y escribe solo el número. Escribe a/b y comprueba que ALEKS lo represente como fracción vertical. Se detiene ante una respuesta incorrecta, un resultado incierto, diagramas o formatos que aún no reconoce. Mantén el panel abierto durante el recorrido.</p>
       <div className="limits">
-        <label>Máximo de respuestas<input aria-label="Máximo de respuestas ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoExercises);}}/></label>
+        <label>Máximo de ejercicios<input aria-label="Máximo de ejercicios ALEKS" type="number" min="1" max="100" disabled={working} value={autoExercises} onChange={e=>setAutoExercises(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoExercises);}}/></label>
         <label>Máximo de minutos<input aria-label="Máximo de minutos ALEKS" type="number" min="1" max="120" disabled={working} value={autoMinutes} onChange={e=>setAutoMinutes(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoMinutes);}}/></label>
         <label>Máximo de llamadas IA<input aria-label="Máximo de llamadas IA ALEKS" type="number" min="2" max="100" disabled={working} value={autoCalls} onChange={e=>setAutoCalls(Number(e.target.value))} onBlur={e=>{e.currentTarget.value=String(autoCalls);}}/></label>
       </div>
       <p className="small" aria-label="Alcance del recorrido">{autoExercises===1?
-        'Con este límite se completará 1 respuesta y no avanzará después de Correcta. Para avanzar automáticamente, elige 2 o más respuestas.':
-        `Se completarán hasta ${autoExercises} respuestas correctas. Se pulsará Siguiente o Siguiente tema entre ejercicios mientras queden tiempo y llamadas IA.`}</p>
+        'Con este límite se completará 1 ejercicio, aunque tenga dos recuadros, y no avanzará después de Correcta. Para avanzar automáticamente, elige 2 o más ejercicios.':
+        `Se completarán hasta ${autoExercises} ejercicios. Cada uno puede tener una o dos respuestas; se pulsará Siguiente o Siguiente tema entre ejercicios mientras queden tiempo y llamadas IA.`}</p>
       <button disabled={working || startBlockers.length>0} aria-describedby={!working && startBlockers.length?'automation-start-blockers':undefined} onClick={()=>void startAutomation()}>Iniciar recorrido automático</button>
       {!working && startBlockers.length>0 && <ul id="automation-start-blockers" aria-label="Motivos que impiden iniciar el recorrido" className="small">{startBlockers.map(reason=><li key={reason}>{reason}</li>)}</ul>}
       {canContinueHere && <>
-        <p className="small">Puedes continuar desde la respuesta confirmada. El máximo de respuestas y de llamadas IA incluye las ya contabilizadas; aumenta los límites necesarios. El tiempo vuelve a empezar al continuar.</p>
+        <p className="small">Puedes continuar desde la respuesta confirmada. El máximo de ejercicios y de llamadas IA incluye los ya contabilizados; aumenta los límites necesarios. El tiempo vuelve a empezar al continuar.</p>
         <button disabled={working || !mode || !health || diagramRequired || hasImage} onClick={()=>void continueAutomation()}>Continuar desde la respuesta correcta</button>
       </>}
       {resultVisible && !automation?.canContinue && !automation?.active && <p className="small">ALEKS muestra una respuesta correcta anterior. Pulsa Siguiente en ALEKS y después Leer actividad seleccionada para iniciar otro recorrido.</p>}
@@ -244,8 +244,8 @@ function App() {
       {automation && <div role="status"><strong>{assist && !automation.active?'Recorrido anterior · ':''}{automation.phase}</strong>
         {assist && !automation.active && <p className="small">La consulta nueva se muestra arriba; su resultado no pertenece a este recorrido.</p>}
         <p>{automation.message}</p>
-        {automation.answer && <p>Respuesta propuesta: <strong>{automation.answer}</strong></p>}
-        <p>{automation.accepted} correctas confirmadas por ALEKS · {automation.aiCalls} llamadas IA</p>
+        {automation.answer && <p>{automation.answer.includes('; ') ? 'Respuestas propuestas' : 'Respuesta propuesta'}: <strong>{automation.answer}</strong></p>}
+        <p>{automation.accepted} {automation.accepted===1?'ejercicio correcto confirmado':'ejercicios correctos confirmados'} por ALEKS · {automation.aiCalls} {automation.aiCalls===1?'llamada IA':'llamadas IA'}</p>
       </div>}
     </section>}
     {!aleks && <><section><div className="section-label">04 / AUTORIZACIÓN DE SESIÓN</div>

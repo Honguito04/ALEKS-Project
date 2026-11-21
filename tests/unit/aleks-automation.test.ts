@@ -35,6 +35,21 @@ describe('recorrido ALEKS por fases',()=>{
     const {run,deps}=harness({maxExercises:1},candidate);await run.step();
     expect(run.view).toMatchObject({accepted:1,phase:'COMPLETADO'});expect(deps.submit).toHaveBeenCalledWith(candidate);
   });
+  it('identifica las dos respuestas y cuenta una sola entrega como un ejercicio',async()=>{
+    const candidate=proposal();
+    candidate.context.fields=[{key:'field_1',label:'P(A): suma mayor que 5'},{key:'field_2',label:'P(B): suma impar'}];
+    candidate.context.can_fill_fraction=true;
+    candidate.result.proposal.answers=[
+      {field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'13/18',unit:''}
+    ];
+    const {run,deps}=harness({maxExercises:1},candidate);
+    expect(run.view.answer).toBe('P(A): 13/18; P(B): 1/2');
+    await run.step();
+    expect(run.view).toMatchObject({phase:'COMPLETADO',accepted:1,canContinue:true});
+    expect(run.view.message).toContain('Límite de ejercicios alcanzado (1/1)');
+    expect(deps.submit).toHaveBeenCalledTimes(1);
+    expect(deps.next).not.toHaveBeenCalled();
+  });
   it('informa qué valor rechazó y no envía ni avanza al fallar el formato',async()=>{
     const candidate=proposal();candidate.context.can_fill_fraction=true;candidate.result.proposal.answers[0].value='30/128';
     const {run,deps}=harness();deps.solve=vi.fn(async()=>candidate);

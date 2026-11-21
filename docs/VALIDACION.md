@@ -2,6 +2,15 @@
 
 Actualización: 21 de noviembre de 2026 (UTC). Entorno Linux, Python 3.12, Node 24 y Chromium administrado. Las revisiones anteriores conservan sus resultados históricos.
 
+## Revisión 0.5.4: dos recuadros comprobados con Reticle
+
+Reticle se conectó a la web Vite y a FastAPI locales con una cuenta de prueba. La conexión con Chrome se sustituyó en una pestaña aislada: el registro produjo `POST /web-api/register` 201 y la capacidad del puente `POST /web-api/bridge-token` 201. La vista previa recibió las respuestas en orden invertido. Antes de corregirla, `reticle_assert` devolvió `verified: "no"` para `P(A): 13/18`; Reticle mostraba `P(A): La suma es mayor que 5.: 13/18`. Tras la corrección, `reticle_act` confirmó `verified: "yes"` en los cinco pasos de conexión, selección, lectura y vista previa: aparecen `P(A): 13/18` y `P(B): 1/2`. Otro recorrido de cinco pasos confirmó `verified: "yes"` cuando falta un editor: se ven ambos resultados, se explica el bloqueo y la casilla de autorización permanece deshabilitada.
+
+En una segunda página local instrumentada con el HTML de dos filas aportado y el escritor de producción, Reticle devolvió `verified: "yes"` al observar ambas fracciones, un único clic de Verificar y el rechazo de un segundo envío. Al simular que el segundo recuadro no refleja la fracción, devolvió `verified: "yes"` para la detención con cero clics. La página y su renderizador eran dispositivos temporales de prueba, retirados tras la comprobación. Estos veredictos no acreditan el editor ni la sesión real de ALEKS.
+
+La auditoría encontró textos antiguos en el panel lateral que llamaban «respuestas» a un límite de ejercicios completos. Se actualizaron el límite, los mensajes de continuación y la propuesta para identificar P(A)/P(B). Un ejercicio con dos recuadros cuenta una entrega aceptada. Las guías activas se ajustaron a ese comportamiento. La versión de web y extensión subió a 0.5.4 para exigir componentes compatibles tras actualizar.
+
+Pasaron **260 pruebas unitarias**, **71 pruebas de navegador de la extensión**, **20 pruebas de navegador de la web** y **3 pruebas del iniciador local**. Compilaron la extensión y la web.
 
 ## Revisión 0.5.3: dos probabilidades con etiquetas P(A) y P(B)
 

@@ -2,7 +2,7 @@
 
 Esta guía está pensada para una persona sin experiencia en programación que todavía no instaló la versión anterior. Asume Windows 10 u 11 y Google Chrome. No necesitas instalar versiones anteriores: la descarga actual incluye los cambios.
 
-Actualmente puedes completar automáticamente los ejercicios del simulador y leer enunciados en ALEKS. El [copiloto local con Ollama](IA_GENERAL.md) añade propuestas generales y escritura asistida de enteros en un recuadro vacío compatible; **no entrega ni avanza automáticamente en ALEKS**. Su instalación es opcional y está explicada en esa guía.
+Actualmente puedes completar automáticamente los ejercicios del simulador y leer enunciados en ALEKS. El [copiloto local con Ollama](IA_GENERAL.md) consulta y puede escribir, verificar y avanzar en ejercicios de ALEKS cuyo enunciado y uno o dos recuadros sean compatibles. También puedes usar el [puente de la web con la extensión](WEB_BRIDGE.md). La compatibilidad con tu sesión real de ALEKS requiere una comprobación en tu equipo.
 
 La aplicación debe ejecutarse en la misma computadora donde usas Chrome. Lo preparado en el entorno de desarrollo en la nube no instala programas en tu computadora. Para esta prueba no necesitas claves de IA, una cuenta de desarrollador de Google ni configurar el acceso con Google.
 
@@ -155,7 +155,7 @@ En el panel lateral del asistente:
 
 No hace falta que el ejercicio tenga un título como «Pregunta 12». La lectura utiliza el contenedor del enunciado observado en los fragmentos que aportaste. Las imágenes, gráficos y estructuras matemáticas todavía no compatibles pueden impedir la lectura; el panel explicará el motivo.
 
-**Resultado esperado en ALEKS:** el panel muestra el enunciado si reconoce su estructura. También puede reconocer los controles documentados del editor. **Autorizar e iniciar seguirá deshabilitado para ALEKS**: la escritura, interpretación completa y entrega real todavía necesitan validación. Ver «pendiente de validación» en esta etapa no significa que instalaste mal la aplicación.
+**Resultado esperado en ALEKS:** el panel muestra el enunciado si reconoce su estructura y señala si los recuadros permiten escritura. El recorrido solo se habilita para el enunciado y los editores compatibles; un diagrama o una estructura no reconocida muestran el motivo del bloqueo. La primera entrega en tu cuenta debe observarse con cuidado: las pruebas automáticas reproducen el HTML aportado, pero no operan una sesión real de ALEKS.
 
 El acceso de Google que aparece en el panel pertenece al asistente; tu sesión en ALEKS se abre por separado de la manera habitual.
 
@@ -188,32 +188,14 @@ Cuando haya una actualización del proyecto, descarga el ZIP nuevo en otra carpe
 | «Operador MathML no admitido» | La actualización admite los símbolos aportados del círculo, ángulo, grados, arco y pi. Si aparece otro, comparte el mensaje completo con sus códigos `U+…`; identifican el símbolo sin volver a copiar todo el HTML. |
 | La pestaña de ALEKS no aparece | Concede el permiso del paso 8, comprueba el dominio y pulsa **Actualizar pestañas**. |
 | No se encuentra un enunciado visible en ALEKS | Comprueba que estés viendo un ejercicio. Algunas pantallas o estructuras todavía requieren ampliar el lector. |
-| El panel indica cero campos pero ves recuadros de respuesta | Actualiza la extensión: en el círculo debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. En un ejercicio con un único editor de la estructura conocida muestra **Un recuadro visual reconocido**, sin exigir botones de cm³. El detalle técnico distingue inputs transparentes y contenedores visibles. |
+| El panel indica cero campos pero ves recuadros de respuesta | Actualiza el proyecto completo y recarga la extensión desde su nueva carpeta `dist`. Vuelve a leer el ejercicio. Si sigue sin reconocer los recuadros, usa **Preparar diagnóstico del editor** y **Copiar diagnóstico**; se necesitará el HTML de esa variante para adaptarla. |
 
 Si necesitas ayuda con un error, indica el número de paso y copia el mensaje que aparece, omitiendo información de tu cuenta. No necesitas compartir contraseñas, cookies ni enlaces completos de sesión de ALEKS.
 
-**Actualizar la extensión conservando tu instalación**
+**Actualizar el proyecto sin mezclar versiones**
 
-Para la actualización de **IA local**, sigue [la guía de Ollama](IA_GENERAL.md): también cambia el backend y requiere configurar el modelo. Los pasos siguientes bastan para actualizaciones que solo afectan a la extensión.
+Detén el servidor anterior con **Ctrl+C**. Si descargaste un ZIP, extrae el nuevo proyecto en otra carpeta y ejecuta `scripts\start-web.cmd` desde esa carpeta. El iniciador reutiliza las cuentas y la configuración del perfil `%LOCALAPPDATA%\ALEKS-Project`; no hace falta volver a registrar una cuenta ni escribir la clave del modelo después de cada actualización. Si aún usas una instalación anterior al perfil persistente, sigue [la migración y recuperación de datos](WEB.md#actualizar-la-instalacion-local-de-windows) antes del primer inicio.
 
-Descarga el ZIP actualizado desde **Code → Download ZIP** en GitHub y extráelo en una carpeta aparte. Abre la carpeta del proyecto nuevo y copia su carpeta **extension** completa. Pégala dentro de la carpeta original del proyecto que ya habías instalado; acepta reemplazar los archivos existentes. La carpeta original es la que contiene `package.json`, `backend`, `.venv` y `node_modules`. No necesitas copiar `.env` ni reinstalar Python o Node.
+Cuando el servidor indique la ruta de `dist`, abre `chrome://extensions` y recarga la extensión instalada desde **esa misma carpeta**. Si Chrome usa el `dist` del ZIP anterior, quita esa copia y carga la carpeta nueva. Recarga después ALEKS y la web. La conexión debe indicar **Web 0.5.4 · Extensión 0.5.4**. Si usas Git, [la guía de actualización](WEB.md#actualizar-la-instalacion-local-de-windows) explica el comando `scripts\update-web.cmd`.
 
-Abre **otra ventana de PowerShell desde la carpeta original**, conservando abierta la del servicio, y ejecuta:
-
-```powershell
-npm.cmd run build
-```
-
-Cuando termine, abre `chrome://extensions` y pulsa el botón de recargar, con flecha circular, de la tarjeta del asistente. Actualiza también la pestaña del simulador con **F5** y vuelve a abrir el panel.
-
-Conecta el backend, entra en demostración si es necesario, actualiza la lista de pestañas y lee el laboratorio. Si **Detener** está habilitado, púlsalo. Después pulsa **Reiniciar actividad** en el laboratorio, vuelve a **Leer actividad seleccionada** y pulsa **Autorizar e iniciar** con 10 ejercicios, 10 minutos y 0 llamadas IA. La vista previa debe estar desmarcada para el recorrido completo.
-
-Para comprobar los cambios en ALEKS, actualiza también esa pestaña con **F5**, selecciona su entrada en el panel y pulsa **Leer actividad seleccionada**. No necesitas repetir la prueba del simulador para comprobar esta lectura.
-
-En el tema del círculo, el panel debe mostrar **Dos recuadros visuales reconocidos por sus etiquetas**. Muestra cada respuesta junto a «Longitud del arco AB» o «Área de la región sombreada», aunque el detalle técnico siga contando cero inputs pintados. Si los recuadros están vacíos, indica «vacío». Si siguen visibles las respuestas finales aportadas, muestra **8π/3 cm** y **4π cm²**. El menú o la tabla pueden aparecer deshabilitados después de verificar; ese estado se muestra en el panel.
-
-Si aparece el bloque **Correcta** junto al botón **Siguiente tema**, la inspección los identifica sin pulsarlo. El nombre público del tema también puede mostrarse; «Actividad: sin-validar» sigue indicando que no hay una sesión de ejecución real habilitada. Ya se recibieron los fragmentos necesarios para esta fase: no necesitas volver a copiarlos. La siguiente validación pendiente es la interacción real del editor y la asociación de una entrega iniciada por la extensión con su resultado.
-
-En un ejercicio de un solo recuadro, como el de los nadadores, la actualización también reconoce el contenedor visual sin exigir unidades. Si escribes un entero manualmente y vuelves a leer, puede mostrar su contenido cuando coincide con la representación admitida. Eso lee lo escrito; no significa que la IA haya resuelto el ejercicio ni que ALEKS lo haya aceptado.
-
-En el ejercicio del círculo, el lector puede mostrar `arco(AB)` al leer la marca situada sobre AB. La advertencia sobre la región sombreada significa que se leyó el texto, pero todavía falta interpretar el dibujo. No acredita una respuesta geométrica.
+Lee de nuevo el ejercicio. En el problema con dos sucesos, la vista previa debe distinguir **P(A)** y **P(B)**. Si el editor deja de reflejar cualquiera de las dos fracciones, el recorrido se detiene antes de pulsar **Verificar**. Los diagramas y diseños de recuadros distintos de los reconocidos requieren revisión manual.

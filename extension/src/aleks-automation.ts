@@ -56,8 +56,14 @@ export class AleksAutomation {
     const blockers=proposalFillMessages(proposal);
     if(blockers.length)throw Error(blockers.join(' '));
     this.proposal=proposal;
-    this.state.phase='LISTO';this.state.answer=proposal.context.fields.map(field=>proposal.result.proposal.answers.find(answer=>answer.field_key===field.key)!.value).join('; ');
-    this.state.message='Respuesta preparada. El siguiente paso la escribirá y pulsará Verificar o Entregar.';
+    this.state.phase='LISTO';this.state.answer=proposal.context.fields.map((field,index)=>{
+      const answer=proposal.result.proposal.answers.find(answer=>answer.field_key===field.key)!;
+      const value=answer.value+(answer.unit?' '+answer.unit:'');
+      if(proposal.context.fields.length===1)return value;
+      const label=/^P\([A-Z]\)/u.exec(field.label)?.[0] || `Recuadro ${index+1}`;
+      return `${label}: ${value}`;
+    }).join('; ');
+    this.state.message='Propuesta preparada. El siguiente paso escribirá cada respuesta y pulsará Verificar o Entregar.';
   }
 
   private guard() {
@@ -93,7 +99,7 @@ export class AleksAutomation {
   }
 
   /** Amplía un recorrido vivo que conservó una entrega aceptada sin avanzar.
-   * Los máximos de respuestas y llamadas siguen siendo totales del recorrido;
+   * Los máximos de ejercicios y llamadas siguen siendo totales del recorrido;
    * el tiempo se renueva por esta acción explícita. No recupera estados de
    * storage ni una entrega cancelada: next() revalida la evidencia del DOM.
    */
@@ -102,7 +108,7 @@ export class AleksAutomation {
       throw Error('No hay una respuesta confirmada disponible para continuar este recorrido.');
     }
     const parsed=automationLimitsSchema.parse(limits);
-    if(parsed.maxExercises<=this.state.accepted)throw Error(`Aumenta el máximo de respuestas por encima de ${this.state.accepted} para continuar.`);
+    if(parsed.maxExercises<=this.state.accepted)throw Error(`Aumenta el máximo de ejercicios por encima de ${this.state.accepted} para continuar.`);
     if(parsed.maxAICalls<this.state.aiCalls+2)throw Error(`Aumenta el máximo de llamadas IA a ${this.state.aiCalls+2} o más para consultar el siguiente ejercicio.`);
     // La validación anterior no altera la finalización ni consume su avance.
     this.locked=true;this.state.busy=true;
@@ -153,14 +159,14 @@ export class AleksAutomation {
       } else if(this.state.phase==='LISTO') {
         if(!this.proposal)throw Error('No queda una propuesta vigente para entregar.');
         const proposal=this.proposal;
-        await this.phase('ENVIANDO','Escribiendo la respuesta y esperando la verificación de ALEKS…');
+        await this.phase('ENVIANDO','Escribiendo y comprobando las respuestas antes de verificar en ALEKS…');
         this.submitted.add(proposal.context.fingerprint);this.proposal=undefined;
         const result=await this.deps.submit(proposal);this.guard();
         if(!result || typeof result!=='object' || !('status' in result) || result.status!=='accepted') {
           throw Error('ALEKS no confirmó que la entrega fuera correcta. No se avanzará ni se repetirá la respuesta.');
         }
         this.state.accepted++;
-        if(this.state.accepted>=this.state.limits.maxExercises)await this.complete(`Límite de respuestas alcanzado (${this.state.accepted}/${this.state.limits.maxExercises}). ALEKS confirmó «Correcta». Aumenta el máximo y pulsa Continuar desde la respuesta correcta para seguir.`,true);
+        if(this.state.accepted>=this.state.limits.maxExercises)await this.complete(`Límite de ejercicios alcanzado (${this.state.accepted}/${this.state.limits.maxExercises}). ALEKS confirmó «Correcta». Aumenta el máximo y pulsa Continuar desde la respuesta correcta para seguir.`,true);
         else await this.phase('CORRECTA','ALEKS confirmó «Correcta» para esta entrega. Preparado para avanzar.');
       } else if(this.state.phase==='CORRECTA') {
         if(this.state.aiCalls+2>this.state.limits.maxAICalls) {

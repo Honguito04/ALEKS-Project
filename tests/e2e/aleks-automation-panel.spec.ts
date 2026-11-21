@@ -21,36 +21,38 @@ test('lee la piscina con MathML real, escribe 7 ante hora(s), verifica y contin�
   await openPanel(page,unitFixture);
   const start=page.getByRole('button',{name:'Iniciar recorrido automático'});
   await expect(start).toBeEnabled();
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await expect(page.locator('.banner')).toContainText('uno o dos recuadros');
+  await expect(page.getByLabel('Alcance del recorrido')).toContainText('Cada uno puede tener una o dos respuestas');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await start.click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS',{timeout:15000});
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS',{timeout:15000});
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
   await expect(page.locator('.ansed_tree')).toHaveText('20');
 });
 
 test('continúa en Mi ruta entre temas y conserva los contadores del recorrido',async({page})=>{
   await openPanel(page);await page.evaluate(()=>{window.automationTest.topicCompletion=true;});
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO',{timeout:15000});
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 2 llamadas IA');
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS · 2 llamadas IA');
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
   expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
 });
 
-test('el límite de una respuesta impide abrir otro tema hasta ampliar el recorrido',async({page})=>{
+test('el límite de un ejercicio impide abrir otro tema hasta ampliar el recorrido',async({page})=>{
   await openPanel(page);await page.evaluate(()=>{window.automationTest.topicCompletion=true;});
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('1');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO');
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
   expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(0);
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await page.getByRole('button',{name:'Continuar desde la respuesta correcta'}).click();
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 2 llamadas IA',{timeout:15000});
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS · 2 llamadas IA',{timeout:15000});
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
   expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
 });
@@ -62,7 +64,7 @@ test('detener mientras se abre Mi ruta conserva la respuesta aceptada sin otra c
   await page.getByRole('button',{name:'Detener recorrido'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('DETENIDO');
-  await expect(status).toContainText('1 correctas confirmadas por ALEKS · 1 llamadas IA');
+  await expect(status).toContainText('1 ejercicio correcto confirmado por ALEKS · 1 llamada IA');
   await page.waitForTimeout(1100);
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:1});
   expect(await page.evaluate(()=>window.automationTest.routeClicks)).toBe(1);
@@ -70,22 +72,22 @@ test('detener mientras se abre Mi ruta conserva la respuesta aceptada sin otra c
 
 test('escribe una fracción, pulsa Verificar y confirma Correcta',async({page})=>{
   await openPanel(page);await page.evaluate(()=>{window.automationTest.fraction=true;});
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('1');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
-  await expect(page.getByRole('status')).toContainText('1 correctas confirmadas');
+  await expect(page.getByRole('status')).toContainText('1 ejercicio correcto confirmado');
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
 });
 
 test('la propuesta 15/64 se escribe, verifica y continúa después de Correcta',async({page})=>{
   await openPanel(page);
   await page.evaluate(()=>{window.automationTest.fraction=true;window.automationTest.fractionValue='15/64';});
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await page.getByRole('button',{name:'Resolver con IA local'}).click();
   await expect(page.getByText('Respuesta del ejercicio: 15/64')).toBeVisible();
   await page.getByRole('button',{name:'Responder, verificar y continuar'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO',{timeout:15000});
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS');
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS');
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
   await expect(page.locator('.ansed_tree .AnsedObject')).toHaveText(['15','64']);
 });
@@ -104,21 +106,21 @@ test('el recorrido respeta la necesidad de imagen declarada por el usuario',asyn
   expect(await counters(page)).toEqual({solves:0,submits:0,nexts:0});
 });
 
-test('panel completa dos respuestas y avanza solamente entre ambas',async({page})=>{
+test('panel completa dos ejercicios y avanza solamente entre ellos',async({page})=>{
   await openPanel(page);
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await page.getByLabel('Máximo de minutos ALEKS').fill('1');
   await page.getByLabel('Máximo de llamadas IA ALEKS').fill('4');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
-  await expect(page.getByLabel('Máximo de respuestas ALEKS')).toBeDisabled();
+  await expect(page.getByLabel('Máximo de ejercicios ALEKS')).toBeDisabled();
   await expect(page.getByRole('button',{name:'Detener recorrido'})).toBeEnabled();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO',{timeout:15000});
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 2 llamadas IA');
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS · 2 llamadas IA');
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
   await expect(page.locator('.ansed_tree')).toHaveText('20');
   await expect(page.getByRole('button',{name:'Detener recorrido'})).toBeDisabled();
-  await expect(page.getByLabel('Máximo de respuestas ALEKS')).toBeEnabled();
+  await expect(page.getByLabel('Máximo de ejercicios ALEKS')).toBeEnabled();
 });
 
 test('Detener durante una consulta cancela el recorrido y descarta la respuesta tardía',async({page})=>{
@@ -146,32 +148,32 @@ test('Incorrecta detiene el recorrido y muestra el rechazo sin avanzar',async({p
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('ALEKS rechazó la respuesta');
   await expect(status).toContainText('DETENIDO');
-  await expect(status).toContainText('0 correctas confirmadas por ALEKS');
+  await expect(status).toContainText('0 ejercicios correctos confirmados por ALEKS');
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
   await expect(page.getByRole('button',{name:'Detener recorrido'})).toBeDisabled();
 });
 
 test('el panel muestra límites editables y rechaza valores fuera del rango',async({page})=>{
   await openPanel(page);
-  await expect(page.getByLabel('Máximo de respuestas ALEKS')).toHaveValue('10');
+  await expect(page.getByLabel('Máximo de ejercicios ALEKS')).toHaveValue('10');
   await expect(page.getByLabel('Máximo de minutos ALEKS')).toHaveValue('15');
   await expect(page.getByLabel('Máximo de llamadas IA ALEKS')).toHaveValue('20');
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('0');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('0');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(page.getByRole('button',{name:'Detener recorrido'})).toBeDisabled();
   expect(await counters(page)).toEqual({solves:0,submits:0,nexts:0});
 });
 
-test('el límite 01 se explica como una respuesta y conserva Correcta sin avanzar',async({page})=>{
+test('el límite 01 se explica como un ejercicio y conserva Correcta sin avanzar',async({page})=>{
   await openPanel(page);
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('01');
-  await expect(page.getByLabel('Alcance del recorrido')).toContainText('1 respuesta');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('01');
+  await expect(page.getByLabel('Alcance del recorrido')).toContainText('1 ejercicio');
   await expect(page.getByLabel('Alcance del recorrido')).toContainText('no avanzará');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO');
-  await expect(status).toContainText('1 correctas confirmadas');
+  await expect(status).toContainText('1 ejercicio correcto confirmado');
   await expect(page.getByRole('button',{name:'Iniciar recorrido automático'})).toBeDisabled();
   await expect(page.getByRole('button',{name:'Continuar desde la respuesta correcta'})).toBeEnabled();
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
@@ -180,16 +182,16 @@ test('el límite 01 se explica como una respuesta y conserva Correcta sin avanza
 
 test('continúa desde Correcta después del límite y pulsa Siguiente tema una sola vez',async({page})=>{
   await openPanel(page);
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('1');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO');
   await expect(page.getByRole('button',{name:'Siguiente tema',exact:true})).toBeVisible();
   const continuation=page.getByRole('button',{name:'Continuar desde la respuesta correcta'});
   await expect(continuation).toBeEnabled();
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await continuation.click();
-  await expect(status).toContainText('2 correctas confirmadas por ALEKS · 2 llamadas IA',{timeout:15000});
+  await expect(status).toContainText('2 ejercicios correctos confirmados por ALEKS · 2 llamadas IA',{timeout:15000});
   await expect(status).toContainText('COMPLETADO');
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
   await expect(page.locator('.ansed_tree')).toHaveText('20');
@@ -199,7 +201,7 @@ test('continúa desde Correcta después del límite y pulsa Siguiente tema una s
 
 test('rechazar límites de continuación conserva el resultado y permite corregirlos',async({page})=>{
   await openPanel(page);
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('1');
   await page.getByRole('button',{name:'Iniciar recorrido automático'}).click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
   await expect(status).toContainText('COMPLETADO');
@@ -208,19 +210,19 @@ test('rechazar límites de continuación conserva el resultado y permite corregi
   await continuation.click();
   await expect(page.getByRole('alert')).toBeVisible();
   await expect(status).toContainText('COMPLETADO');
-  await expect(status).toContainText('1 correctas confirmadas');
+  await expect(status).toContainText('1 ejercicio correcto confirmado');
   await expect(status).not.toContainText('No se pudo iniciar el recorrido');
   expect(await counters(page)).toEqual({solves:1,submits:1,nexts:0});
   await expect(continuation).toBeEnabled();
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('2');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('2');
   await continuation.click();
-  await expect(status).toContainText('2 correctas confirmadas',{timeout:15000});
+  await expect(status).toContainText('2 ejercicios correctos confirmados',{timeout:15000});
   expect(await counters(page)).toEqual({solves:2,submits:2,nexts:1});
 });
 
 test('tras avanzar manualmente permite iniciar desde el nuevo ejercicio vacío',async({page})=>{
   await openPanel(page);
-  await page.getByLabel('Máximo de respuestas ALEKS').fill('1');
+  await page.getByLabel('Máximo de ejercicios ALEKS').fill('1');
   const start=page.getByRole('button',{name:'Iniciar recorrido automático'});
   await start.click();
   const status=page.getByRole('region',{name:'Recorrido automático ALEKS'}).getByRole('status');
