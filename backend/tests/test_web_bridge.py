@@ -21,6 +21,14 @@ CONTEXT = {"fingerprint": "a" * 64, "statement": "Calcula veinte más tres.",
            "diagram_required": False, "can_fill_integer": False}
 PROPOSAL = {"status": "proposed", "answers": [{"field_key": "answer", "value": "23", "unit": ""}],
             "explanation": "Veinte más tres es veintitrés.", "missing_information": []}
+DICE_PROMPT = (
+    "Un dado ordinario (regular) es un cubo con los números del 1 al 6 en los lados "
+    "(representado por puntos pintados). Imaginemos que tal dado sea lanzado dos veces en sucesión "
+    "y que los valores de las caras en los dos lances son sumados. Esta suma se registra como el "
+    "resultado de un único ensayo de un experimento aleatorio. Calcular la probabilidad de cada "
+    "uno de los siguientes sucesos: Suceso A: La suma es {a}. Suceso B: La suma es {b}. "
+    "Escribir las respuestas como fracciones exactas."
+)
 
 
 @pytest.fixture
@@ -80,8 +88,8 @@ def extension_headers(token):
     return {"Origin": web_bridge.bridge_origin(), "Authorization": "Bearer " + token}
 
 
-def create(client, token):
-    response = client.post("/web-api/bridge/jobs", json={"context": CONTEXT}, headers=extension_headers(token))
+def create(client, token, context=CONTEXT):
+    response = client.post("/web-api/bridge/jobs", json={"context": context}, headers=extension_headers(token))
     assert response.status_code == 202, response.text
     return response.json()["id"]
 
@@ -95,6 +103,37 @@ def outcome(client, token, key):
             return response.json()
         time.sleep(.01)
     pytest.fail("Bridge job did not finish")
+
+
+@pytest.mark.parametrize("a,b,expected_a,expected_b", [
+    ("mayor que 9", "divisible entre 2 o 6 (o ambos)", "1/6", "1/2"),
+    ("mayor que 9", "divisible entre 2 o 3 (o ambos)", "1/6", "2/3"),
+    ("mayor que 5", "un número impar", "13/18", "1/2"),
+])
+def test_bridge_counts_each_dice_outcome_once_per_event(
+    bridge_client, gemini_calls, monkeypatch, a, b, expected_a, expected_b
+):
+    monkeypatch.setattr(settings, "gemini_api_key", "")
+    register(bridge_client)
+    token = issue(bridge_client)["token"]
+    context = {
+        **CONTEXT,
+        "statement": DICE_PROMPT.format(a=a, b=b),
+        "fields": [
+            {"key": "field_1", "label": f"P(B): La suma es {b}."},
+            {"key": "field_2", "label": f"P(A): La suma es {a}."},
+        ],
+    }
+    job = outcome(bridge_client, token, create(bridge_client, token, context))
+    assert job["status"] == "completed"
+    result = job["result"]
+    assert result["verification"] == "two_dice_events" and result["verified"] is True
+    assert result["provider"] == "deterministic" and result["provider_calls"] == 0
+    assert result["proposal"]["answers"] == [
+        {"field_key": "field_1", "value": expected_b, "unit": ""},
+        {"field_key": "field_2", "value": expected_a, "unit": ""},
+    ]
+    assert not gemini_calls
 
 
 def test_issue_requires_cookie_auth_and_csrf(bridge_client):

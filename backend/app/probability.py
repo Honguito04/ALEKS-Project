@@ -1,4 +1,4 @@
-"""Probabilidad exacta para plantillas completas de cajas y giros de ruleta.
+"""Probabilidad exacta para plantillas completas de cajas, ruletas y dados.
 
 No se deduce independencia de palabras sueltas: las plantillas exigen elegir
 al azar un artículo de cada caja o girar dos veces la misma ruleta con sectores
@@ -8,6 +8,8 @@ import re
 import unicodedata
 from dataclasses import dataclass
 from fractions import Fraction
+from itertools import product
+from operator import eq, ge, gt, le, lt
 
 
 @dataclass(frozen=True)
@@ -139,3 +141,60 @@ def independent_spins(statement: str) -> IndependentSpins | None:
                    f"({favorable_first}/{total}) × ({favorable_second}/{total}) = {rendered}. "
                    "La fracción está reducida y no lleva unidad.")
     return IndependentSpins(rendered, explanation)
+
+
+_TWO_DICE_EVENTS = re.compile(
+    r"un dado ordinario \(regular\) es un cubo con los numeros del 1 al 6 "
+    r"en los lados \(representado por puntos pintados\)\. "
+    r"imaginemos que tal dado sea lanzado dos veces en sucesion y que los valores "
+    r"de las caras en los dos lances son sumados\. "
+    r"esta suma se registra como el resultado de un unico ensayo de un experimento aleatorio\. "
+    r"calcular la probabilidad de cada uno de los siguientes sucesos:\s*"
+    r"suceso ([a-z]):\s*la suma ([^.]+)\. "
+    r"suceso ([a-z]):\s*la suma ([^.]+)\. "
+    r"escribir las respuestas como fracciones exactas\."
+)
+
+_SUM_COMPARISONS = {
+    "mayor que": gt, "mayor o igual que": ge,
+    "menor que": lt, "menor o igual que": le, "igual a": eq,
+}
+
+
+def _favorable_sums(condition: str) -> set[int] | None:
+    sums = range(2, 13)
+    comparison = re.fullmatch(r"es (mayor que|mayor o igual que|menor que|menor o igual que|igual a) ([0-9]{1,2})",
+                              condition)
+    if comparison:
+        relation, limit = comparison.groups()
+        return {total for total in sums if _SUM_COMPARISONS[relation](total, int(limit))}
+    parity = re.fullmatch(r"es (?:un numero )?(par|impar)", condition)
+    if parity:
+        remainder = int(parity[1] == "impar")
+        return {total for total in sums if total % 2 == remainder}
+    divisibility = re.fullmatch(r"es divisible entre ([1-9][0-9]?)(?: o ([1-9][0-9]?)(?: \(o ambos\))?)?",
+                                condition)
+    if divisibility:
+        divisors = [int(value) for value in divisibility.groups() if value is not None]
+        return {total for total in sums if any(total % divisor == 0 for divisor in divisors)}
+    return None
+
+
+def two_dice_events(statement: str) -> dict[str, tuple[int, Fraction]] | None:
+    """Cuenta cada par ordenado una vez por suceso, incluso si cumple dos divisores."""
+    if len(statement) > 8000:
+        return None
+    match = _TWO_DICE_EVENTS.fullmatch(_normalize_statement(statement))
+    if not match:
+        return None
+    first, first_condition, second, second_condition = match.groups()
+    if first == second:
+        return None
+    results = {}
+    for event, condition in ((first, first_condition), (second, second_condition)):
+        sums = _favorable_sums(condition)
+        if sums is None:
+            return None
+        count = sum(a + b in sums for a, b in product(range(1, 7), repeat=2))
+        results[event] = (count, Fraction(count, 36))
+    return results

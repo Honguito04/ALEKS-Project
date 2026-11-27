@@ -13,12 +13,10 @@ from fastapi import APIRouter, Depends, HTTPException, Response
 
 from .config import settings
 from .local_assistant import (
-    AssistAnswer, AssistProposal, AssistRequest, AssistResult,
-    VisualDraft, VisualReview, decode_local_output,
+    AssistProposal, AssistRequest, AssistResult,
+    VisualDraft, VisualReview, decode_local_output, exact_text_proposal,
 )
 from .assist_checks import check_calculations
-from .counting import ordered_prizes
-from .probability import independent_boxes, independent_spins
 from .web_accounts import current_user, register_cleanup, require_csrf, reserve_call, session_active
 
 
@@ -173,13 +171,10 @@ async def consult_cloud(user, body: AssistRequest):
         return result(body, AssistProposal(status="needs_context", answers=[],
                       explanation="El ejercicio requiere un dibujo. Adjunta una imagen legible.",
                       missing_information=["Diagrama o región sombreada"]))
-    if not body.context.diagram_required and len(body.context.fields) == 1 and body.context.fields[0].key == "answer":
-        for checker, verification in ((ordered_prizes, "ordered_prizes"), (independent_boxes, "independent_boxes"),
-                                      (independent_spins, "independent_spins")):
-            exact = checker(body.context.statement)
-            if exact is not None:
-                return result(body, AssistProposal(status="proposed", answers=[AssistAnswer(field_key="answer", value=exact.answer, unit="")],
-                              explanation=exact.explanation, missing_information=[]), provider="deterministic", verified=True, verification=verification)
+    exact = exact_text_proposal(body.context)
+    if exact is not None:
+        proposal, verification = exact
+        return result(body, proposal, provider="deterministic", verified=True, verification=verification)
     if not settings.gemini_api_key or not re.fullmatch(r"[a-zA-Z0-9._-]{1,100}", settings.gemini_model):
         raise ProviderError("not_configured", "La IA en la nube todavía no está configurada en el servidor.")
     async with asyncio.timeout(settings.web_ai_timeout_seconds * 2):

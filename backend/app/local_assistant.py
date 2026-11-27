@@ -15,7 +15,7 @@ from pydantic import Field, PrivateAttr, ValidationError, model_validator, field
 from .config import settings
 from .models import Strict
 from .counting import ordered_prizes
-from .probability import independent_boxes, independent_spins
+from .probability import independent_boxes, independent_spins, two_dice_events
 from .answer_text import normalize_numeric_answer
 from .assist_checks import VisualCalculation, check_calculations
 
@@ -188,6 +188,9 @@ class AssistProposal(Strict):
         return self
 
 
+ExactVerification = Literal["ordered_prizes", "independent_boxes", "independent_spins", "two_dice_events"]
+
+
 class AssistResult(Strict):
     fingerprint: str
     proposal: AssistProposal
@@ -195,7 +198,7 @@ class AssistResult(Strict):
     provider: Literal["ollama", "deterministic"] = "ollama"
     provider_calls: int = Field(ge=0, le=2)
     verified: bool = False
-    verification: Literal["none", "ordered_prizes", "independent_boxes", "independent_spins"] = "none"
+    verification: Literal["none"] | ExactVerification = "none"
 
     @model_validator(mode="after")
     def verification_source(self):
@@ -205,6 +208,42 @@ class AssistResult(Strict):
         if exact and (self.provider_calls != 0 or self.proposal.status != "proposed"):
             raise ValueError("Resultado exacto incoherente")
         return self
+
+
+def exact_text_proposal(context: AssistContext) -> tuple[AssistProposal, ExactVerification] | None:
+    """Resuelve plantillas completas usando el enunciado como fuente de datos."""
+    if context.diagram_required:
+        return None
+    if len(context.fields) == 1 and context.fields[0].key == "answer":
+        for checker, verification in ((ordered_prizes, "ordered_prizes"), (independent_boxes, "independent_boxes"),
+                                      (independent_spins, "independent_spins")):
+            exact = checker(context.statement)
+            if exact is not None:
+                return AssistProposal(status="proposed",
+                    answers=[AssistAnswer(field_key="answer", value=exact.answer, unit="")],
+                    explanation=exact.explanation, missing_information=[]), verification
+    if len(context.fields) != 2:
+        return None
+    events = two_dice_events(context.statement)
+    if events is None:
+        return None
+    field_events = [re.fullmatch(r"P\(([A-Z])\)(?:: .+)?", field.label) for field in context.fields]
+    if any(match is None for match in field_events):
+        return None
+    letters = [match[1].lower() for match in field_events]
+    if set(letters) != events.keys():
+        return None
+
+    answers = []
+    counts = []
+    for field, event in zip(context.fields, letters, strict=True):
+        count, probability = events[event]
+        answers.append(AssistAnswer(field_key=field.key, value=str(probability), unit=""))
+        counts.append(f"P({event.upper()}) = {count}/36 = {probability}.")
+    explanation = ("Hay 36 pares ordenados equiprobables. Cada par favorable se cuenta una vez "
+                   "por suceso, aunque su suma cumpla más de una condición. " + " ".join(counts))
+    return AssistProposal(status="proposed", answers=answers, explanation=explanation,
+                          missing_information=[]), "two_dice_events"
 
 
 class VisualDraft(AssistProposal):
@@ -422,17 +461,11 @@ async def consult_local(body: AssistRequest) -> AssistResult:
         return AssistResult(fingerprint=body.context.fingerprint, model=settings.ai_model, provider_calls=0,
             proposal=AssistProposal(status="needs_context", answers=[], explanation="El enunciado requiere un diagrama. Incluye la captura visible del ejercicio.",
                                     missing_information=["Diagrama o región sombreada"]))
-    # La comprobación usa el texto del ejercicio, nunca la explicación de la IA.
-    # Solo los formatos completos reconocidos y un campo pueden acreditarla.
-    if not body.context.diagram_required and len(body.context.fields) == 1 and body.context.fields[0].key == "answer":
-        for checker, verification in ((ordered_prizes, "ordered_prizes"), (independent_boxes, "independent_boxes"),
-                                      (independent_spins, "independent_spins")):
-            exact = checker(body.context.statement)
-            if exact is not None:
-                return AssistResult(fingerprint=body.context.fingerprint, model="", provider="deterministic", provider_calls=0,
-                    verified=True, verification=verification, proposal=AssistProposal(status="proposed",
-                        answers=[AssistAnswer(field_key="answer", value=exact.answer, unit="")],
-                        explanation=exact.explanation, missing_information=[]))
+    exact = exact_text_proposal(body.context)
+    if exact is not None:
+        proposal, verification = exact
+        return AssistResult(fingerprint=body.context.fingerprint, model="", provider="deterministic", provider_calls=0,
+                            verified=True, verification=verification, proposal=proposal)
     status = await local_status()
     if not status["online"] or not status["model_installed"]:
         raise ValueError("Hace falta un modelo instalado localmente; no se admiten modelos cloud")

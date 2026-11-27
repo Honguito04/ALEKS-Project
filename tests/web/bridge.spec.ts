@@ -21,10 +21,10 @@ test.beforeAll(async({request})=>{
 async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean}={}) {
   await page.addInitScript(({version,legacy,fields,decimal,events,blocked}) => {
     const context = { fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
-      fields:events?[{key:'field_1',label:'P(A): La suma es mayor que 5.'},{key:'field_2',label:'P(B): La suma es un número impar.'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
+      fields:events?[{key:'field_1',label:'P(A): La suma es mayor que 9.'},{key:'field_2',label:'P(B): La suma es divisible entre 2 o 6 (o ambos).'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
     const proposal = {id:'00000000-0000-4000-8000-000000000021',context,
-      result:{fingerprint:context.fingerprint,model:'mock-gemini',provider:'gemini',provider_calls:1,verified:false,verification:'none',
-        proposal:{status:'proposed',answers:events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'13/18',unit:''}]:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
+      result:{fingerprint:context.fingerprint,model:events?'':'mock-gemini',provider:events?'deterministic':'gemini',provider_calls:events?0:1,verified:Boolean(events),verification:events?'two_dice_events':'none',
+        proposal:{status:'proposed',answers:events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'1/6',unit:''}]:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
     let state:any={connected:true,writerVersion:version,providerCalls:0},listeners:((message:any)=>void)[]=[],disconnects:(()=>void)[]=[];
     let deferred:any;
     const api:any={commands:[],disconnections:0,holdPreview:false,
@@ -47,7 +47,7 @@ async function prepare(page: Page, options:{version?:string;legacy?:boolean;fiel
             case 'list':value=[{id:7,title:'Álgebra',active:true},{id:8,title:'Probabilidad'}];break;
             case 'bind':state={connected:true,writerVersion:version,providerCalls:0,tab:{id:message.tabId,title:message.tabId===7?'Álgebra':'Probabilidad'}};value=state;break;
             case 'read':state={...state,context};value={context};break;
-            case 'preview':if(api.holdPreview){deferred=message;return;}state={...state,proposal,providerCalls:1};api.progress({});value={proposal};break;
+            case 'preview':if(api.holdPreview){deferred=message;return;}state={...state,proposal,providerCalls:proposal.result.provider_calls};api.progress({});value={proposal};break;
             case 'start':state={...state,automation:{id:'00000000-0000-4000-8000-000000000022',phase:'LISTO',active:true,busy:false,canContinue:false,accepted:0,aiCalls:2,started:Date.now(),limits:message.limits,message:'ALEKS activado para usar el teclado.'}};value={automation:state.automation};break;
             case 'stop':state={...state,automation:{...state.automation,phase:'DETENIDO',active:false,busy:false,message:'Detenido por el usuario.'}};value=state;break;
             case 'status':value=state;break;
@@ -191,7 +191,8 @@ for (const blocked of [false, true]) {
     }
     await page.getByRole('button', { name: 'Consultar vista previa' }).click();
     const answers = page.locator('.bridge-proposal p').filter({ has: page.locator('strong') });
-    await expect(answers).toHaveText(['P(A): 13/18', 'P(B): 1/2']);
+    await expect(answers).toHaveText(['P(A): 1/6', 'P(B): 1/2']);
+    await expect(page.getByText('Resultado comprobado', { exact: true })).toBeVisible();
     if (blocked) {
       await expect(page.locator('#bridge-fill-blockers')).not.toContainText('compatible con fracciones');
       await expect(consent).toBeDisabled();

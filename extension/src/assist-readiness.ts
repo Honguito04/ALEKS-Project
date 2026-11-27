@@ -26,7 +26,7 @@ export function requireAssistImage(context:AssistContext,required:boolean):Assis
 }
 
 export function captureFillPolicy(context:AssistContext,result:AssistResult,includeImage:boolean):AssistContext {
-  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes','independent_spins'].includes(result.verification) && !context.diagram_required;
+  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes','independent_spins','two_dice_events'].includes(result.verification) && !context.diagram_required;
   if(!includeImage || textVerified)return context;
   return {...context,can_fill_integer:false,can_fill_fraction:false,fill_blockers:[...new Set([...context.fill_blockers,'image_based_proposal' as const])]};
 }
