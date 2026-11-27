@@ -136,6 +136,35 @@ def test_bridge_counts_each_dice_outcome_once_per_event(
     assert not gemini_calls
 
 
+@pytest.mark.parametrize("formula,points", [
+    ("(x + 5)^(2) + 1", "(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)"),
+    ("−2 (( x − 3 ))^(2) + 4", "(3, 4), (1, -4), (2, 2), (4, 2), (5, -4)"),
+])
+def test_bridge_previews_parabola_points_without_image_or_provider(
+    bridge_client, gemini_calls, monkeypatch, formula, points
+):
+    monkeypatch.setattr(settings, "gemini_api_key", "")
+    register(bridge_client)
+    token = issue(bridge_client)["token"]
+    context = {
+        **CONTEXT,
+        "statement": (
+            f"Trazar el gráfico de la parábola y = {formula} "
+            "Para trazar la parábola, marcar el vértice y cuatro puntos más, dos a cada lado del vértice. "
+            "Luego hacer clic en el ícono del gráfico."
+        ),
+        "fields": [{"key": "answer", "label": "Puntos y trazo de la función"}],
+    }
+    job = outcome(bridge_client, token, create(bridge_client, token, context))
+    assert job["status"] == "completed"
+    result = job["result"]
+    assert result["verification"] == "parabola_points" and result["verified"] is True
+    assert result["provider_calls"] == 0
+    assert result["proposal"]["answers"] == [{"field_key": "answer", "value": points, "unit": ""}]
+    assert "El primer punto es el vértice" in result["proposal"]["explanation"]
+    assert not gemini_calls
+
+
 def test_issue_requires_cookie_auth_and_csrf(bridge_client):
     assert bridge_client.post("/web-api/bridge-token", headers={"Origin": ORIGIN}).status_code == 401
     register(bridge_client)

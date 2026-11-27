@@ -15,6 +15,7 @@ from pydantic import Field, PrivateAttr, ValidationError, model_validator, field
 from .config import settings
 from .models import Strict
 from .counting import ordered_prizes
+from .graphing import parabola_points
 from .probability import independent_boxes, independent_spins, two_dice_events
 from .answer_text import normalize_numeric_answer
 from .assist_checks import VisualCalculation, check_calculations
@@ -188,7 +189,7 @@ class AssistProposal(Strict):
         return self
 
 
-ExactVerification = Literal["ordered_prizes", "independent_boxes", "independent_spins", "two_dice_events"]
+ExactVerification = Literal["ordered_prizes", "independent_boxes", "independent_spins", "two_dice_events", "parabola_points"]
 
 
 class AssistResult(Strict):
@@ -215,6 +216,19 @@ def exact_text_proposal(context: AssistContext) -> tuple[AssistProposal, ExactVe
     if context.diagram_required:
         return None
     if len(context.fields) == 1 and context.fields[0].key == "answer":
+        points = parabola_points(context.statement)
+        if points is not None:
+            coordinates = ", ".join(f"({x}, {y})" for x, y in points)
+            return AssistProposal(
+                status="proposed",
+                answers=[AssistAnswer(field_key="answer", value=coordinates, unit="")],
+                explanation=(
+                    "El primer punto es el vértice. Los otros cuatro se calculan sustituyendo valores de x "
+                    "a una y dos unidades a cada lado del vértice. Marca los cinco puntos con el lápiz "
+                    "y luego pulsa el ícono de la curva en ALEKS."
+                ),
+                missing_information=[],
+            ), "parabola_points"
         for checker, verification in ((ordered_prizes, "ordered_prizes"), (independent_boxes, "independent_boxes"),
                                       (independent_spins, "independent_spins")):
             exact = checker(context.statement)

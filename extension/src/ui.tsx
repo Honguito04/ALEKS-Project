@@ -17,7 +17,8 @@ const verifiedResultLabels={
   ordered_prizes:'Resultado comprobado · premios por puestos',
   independent_boxes:'Resultado comprobado · probabilidad de dos cajas',
   independent_spins:'Resultado comprobado · probabilidad de dos giros',
-  two_dice_events:'Resultado comprobado · dos lanzamientos de dado'
+  two_dice_events:'Resultado comprobado · dos lanzamientos de dado',
+  parabola_points:'Resultado comprobado · puntos de la parábola'
 };
 async function rpc(type:string,data:Record<string,unknown>={}) {
   const r=await chrome.runtime.sendMessage({scope:'ui',type,...data});

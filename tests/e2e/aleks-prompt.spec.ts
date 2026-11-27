@@ -235,11 +235,15 @@ test('lee el MathML aportado de la parábola y conserva la cuadrícula para el t
     document.addEventListener('click',()=>clicks++);
     const context=await window.assistContext(document);
     const prompt=await window.aleksPrompt(document);
-    return {prompt,context,clicks,unchanged:before===document.body.innerHTML};
+    const unchanged=before===document.body.innerHTML;
+    root.append(' Usa los datos adicionales del dibujo.');
+    const contextWithDrawing=await window.assistContext(document);
+    return {prompt,context,contextWithDrawing,clicks,unchanged};
   });
   expect(result).toMatchObject({clicks:0,unchanged:true,
     prompt:{status:'readable',graphingExerciseDetected:true,autoSubmitSupported:false},
-    context:{fields:[{key:'answer',label:'Puntos y trazo de la función'}],diagram_required:true,
-      can_fill_integer:false,can_fill_fraction:false,fill_blockers:['graph_editor']}});
+    context:{fields:[{key:'answer',label:'Puntos y trazo de la función'}],diagram_required:false,
+      can_fill_integer:false,can_fill_fraction:false,fill_blockers:['graph_editor']},
+    contextWithDrawing:{diagram_required:true,can_fill_integer:false,can_fill_fraction:false}});
   expect(result.context.statement).toBe('Trazar el gráfico de la parábola y = (x + 5)^(2) + 1 Para trazar la parábola, marcar el vértice y cuatro puntos más, dos a cada lado del vértice. Luego hacer clic en el ícono del gráfico.');
 });

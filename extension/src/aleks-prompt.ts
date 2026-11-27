@@ -4,6 +4,7 @@ class Unreadable extends Error {}
 const MAX_TEXT=4000, MAX_MATH=64, MAX_DOM_NODES=2000;
 const normalize=(text:string)=>text.replace(/\s+/gu,' ').replace(/\s+([,.;:!?])/gu,'$1').trim();
 const redactURLs=(text:string)=>text.replace(/https?:\/\/[^\s<>]+/giu,'[enlace]');
+const parabolaTask=/^Traz(?:ar|a) el gráfico de la parábola (.+?) Para trazar la parábola, marcar el vértice y cuatro puntos más, dos a cada lado del vértice\. Luego hacer clic en el [ií]cono del gráfico\.$/iu;
 function operatorCodes(value:string) {
   const points=Array.from(value);
   return points.slice(0,8).map(char=>`U+${char.codePointAt(0)!.toString(16).toUpperCase().padStart(4,'0')}`).join(' ')+(points.length>8?' …':'');
@@ -143,11 +144,15 @@ function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'
   if(!statement)throw new Unreadable('No hay texto de enunciado legible.');
   const graphingExerciseDetected=/^(?:traz(?:a|ar)\s+(?:el\s+)?gr[aá]fic[oa]\s+de\s+|grafic(?:a|ar)\s+)/iu.test(statement) &&
     mathematics.some(math=>/^y\s*=/iu.test(promptMathText(math).trim()));
+  // La plantilla completa da la ecuación y pide construir la gráfica. La
+  // cuadrícula es el lugar de respuesta y no aporta datos para el cálculo.
+  const textParabola=graphingExerciseDetected && mathematics.length===1 &&
+    parabolaTask.exec(statement)?.[1]===normalize(promptMathText(mathematics[0]));
   // La cuadrícula y las figuras se observan fuera de #algoPrompt.
   const figurePresent=[...document.querySelectorAll('.figed_top_container')].some(node=>!hidden(node));
   return {statement,mathematics,multiplePartsDetected:[...statement.matchAll(/\bSuceso\s+[A-Z]\s*:/gu)].length>1,
-    diagramReferenceDetected:graphingExerciseDetected || figurePresent || /\b(?:regi[oó]n\s+sombreada|figura|imagen|diagrama|gr[aá]fic[oa]|dibujo)\b/iu.test(statement) ||
-      /\b(?:c[ií]rculo|tri[aá]ngulo|rect[aá]ngulo|pol[ií]gono)\s+(?:que\s+se\s+muestra|a\s+continuaci[oó]n)\b/iu.test(statement),
+    diagramReferenceDetected:!textParabola && (graphingExerciseDetected || figurePresent || /\b(?:regi[oó]n\s+sombreada|figura|imagen|diagrama|gr[aá]fic[oa]|dibujo)\b/iu.test(statement) ||
+      /\b(?:c[ií]rculo|tri[aá]ngulo|rect[aá]ngulo|pol[ií]gono)\s+(?:que\s+se\s+muestra|a\s+continuaci[oó]n)\b/iu.test(statement)),
     ...(graphingExerciseDetected?{graphingExerciseDetected:true}:{})};
 }
 

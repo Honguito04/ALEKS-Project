@@ -98,7 +98,7 @@ test('puerto simulado: desconexión y respuesta tardía no restauran otra sesió
   await prepare(page);await bindRead(page);
   await page.evaluate(()=>(window as any).bridgeMock.holdPreview=true);
   await page.getByRole('button',{name:'Consultar vista previa'}).click();
-  await expect(page.getByRole('button',{name:'Consultando nube…'})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Preparando vista previa…'})).toBeVisible();
   await page.evaluate(()=>(window as any).bridgeMock.disconnect());
   await expect(page.getByRole('button',{name:'Conectar extensión ALEKS'})).toBeVisible();
   await page.evaluate(()=>(window as any).bridgeMock.release());

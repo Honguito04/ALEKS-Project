@@ -6,7 +6,7 @@ La automatización requiere **Chrome de escritorio 116 o posterior**, la extensi
 
 ## Actualización de versiones
 
-Desde 0.5.1 la conexión muestra **Web 0.5.6 · Extensión 0.5.6** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
+Desde 0.5.1 la conexión muestra **Web 0.5.7 · Extensión 0.5.7** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
 
 ## Primera prueba en Windows
 
@@ -37,6 +37,8 @@ La versión 0.5.4 abrevia la etiqueta de cada valor en la vista previa: `P(A): 1
 Desde 0.5.5, la plantilla de dos lanzamientos de un dado se calcula sin consultar la IA cuando el texto y los dos sucesos se reconocen. El cálculo enumera los 36 pares de lanzamientos y cuenta una sola vez cada par que satisface un suceso. Por ejemplo, «divisible entre 2 o 6 (o ambos)» da 18 de 36, o 1/2.
 
 Desde 0.5.6, la lectura reconoce el exponente separado que ALEKS usa después de un grupo entre paréntesis, como en `y = (x + 5)^2 + 1`. Al leer una instrucción de graficar y una ecuación de la forma `y = …`, muestra el enunciado y clasifica la respuesta como puntos y trazo manual en la cuadrícula. Si falla la lectura, el aviso indica el motivo detectado. La prueba local utiliza el MathML del fragmento aportado.
+
+En 0.5.7, **Consultar vista previa** calcula el vértice y cuatro puntos sin captura ni llamadas al modelo cuando reconoce la plantilla completa y la ecuación en forma de vértice con coeficientes enteros. Muestra el vértice primero y los pasos para dibujar la curva en ALEKS. Los ejercicios con datos de un diagrama siguen requiriendo captura.
 
 **Resultado comprobado** identifica un comprobador matemático independiente admitido. **Propuesta de IA sin verificar** no acredita que el proveedor haya entendido o resuelto bien el problema; la revisión visual o aritmética de una propuesta no convierte la lectura en evidencia independiente. ALEKS es quien califica una entrega.
 
