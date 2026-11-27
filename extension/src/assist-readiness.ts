@@ -13,6 +13,7 @@ export const fillBlockerMessages:Record<FillBlocker,string>={
   unsupported_readback:'No se puede comprobar que el recuadro esté vacío. Revisa su contenido.',
   result_present:'Se observa un resultado o un botón de avance. Abre un ejercicio sin resolver y vuelve a consultar.',
   diagram_required:'Esta respuesta depende de un diagrama que la escritura asistida no valida.',
+  graph_editor:'Este ejercicio se responde marcando puntos y trazando la curva en la cuadrícula de ALEKS.',
   image_based_proposal:'La propuesta depende de una captura. Si el ejercicio se resuelve solo con el texto, desmarca la captura y vuelve a consultar.',
   answer_format:'La escritura admite un entero, decimal o una fracción reducida no negativa por recuadro (hasta doce dígitos por componente). La unidad debe estar predefinida o tener un botón cm/cm²/cm³ reconocido.',
   fraction_control:'La lectura actual no confirmó un editor vacío compatible con fracciones. Vuelve a leer la actividad.',

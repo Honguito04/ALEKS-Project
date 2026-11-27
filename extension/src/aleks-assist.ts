@@ -33,8 +33,11 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   const prompt=await readAleksPrompt(document);
   const prompts=[...document.querySelectorAll<HTMLElement>('#algoPrompt')].filter(visible);
   const readable=prompt.status==='readable' && Boolean(prompt.statement && prompt.fingerprint);
-  if(!readable && (!allowImage || prompts.length!==1))throw Error('No hay un enunciado legible. Si el ejercicio está visible, incluye su captura para consultar a la IA.');
+  if(!readable && (!allowImage || prompts.length!==1)) {
+    throw Error(`No hay un enunciado legible. ${prompt.reason} Si el ejercicio está visible, incluye su captura para consultar a la IA.`);
+  }
   const editor=inspectAleksEditor(document),single=editor.singleEditor;
+  const graphing=prompt.graphingExerciseDetected;
   const pair=answerRoots(document);
   if(pair.length>12)throw Error('Hay demasiados recuadros para esta consulta.');
   const definitions = readable ? requestedEventLabels(prompt.statement!) : undefined;
@@ -45,7 +48,9 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   const mismatch = Boolean(definitions && (definitions.size !== pair.length ||
     !rowOrder || rowOrder.some(event => !definitions.has(event))));
   let fields: AssistContext['fields'];
-  if (editor.circleTable.status === 'observed') {
+  if (graphing) {
+    fields = [{ key:'answer',label:'Puntos y trazo de la función' }];
+  } else if (editor.circleTable.status === 'observed') {
     fields = editor.circleTable.fields.map(field => ({ key: field.kind, label: field.label }));
   } else if (definitions || rowOrder || pair.length > 1) {
     let labels: string[];
@@ -66,7 +71,9 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   if(!readable)fill_blockers.push('unreadable_prompt');
   const pairRead=pair.map(inspectEditorRoot);
   const two=pair.length===2 && editor.circleTable.status!=='observed';
-  if(mismatch) {
+  if(graphing) {
+    fill_blockers.push('graph_editor');
+  } else if(mismatch) {
     fill_blockers.push('field_count_mismatch');
   } else if(two) {
     if(pairRead.some(field=>field.status!=='observed'))fill_blockers.push('editor_structure');
@@ -80,7 +87,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
     if(single.readback.status==='unsupported')fill_blockers.push('unsupported_readback');
   }
   if(editor.resultMarker.positiveMessageCount>0 || editor.nextControl.count>0 || editor.nextTopicControl.count>0)fill_blockers.push('result_present');
-  if(prompt.diagramReferenceDetected)fill_blockers.push('diagram_required');
+  if(prompt.diagramReferenceDetected && !graphing)fill_blockers.push('diagram_required');
   const can_fill_integer=fill_blockers.length===0;
   const can_fill_fraction=can_fill_integer;
   // Cuando la lectura estructurada falla, el texto/MathML se usa solo en el
@@ -93,7 +100,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)))].map(value=>value.toString(16).padStart(2,'0')).join('');
   return assistContextSchema.parse({fingerprint,statement:readable?prompt.statement:'No fue posible leer el enunciado como texto estructurado. Interpreta únicamente el ejercicio visible en la captura adjunta; si faltan datos, indícalo.',
     fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,can_fill_fraction,fill_blockers,
-    ...(fields.length===1 && single.readback.fixed_unit?{fixed_unit:single.readback.fixed_unit}:{})});
+    ...(!graphing && fields.length===1 && single.readback.fixed_unit?{fixed_unit:single.readback.fixed_unit}:{})});
 }
 
 /** El usuario confirmó la conversión automática de a/b en fracción vertical.

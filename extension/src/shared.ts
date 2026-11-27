@@ -52,7 +52,7 @@ export interface SingleEditorObservation {
   readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string;fixed_unit?:FixedUnit;selected_unit?:'cm'|'cm^2'|'cm^3';unitLabel?:string};
 }
 export const fillBlockerSchema=z.enum(['unreadable_prompt','editor_missing','field_count_mismatch','multiple_editors','editor_structure','editor_disabled',
-  'editor_not_empty','unsupported_readback','result_present','diagram_required','image_based_proposal','answer_format','no_answer','fraction_control','unknown']);
+  'editor_not_empty','unsupported_readback','result_present','diagram_required','graph_editor','image_based_proposal','answer_format','no_answer','fraction_control','unknown']);
 export type FillBlocker=z.infer<typeof fillBlockerSchema>;
 export const assistContextSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),statement:z.string().min(1).max(8000),
@@ -92,6 +92,7 @@ export type PromptMath = {kind:'number'|'identifier'|'operator'|'text';value:str
 export interface PromptObservation {
   status:'readable'|'missing'|'ambiguous'|'unsupported';reason:string;
   statement?:string;mathematics?:PromptMath[];fingerprint?:string;multiplePartsDetected?:boolean;diagramReferenceDetected?:boolean;
+  graphingExerciseDetected?:true;
   autoSubmitSupported:false;
 }
 export interface Detection {origin:string; activity:string; session:boolean; complete:boolean; human:boolean; supported:boolean; reason?:string;editorObservation?:EditorObservation;promptObservation?:PromptObservation;observedTopic?:string}

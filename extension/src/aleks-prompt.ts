@@ -17,7 +17,7 @@ export function parsePromptMath(xml:string):PromptMath {
   const parsed=new DOMParser().parseFromString(xml.replace(/&nbsp;/gu,'&#160;'),'application/xml');
   if(parsed.querySelector('parsererror') || parsed.documentElement.localName!=='math')throw new Unreadable('MathML inválido: no se puede leer la expresión completa.');
   let count=0;
-  function visit(element:Element,depth:number,implicitUnit?:PromptMath):PromptMath {
+  function visit(element:Element,depth:number,postfixBase?:PromptMath):PromptMath {
     if(++count>128 || depth>12)throw new Unreadable('La expresión MathML supera los límites de complejidad.');
     if(element.namespaceURI && element.namespaceURI!=='http://www.w3.org/1998/Math/MathML')throw new Unreadable('Espacio de nombres MathML no admitido.');
     const tag=element.localName,children=[...element.children];
@@ -44,18 +44,31 @@ export function parsePromptMath(xml:string):PromptMath {
       const items:PromptMath[]=[];
       for(const [index,child] of children.entries()) {
         const previous=children[index-1],base=child.children[0];
-        // El exponente de m³ puede venir como <mstyle unit>m</mstyle><msup><mn/><mn>3</mn></msup>.
-        // Solo esa base vacía, inmediatamente después de una unidad explícita, hereda el nodo anterior.
+        // ALEKS puede poner el exponente en un msup de base vacía justo
+        // después de una unidad explícita o de un grupo entre paréntesis.
         const postfix=child.localName==='msup' && child.children.length===2 && base.localName==='mn' &&
-          !base.children.length && !base.textContent?.trim() && previous?.localName==='mstyle' && previous.getAttribute('fontface')==='unit' &&
-          previous.children.length===1 && previous.children[0].localName==='mtext';
-        const inherited=postfix?items.pop():undefined;
+          !base.children.length && !base.textContent?.trim();
+        let inherited:PromptMath|undefined;
+        if(postfix && previous?.localName==='mstyle' && previous.getAttribute('fontface')==='unit' &&
+          previous.children.length===1 && previous.children[0].localName==='mtext') {
+          inherited=items.pop();
+        } else if(postfix && previous?.localName==='mrow') {
+          const group=items.at(-1);
+          if(group?.kind==='row' && group.items.length===3) {
+            const [open,body,close]=group.items;
+            if(open.kind==='operator' && open.value==='(' && body.kind==='row' &&
+              close.kind==='operator' && close.value===')' && promptMathText(body).trim()) {
+              items.pop();
+              inherited=body;
+            }
+          }
+        }
         items.push(visit(child,depth+1,inherited));
       }
       return {kind:tag==='msqrt'?'sqrt':'row',items};
     }
     if(['mfrac','msup','mroot','msub','mover'].includes(tag) && children.length===2) {
-      const left=tag==='msup' && implicitUnit?implicitUnit:visit(children[0],depth+1),right=visit(children[1],depth+1);
+      const left=tag==='msup' && postfixBase?postfixBase:visit(children[0],depth+1),right=visit(children[1],depth+1);
       if(tag==='mfrac')return {kind:'fraction',numerator:left,denominator:right};
       if(tag==='msup')return {kind:'power',base:left,exponent:right};
       if(tag==='mroot')return {kind:'root',radicand:left,index:right};
@@ -91,7 +104,7 @@ function hidden(element:Element) {
   return false;
 }
 
-type PromptSnapshot={statement:string;mathematics:PromptMath[];multiplePartsDetected:boolean;diagramReferenceDetected:boolean};
+type PromptSnapshot={statement:string;mathematics:PromptMath[];multiplePartsDetected:boolean;diagramReferenceDetected:boolean;graphingExerciseDetected?:true};
 function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'} {
   const roots=[...document.querySelectorAll<HTMLElement>('#algoPrompt')].filter(root=>!hidden(root));
   if(roots.length!==1)return {error:roots.length?'ambiguous' as const:'missing' as const};
@@ -128,12 +141,14 @@ function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'
   walk(root,0);
   const statement=normalize(redactURLs(chunks.join('')));
   if(!statement)throw new Unreadable('No hay texto de enunciado legible.');
-  // El contenedor de figuras se observó fuera de #algoPrompt. Solo se registra
-  // su presencia: no se deducen medidas ni se leen URLs/canvas del dibujo.
+  const graphingExerciseDetected=/^(?:traz(?:a|ar)\s+(?:el\s+)?gr[aá]fic[oa]\s+de\s+|grafic(?:a|ar)\s+)/iu.test(statement) &&
+    mathematics.some(math=>/^y\s*=/iu.test(promptMathText(math).trim()));
+  // La cuadrícula y las figuras se observan fuera de #algoPrompt.
   const figurePresent=[...document.querySelectorAll('.figed_top_container')].some(node=>!hidden(node));
   return {statement,mathematics,multiplePartsDetected:[...statement.matchAll(/\bSuceso\s+[A-Z]\s*:/gu)].length>1,
-    diagramReferenceDetected:figurePresent || /\b(?:regi[oó]n\s+sombreada|figura|imagen|diagrama|gr[aá]fic[oa]|dibujo)\b/iu.test(statement) ||
-      /\b(?:c[ií]rculo|tri[aá]ngulo|rect[aá]ngulo|pol[ií]gono)\s+(?:que\s+se\s+muestra|a\s+continuaci[oó]n)\b/iu.test(statement)};
+    diagramReferenceDetected:graphingExerciseDetected || figurePresent || /\b(?:regi[oó]n\s+sombreada|figura|imagen|diagrama|gr[aá]fic[oa]|dibujo)\b/iu.test(statement) ||
+      /\b(?:c[ií]rculo|tri[aá]ngulo|rect[aá]ngulo|pol[ií]gono)\s+(?:que\s+se\s+muestra|a\s+continuaci[oó]n)\b/iu.test(statement),
+    ...(graphingExerciseDetected?{graphingExerciseDetected:true}:{})};
 }
 
 /** Lectura acotada al contenedor observado. El contador/título es opcional y no
@@ -146,7 +161,8 @@ export async function readAleksPrompt(document:Document):Promise<PromptObservati
     const canonical=JSON.stringify(first);
     const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(canonical)))].map(n=>n.toString(16).padStart(2,'0')).join('');
     if(canonical!==JSON.stringify(snapshot(document)))return {status:'ambiguous',reason:'El enunciado cambió durante la lectura.',autoSubmitSupported:false};
-    const reason=first.diagramReferenceDetected?'Texto leído; se detecta un dibujo o una referencia visual. Incluye su imagen para consultar; no se han interpretado medidas ni regiones.':
+    const reason=first.graphingExerciseDetected?'Se leyó la ecuación. Este ejercicio se responde dibujando en la cuadrícula.':
+      first.diagramReferenceDetected?'Texto leído; se detecta un dibujo o una referencia visual. Incluye su imagen para consultar; no se han interpretado medidas ni regiones.':
       first.multiplePartsDetected?'Se detectan varios sucesos; falta validar sus campos de respuesta.':'Enunciado leído; interpretación y controles pendientes de validar.';
     return {status:'readable',reason,...first,fingerprint,autoSubmitSupported:false};
   } catch(error) {

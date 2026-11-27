@@ -47,6 +47,8 @@ for(const xml of [
   '<math><msup><mn/><mn>3</mn></msup></math>',
   '<math><mn>16</mn><msup><mn/><mn>3</mn></msup></math>',
   '<math><mstyle><mtext>m</mtext></mstyle><msup><mn/><mn>3</mn></msup></math>',
+  '<math><mrow><mo>(</mo><mrow><mi>x</mi></mrow></mrow><msup><mn/><mn>2</mn></msup></math>',
+  '<math><mrow><mo>(</mo><mrow><mi>x</mi></mrow><mo>)</mo></mrow><mo>+</mo><msup><mn/><mn>2</mn></msup></math>',
   '<math><mo>&unknown;</mo></math>',
   '<math><mstyle fontface="unit"><mtext>m</mtext></mstyle><msup><mn/>extra<mn>3</mn></msup></math>'
 ]) {
@@ -204,4 +206,40 @@ test('descarta una lectura si cambia el enunciado mientras calcula la huella',as
     try {return await window.aleksPrompt(document);} finally {crypto.subtle.digest=digest;}
   });
   expect(result.status).toBe('ambiguous');expect(result.statement).toBeUndefined();
+});
+
+test('la lectura desde la web conserva el motivo específico del rechazo del enunciado',async({page})=>{
+  const diagnosis=await page.evaluate(async()=>{
+    document.querySelector('[mathml]')!.setAttribute('mathml','<math><mtable><mtr><mtd><mn>1</mn></mtd></mtr></mtable></math>');
+    return window.assistContext(document).then(()=>null,error=>error.message);
+  });
+  expect(diagnosis).toContain('Estructura MathML no admitida: mtable.');
+});
+
+test('lee el MathML aportado de la parábola y conserva la cuadrícula para el trazado manual',async({page})=>{
+  const result=await page.evaluate(async()=>{
+    const root=document.querySelector('#algoPrompt')!;
+    root.innerHTML=`<span class="aleks_content_style">
+      Trazar el gráfico de la <span class="exclude_mathml"><a role="link" href="#diccionario">parábola</a></span>
+      <blockquote><span><span data-formula>
+        <span class="visually-hidden never_read">y = ( x + 5 ) comienza superíndice 2 termina superíndice + 1</span>
+        <div class="ansed_root"><canvas class="ansed_canvas"></canvas><svg></svg></div>
+      </span></span></blockquote>
+      Para trazar la parábola, marcar el vértice y cuatro puntos más, dos a cada lado del vértice. Luego hacer clic en el ícono del gráfico.
+      <br>
+    </span>`;
+    root.querySelector('[data-formula]')!.setAttribute('mathml','<math class="jsmath"><mi>y</mi><mo>=</mo><mrow><mo>(</mo><mrow><mi>x</mi><mn> </mn><mo>+</mo><mn> 5</mn></mrow><mo>)</mo></mrow><msup><mn></mn><mrow><mn>2</mn></mrow></msup><mn> </mn><mo>+</mo><mn> 1</mn></math>');
+    root.insertAdjacentHTML('afterend','<div class="figed_top_container" style="cursor:crosshair"></div><button aria-label="Pencil" id="menubar_undefined_0_figed_pencilgraph" aria-pressed="false" aria-disabled="false"></button>');
+    const before=document.body.innerHTML;
+    let clicks=0;
+    document.addEventListener('click',()=>clicks++);
+    const context=await window.assistContext(document);
+    const prompt=await window.aleksPrompt(document);
+    return {prompt,context,clicks,unchanged:before===document.body.innerHTML};
+  });
+  expect(result).toMatchObject({clicks:0,unchanged:true,
+    prompt:{status:'readable',graphingExerciseDetected:true,autoSubmitSupported:false},
+    context:{fields:[{key:'answer',label:'Puntos y trazo de la función'}],diagram_required:true,
+      can_fill_integer:false,can_fill_fraction:false,fill_blockers:['graph_editor']}});
+  expect(result.context.statement).toBe('Trazar el gráfico de la parábola y = (x + 5)^(2) + 1 Para trazar la parábola, marcar el vértice y cuatro puntos más, dos a cada lado del vértice. Luego hacer clic en el ícono del gráfico.');
 });
