@@ -3,6 +3,7 @@ import { z } from 'zod';
 import { ALEKS_ORIGINS,assistContextSchema,assistResultSchema,type AssistContext,type AssistView } from './shared';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { answerPayload,captureFillPolicy } from './assist-readiness';
+import { drawableParabola } from './parabola-answer';
 
 declare const __BRIDGE_WEB_ORIGIN__:string;
 export const BRIDGE_WEB_ORIGIN=typeof __BRIDGE_WEB_ORIGIN__==='string'?__BRIDGE_WEB_ORIGIN__:'';
@@ -14,6 +15,7 @@ export const bridgeCommandSchema=z.discriminatedUnion('command',[
   z.object({...base,command:z.literal('bind'),tabId:z.number().int().nonnegative()}).strict(),
   z.object({...base,command:z.literal('read')}).strict(),
   z.object({...base,command:z.literal('preview'),includeImage:z.boolean().optional()}).strict(),
+  z.object({...base,command:z.literal('draw'),proposalId:z.uuid()}).strict(),
   z.object({...base,command:z.literal('start'),fingerprint:z.string().regex(/^[a-f0-9]{64}$/),
     limits:automationLimitsSchema,nativeKeyboard:z.literal(true),proposalId:z.uuid().optional()}).strict(),
   z.object({...base,command:z.literal('stop')}).strict(),
@@ -190,7 +192,7 @@ export class WebBridge {
       if(captured.fingerprint!==context.fingerprint)throw Error('El ejercicio cambió durante la captura. No se consultó IA.');
       if(image.length>1_333_359)throw Error('La captura supera el tamaño admitido.');
     }
-    const {fill_blockers,can_fill_fraction,fixed_unit,...modelContext}=context;
+    const {fill_blockers,can_fill_fraction,can_draw_parabola,fixed_unit,...modelContext}=context;
     let remote:string|undefined,reported=0,started=false,settled=false;
     const account=(calls:unknown)=>{if(typeof calls==='number' && Number.isInteger(calls) && calls>reported && calls<=2){c.providerCalls+=calls-reported;reported=calls;this.progress(c);}};
     try {
@@ -221,6 +223,36 @@ export class WebBridge {
       if(c.remote===remote)c.remote=undefined;
       if(remote)await this.request(c,`/jobs/${remote}`,'DELETE').catch(()=>{});
       this.progress(c);
+    }
+  }
+
+  private async draw(c:Connection,proposalId:string,epoch:number) {
+    const t=await this.bound(c,epoch),proposal=c.proposal;
+    if(c.driving || c.run?.view.active || this.deps.legacyBusy(t.id))throw Error('Ya hay una operación en la pestaña.');
+    const points=drawableParabola(proposal);
+    if(!proposal || proposal.id!==proposalId || !points)throw Error('Consulta una vista previa vigente de la parábola con la cuadrícula vacía.');
+    const current=()=>c.alive && c.epoch===epoch && this.tabs.get(t.id)===c;
+    c.proposal=undefined; // Cada autorización de dibujo se consume una sola vez.
+    try {
+      await this.deps.focus(t.id);
+      await this.focused(c,t,epoch);
+      const context=await this.read(c,epoch);
+      if(context.fingerprint!==proposal.context.fingerprint || !context.can_draw_parabola) {
+        throw Error('Cambió el ejercicio o la cuadrícula. Vuelve a leer y a consultar la actividad.');
+      }
+      const result=await this.deps.deliver(t.id,'drawParabola',{fingerprint:context.fingerprint,points},current);
+      this.assert(c,epoch);
+      if(result?.drawn!==true)throw Error('ALEKS no confirmó el dibujo. Revisa la cuadrícula.');
+      // El botón permanece deshabilitado hasta una nueva lectura y propuesta.
+      c.context={...context,can_draw_parabola:false};
+      this.progress(c);
+      return this.view(c);
+    } catch(error) {
+      if(current()) {
+        c.context=undefined;
+        this.progress(c);
+      }
+      throw error;
     }
   }
 
@@ -327,6 +359,7 @@ export class WebBridge {
     }
     if(command.command==='read'){c.proposal=undefined;return {context:await this.read(c,epoch)};}
     if(command.command==='preview'){if(c.run?.view.active)throw Error('Detén el recorrido antes de consultar.');return {proposal:await this.solve(c,epoch,command.includeImage===true)};}
+    if(command.command==='draw')return this.draw(c,command.proposalId,epoch);
     if(command.command==='start')return this.start(c,command,epoch);
     if(command.command==='status')return this.view(c);
     throw Error('Comando no admitido.');

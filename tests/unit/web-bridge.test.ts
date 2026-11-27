@@ -49,6 +49,33 @@ it('no expone órdenes arbitrarias ni permite operar sin vincular cuenta',async(
   expect((await p.request('bind',{tabId:7,selector:'input'})).ok).toBe(false);
   expect(deps.send).not.toHaveBeenCalled();
 });
+it('dibuja una vez los puntos de la vista previa comprobada y rechaza coordenadas enviadas desde la web',async()=>{
+  const graphContext={...context,fields:[{key:'answer',label:'Puntos y trazo de la función'}],can_fill_integer:false,
+    can_fill_fraction:false,can_draw_parabola:true,fill_blockers:['graph_editor']};
+  vi.mocked(deps.send).mockResolvedValue(graphContext);
+  vi.mocked(deps.deliver).mockResolvedValue({drawn:true});
+  const original=fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async(url:string,init?:RequestInit)=>{
+    if(url.includes('/jobs/') && init?.method==='GET')return Response.json({status:'completed',result:{
+      fingerprint,model:'',provider:'deterministic',provider_calls:0,verified:true,verification:'parabola_points',
+      proposal:{status:'proposed',answers:[{field_key:'answer',value:'(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)',unit:''}],
+        explanation:'Parábola comprobada.',missing_information:[]}}});
+    return original(url,init);
+  });
+  const p=await connect();
+  const preview=await p.request('preview');
+  expect(preview.ok,preview.error).toBe(true);
+  expect(answerContext).not.toHaveProperty('can_draw_parabola');
+  const proposalId=preview.value.proposal.id;
+  expect((await p.request('draw',{proposalId,points:[[0,0]]})).ok).toBe(false);
+  expect(deps.deliver).not.toHaveBeenCalled();
+
+  const result=await p.request('draw',{proposalId});
+  expect(result).toMatchObject({ok:true,value:{context:{can_draw_parabola:false}}});
+  expect((await p.request('draw',{proposalId})).ok).toBe(false);
+  expect(deps.deliver).toHaveBeenCalledExactlyOnceWith(7,'drawParabola',
+    {fingerprint,points:[[-5,1],[-7,5],[-6,2],[-4,2],[-3,5]]},expect.any(Function));
+});
 it('duplica el mismo comando sin duplicar consulta ni entrega y rechaza reutilizar ID',async()=>{
   const p=await connect();const id=crypto.randomUUID();
   const first=await p.request('start',{fingerprint,limits,nativeKeyboard:true},id);

@@ -1,6 +1,7 @@
 import { WRITER_VERSION } from './writer-version';
 import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
-import { typeNativeAnswer } from './native-keyboard';
+import { typeNativeAnswer,withNativePlot,type NativePlotClick } from './native-keyboard';
+import { parabolaPointsSchema } from './parabola-answer';
 import { parseSupportedAnswer } from './answer-format';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { answerPayload,captureFillPolicy,requireAssistImage,proposalFillMessages,fillBlockerMessages } from './assist-readiness';
@@ -17,18 +18,43 @@ const automationStarting=new Map<number,AbortController>();
 const nativeTabs=new Set<number>();
 let nativeEpoch=0;
 const nativeTabEpoch=new Map<number,number>();
-function cancelNative(id:number) {nativeTabEpoch.set(id,(nativeTabEpoch.get(id)||0)+1);nativeWrites.get(id)?.abort.abort();}
+function cancelNative(id:number) {
+  nativeTabEpoch.set(id,(nativeTabEpoch.get(id)||0)+1);
+  nativeWrites.get(id)?.abort.abort();
+  nativePlots.get(id)?.abort.abort();
+}
 type NativeWrite={id:string;url:string;values:string[];index:number;used:boolean;abort:AbortController;current:()=>boolean};
 const nativeWrites=new Map<number,NativeWrite>();
+type NativePlot={id:string;url:string;next:number;busy:boolean;abort:AbortController;click?:NativePlotClick;current:()=>boolean};
+const nativePlots=new Map<number,NativePlot>();
 let webBridge:WebBridge|undefined;
+async function deliverParabola(id:number,data:Record<string,unknown>,current:()=>boolean) {
+  const points=parabolaPointsSchema.parse(data.points),t=await tab(id);
+  if(!webBridge?.ownsTab(id) || !ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof data.fingerprint!=='string' ||
+    !/^[a-f0-9]{64}$/u.test(data.fingerprint))throw Error('El dibujo no corresponde a la actividad vinculada.');
+  if(nativePlots.has(id) || nativeWrites.has(id) || !current())throw Error('Ya hay una operación de entrada o se detuvo el dibujo.');
+  const plot:NativePlot={id:crypto.randomUUID(),url:t.url,next:0,busy:false,abort:new AbortController(),
+    current:()=>current() && nativePlots.get(id)===plot && !plot.abort.signal.aborted};
+  nativePlots.set(id,plot);
+  try {
+    return await withNativePlot(id,{signal:plot.abort.signal,isCurrent:plot.current,check:()=>checkNativeTab(id,t.url,plot.current)},async click=>{
+      plot.click=click;
+      return send(id,'drawParabola',{fingerprint:data.fingerprint,points,nativeWriteId:plot.id},plot.current);
+    });
+  } finally {
+    plot.abort.abort();
+    if(nativePlots.get(id)===plot)nativePlots.delete(id);
+  }
+}
 async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,current=()=>true) {
+  if(type==='drawParabola')return deliverParabola(id,data,current);
   if(!nativeTabs.has(id))return send(id,type,data,current);
   const epoch=nativeEpoch,tabEpoch=nativeTabEpoch.get(id)||0;
   const allowed=()=>current() && nativeTabs.has(id) && epoch===nativeEpoch && tabEpoch===(nativeTabEpoch.get(id)||0);
   const t=await tab(id);
   const values=Array.isArray(data.value)?(data.value.length===1?['answer']:['field_1','field_2']).map(key=>(data.value as {field_key:string;value:string}[]).find(answer=>answer.field_key===key)?.value):[data.value];
   if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || values.some(value=>typeof value!=='string' || !parseSupportedAnswer(value)))throw Error('Respuesta no admitida por el teclado de Chrome.');
-  if(!allowed() || nativeWrites.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
+  if(!allowed() || nativeWrites.has(id) || nativePlots.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
   if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión actualizada y concede el permiso de depuración de Chrome.');
   if(!allowed())throw Error('Escritura cancelada.');
   const write:NativeWrite={id:crypto.randomUUID(),url:t.url,values:values as string[],index:0,used:false,abort:new AbortController(),current:allowed};
@@ -113,7 +139,7 @@ async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean) {
 async function send(id:number,type:string,data:Record<string,unknown>={},isCurrent=()=>true) {
   const t=await tab(id);if(!isCurrent())throw Error('Recorrido detenido.');
   // Read-only handshake before a write: an old adapter must never receive it.
-  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext'].includes(type)) {
+  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext','drawParabola'].includes(type)) {
     const version=await chrome.tabs.sendMessage(id,{scope:'adapter',type:'writerVersion'}).catch(()=>undefined);
     if(version?.writerVersion!==WRITER_VERSION)throw Error(`La pestaña ALEKS conserva un adaptador antiguo. Recarga ALEKS para cargar la versión ${WRITER_VERSION} y vuelve a leer el ejercicio.`);
     if(!isCurrent())throw Error('Recorrido detenido.');
@@ -133,6 +159,7 @@ async function attach(id:unknown) {
 async function stopAll() {
   await webBridge?.stopAll('Se cambió la sesión o los permisos del asistente.');
   nativeEpoch++;nativeTabs.clear();for(const write of nativeWrites.values())write.abort.abort();
+  for(const plot of nativePlots.values())plot.abort.abort();
   for(const starting of automationStarting.values())starting.abort();
   await Promise.allSettled([...automations.values()].map(run=>run.stop('Recorrido detenido por cambio de sesión o permisos.')));
   const activeAssist=[...assistWriters];
@@ -310,7 +337,7 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
         // Peticiones cortas: MV3 puede terminar un worker cuyo fetch no recibe
         // respuesta durante 30 s. No mantenemos un fetch abierto a la inferencia.
         // Los motivos de escritura son diagnóstico local, no datos del modelo.
-        const {fill_blockers,can_fill_fraction,fixed_unit,...modelContext}=context;
+        const {fill_blockers,can_fill_fraction,can_draw_parabola,fixed_unit,...modelContext}=context;
         if(!isCurrent() || assistJobs.get(t.id)!==job)throw Error('Consulta cancelada.');
         const started=await api('/assist/jobs','POST',{context:modelContext,...(image?{image}:{})},true);
         if(typeof started?.id!=='string' || !/^[a-f0-9-]{36}$/.test(started.id))throw Error('Identificador de consulta inválido.');
@@ -376,6 +403,16 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
 async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.MessageSender) {
   if(!sender.tab?.id || sender.frameId!==0) throw Error('Marco no autorizado');
   const t=await tab(sender.tab.id);
+  if(m.type==='nativeGraphClick') {
+    const plot=nativePlots.get(t.id);
+    if(!plot?.click || !plot.current() || plot.busy || plot.next>6 || m.step!==plot.next || m.writeId!==plot.id ||
+      sender.url!==plot.url || t.url!==plot.url)throw Error('No hay un clic de dibujo autorizado para esta pestaña.');
+    plot.busy=true;
+    await plot.click(()=>send(t.id,'nativeGraphTarget',{writeId:plot.id,step:plot.next},plot.current));
+    plot.next++;
+    plot.busy=false;
+    return true;
+  }
   if(m.type==='nativeType') {
     const write=nativeWrites.get(t.id);
     if(!write || write.used || write.index>=write.values.length || (m.fieldIndex??0)!==write.index || m.writeId!==write.id || !nativeTabs.has(t.id) || sender.url!==write.url || t.url!==write.url || !ALEKS_ORIGINS.includes(new URL(t.url).origin))throw Error('No hay una escritura de teclado autorizada para esta pestaña.');
@@ -437,7 +474,7 @@ chrome.tabs.onRemoved.addListener(id=>{
 webBridge=new WebBridge(BRIDGE_WEB_ORIGIN,{
   tab,attach,send,deliver:deliverAnswer,cancel:cancelTabAssist,
   setNative:(id,enabled)=>{if(enabled)nativeTabs.add(id);else{nativeTabs.delete(id);cancelNative(id);}},
-  legacyBusy:id=>Boolean(automations.get(id)?.view.active || automationStarting.has(id) || assistJobs.has(id) || assistWriters.has(id) || nativeWrites.has(id)),
+  legacyBusy:id=>Boolean(automations.get(id)?.view.active || automationStarting.has(id) || assistJobs.has(id) || assistWriters.has(id) || nativeWrites.has(id) || nativePlots.has(id)),
   focus:async id=>{
     const current=await tab(id);
     await chrome.windows.update(current.windowId,{focused:true});await chrome.tabs.update(id,{active:true});

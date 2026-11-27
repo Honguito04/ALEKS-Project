@@ -5,6 +5,9 @@ import { simulatorURL, type Limits, type Run, limitsSchema } from './shared';
 import { AleksSubmission } from './aleks-submission';
 import { editorDiagnostics } from './editor-diagnostics';
 import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist';
+import { drawAleksParabola,type GraphClick } from './aleks-graph';
+import { parabolaPointsSchema,type PlotPoint } from './parabola-answer';
+import { readAleksPrompt } from './aleks-prompt';
 
 declare global { interface Window { __mathAssistantLoaded?:boolean } }
 if(!window.__mathAssistantLoaded) {
@@ -27,6 +30,7 @@ if(!window.__mathAssistantLoaded) {
   let assistAbort:AbortController|undefined;
   let automationId:string|undefined;
   let nativeGuard:{id:string;check:()=>Promise<void>}|undefined;
+  let graphTarget:{id:string;step:number;read:()=>Promise<PlotPoint|null>}|undefined;
   function nativeWriter(id:unknown):NativeInput|undefined {
     if(id===undefined)return;
     if(typeof id!=='string')throw Error('Escritura de teclado inválida');
@@ -34,6 +38,13 @@ if(!window.__mathAssistantLoaded) {
     return async check=>{
       nativeGuard={id,check};
       try{await rpc('nativeType',{writeId:id,fieldIndex:fieldIndex++});}finally{nativeGuard=undefined;}
+    };
+  }
+  function nativePlot(id:string):GraphClick {
+    return async(step,read)=>{
+      graphTarget={id,step,read};
+      try {await rpc('nativeGraphClick',{writeId:id,step});}
+      finally {graphTarget=undefined;}
     };
   }
   const initialized=(async()=>{
@@ -51,14 +62,29 @@ if(!window.__mathAssistantLoaded) {
         if(!nativeGuard || nativeGuard.id!==message.writeId)throw Error('No hay una escritura de teclado vigente.');
         await nativeGuard.check();return true;
       }
+      if(message.type==='nativeGraphTarget') {
+        if(!graphTarget || graphTarget.id!==message.writeId || graphTarget.step!==message.step)throw Error('No hay un clic de dibujo vigente.');
+        return graphTarget.read();
+      }
       if(message.type==='status') return {detection:await adapter.detect(),run:controller.run,exercise:controller.exercise,solution:controller.solution};
       if(message.type==='editorDiagnostics' && !simulatorURL(location.href))return editorDiagnostics(document);
       if(message.type==='assistContext' && !simulatorURL(location.href))return assistContext(document,message.allowImage===true);
-      if(message.type==='pause') {automationId=undefined;nativeGuard=undefined;assistAbort?.abort();submission.reset();await controller.pause();return true;}
-      if(message.type==='stop') {automationId=undefined;nativeGuard=undefined;assistAbort?.abort();submission.reset();await controller.stop();return true;}
+      if(message.type==='pause') {automationId=undefined;nativeGuard=undefined;graphTarget=undefined;assistAbort?.abort();submission.reset();await controller.pause();return true;}
+      if(message.type==='stop') {automationId=undefined;nativeGuard=undefined;graphTarget=undefined;assistAbort?.abort();submission.reset();await controller.stop();return true;}
       if(busy) throw Error('Ya hay una operación en curso');
       busy=true;
       try {
+        if(message.type==='drawParabola' && !simulatorURL(location.href)) {
+          if(typeof message.nativeWriteId!=='string' || typeof message.fingerprint!=='string')throw Error('Dibujo no autorizado.');
+          const points=parabolaPointsSchema.parse(message.points);
+          assistAbort=new AbortController();
+          const prompt=await readAleksPrompt(document),context=await assistContext(document);
+          if(!prompt.fingerprint || context.fingerprint!==message.fingerprint || !context.can_draw_parabola) {
+            throw Error('El ejercicio o la cuadrícula cambió. Vuelve a leer la actividad antes de dibujar.');
+          }
+          await drawAleksParabola(document,prompt.fingerprint,points,assistAbort.signal,nativePlot(message.nativeWriteId));
+          return {drawn:true};
+        }
         if(message.type==='automationReset' && !simulatorURL(location.href)) {
           if(typeof message.runId!=='string')throw Error('Recorrido inválido');
           submission.reset();automationId=message.runId;return true;

@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="es">
+<meta charset="utf-8">
+<title>Prueba del adaptador de gráficas</title>
+<style>
+  body { font: 16px system-ui; margin: 24px; }
+  .figed_root { position: relative; box-sizing: border-box; border: 1px solid #888; }
+  .figed_top_container { position: absolute; inset: 0; width: 100%; height: 100%; }
+  .figed_top_container[aria-hidden] { pointer-events: none; }
+  .figed_grid_label { position: absolute; }
+  .controls { margin: 12px 0; display: flex; gap: 10px; }
+  button { padding: 12px 18px; }
+  button[aria-disabled=true] { pointer-events: none; }
+</style>
+<div id="algoPrompt">
+  Trazar el gráfico de la parábola
+  <blockquote><span mathml="&lt;math class=&quot;jsmath&quot;&gt;&lt;mi&gt;y&lt;/mi&gt;&lt;mo&gt;=&lt;/mo&gt;&lt;mrow&gt;&lt;mo&gt;(&lt;/mo&gt;&lt;mrow&gt;&lt;mi&gt;x&lt;/mi&gt;&lt;mn&gt; &lt;/mn&gt;&lt;mo&gt;+&lt;/mo&gt;&lt;mn&gt; 5&lt;/mn&gt;&lt;/mrow&gt;&lt;mo&gt;)&lt;/mo&gt;&lt;/mrow&gt;&lt;msup&gt;&lt;mn&gt;&lt;/mn&gt;&lt;mrow&gt;&lt;mn&gt;2&lt;/mn&gt;&lt;/mrow&gt;&lt;/msup&gt;&lt;mn&gt; &lt;/mn&gt;&lt;mo&gt;+&lt;/mo&gt;&lt;mn&gt; 1&lt;/mn&gt;&lt;/math&gt;"></span></blockquote>
+  Para trazar la parábola, marcar el vértice y cuatro puntos más, dos a cada lado del vértice. Luego hacer clic en el ícono del gráfico.
+</div>
+<div class="controls">
+  <button id="menubar_undefined_0_figed_pencilgraph" aria-label="Pencil" aria-pressed="false">Pencil</button>
+  <button id="menubar_undefined_0_figed_graphfunction" aria-label="Graph-a-function" aria-disabled="true">Curva</button>
+</div>
+<div class="figed_main" id="editor_Figed__worksheet_1_0">
+  <div class="figed_root" role="application" tabindex="0" style="width:371px;height:371px">
+    <svg id="figed_grid_graphics_#Figed__worksheet_1_0" class="figed_top_container" aria-hidden="true" viewBox="0 0 369 369"></svg>
+    <div id="figed_grid_text_#Figed__worksheet_1_0" class="figed_top_container" aria-hidden="true"></div>
+    <svg id="figed_objects_graphics_#Figed__worksheet_1_0" class="figed_top_container" aria-hidden="true" viewBox="0 0 369 369"></svg>
+    <div id="figed_objects_text_#Figed__worksheet_1_0" class="figed_top_container" aria-hidden="true"></div>
+    <div id="figed_events_#Figed__worksheet_1_0" class="figed_top_container" style="cursor:crosshair"></div>
+  </div>
+</div>
+<button id="smt_bottomnav_button_input_checkAnswer" class="checkAnswer">Verificar</button>
+</html>

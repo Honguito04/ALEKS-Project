@@ -6,6 +6,7 @@ import type { AutomationView } from '../../extension/src/aleks-automation';
 import { assistContextSchema, assistResultSchema } from '../../extension/src/shared';
 import { automationLimitsSchema } from '../../extension/src/aleks-automation';
 import { fillBlockerMessages, proposalFillMessages } from '../../extension/src/assist-readiness';
+import { drawableParabola } from '../../extension/src/parabola-answer';
 import './bridge.css';
 
 const EXTENSION_ID = 'fjjgjakbpjhhegekcjogilmfheaicjge';
@@ -161,12 +162,13 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
           : name === 'preview' ? z.object({ proposal: proposalSchema }).strict().parse(raw)
           : name === 'start' ? z.object({ automation: automationSchema }).strict().parse(raw) : snapshotSchema.parse(raw);
         if (epoch !== lifecycle.current || operation !== action.current) return;
-        setSnapshot(previous => name === 'bind' ? value as Snapshot : { ...previous, ...(name === 'read' ? {proposal:undefined} : {}), ...value, connected: true });
-        if (name === 'bind' || name === 'read' || name === 'stop') setAuthorized(false);
+        setSnapshot(previous => name === 'bind' || name === 'draw' ? value as Snapshot : { ...previous, ...(name === 'read' ? {proposal:undefined} : {}), ...value, connected: true });
+        if (name === 'bind' || name === 'read' || name === 'stop' || name === 'draw') setAuthorized(false);
         if (name === 'bind') { setNativeKeyboard(false); setIncludeImage(false); }
         setNotice(name === 'bind' ? 'Pestaña vinculada. Lee la actividad antes de consultar.'
           : name === 'read' ? 'Actividad leída por la extensión. Comprueba enunciado, campos y formato.'
           : name === 'preview' ? 'Vista previa lista. No se ha escrito ni enviado ninguna respuesta.'
+          : name === 'draw' ? 'ALEKS mostró los cinco puntos y la curva. Pulsa Verificar en ALEKS para entregar.'
           : name === 'start' ? 'Recorrido autorizado. Chrome activará ALEKS; mantén esa pestaña enfocada.'
           : name === 'stop' ? 'Se solicitó detener el recorrido y cancelar las consultas pendientes.' : 'Estado actualizado.');
       }
@@ -179,6 +181,8 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const proposal = snapshot?.proposal;
   const automation = snapshot?.automation;
   const graphing = context?.fill_blockers.includes('graph_editor');
+  const canDraw = Boolean(context?.can_draw_parabola && context.fingerprint===proposal?.context.fingerprint &&
+    !includeImage && drawableParabola(proposal));
   const eligible = Boolean(context && [1,2].includes(context.fields.length) && !context.diagram_required &&
     (context.can_fill_integer || context.can_fill_fraction) && !context.fill_blockers.length);
   const blockers = proposal ? proposalFillMessages(proposal) : context?.fill_blockers.map(reason => fillBlockerMessages[reason]) ?? [];
@@ -208,8 +212,12 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
         <label className="check-label"><input type="checkbox" checked={includeImage} disabled={Boolean(busy) || running} onChange={event => { setIncludeImage(event.target.checked); setAuthorized(false); setSnapshot(previous => previous ? { ...previous, proposal: undefined } : previous); }} />Adjuntar captura de la pestaña vinculada solo para vista previa; requiere permiso de Chrome y no autoriza escritura</label>
         <div className="bridge-actions"><button className="secondary" disabled={Boolean(busy) || running} onClick={() => void perform('read')}>Leer actividad ALEKS</button><button className="secondary" disabled={!context || Boolean(busy) || running} onClick={() => void perform('preview', { includeImage })}>{busy === 'preview' ? 'Preparando vista previa…' : 'Consultar vista previa'}</button><button className="inline-button" disabled={Boolean(busy)} onClick={() => void perform('status')}>Actualizar estado</button></div>
       </>}
-      {context && <div className="bridge-context"><h3>Actividad observada</h3><p className="bridge-statement">{context.statement}</p><dl className="bridge-diagnostics"><div><dt>Respuestas solicitadas</dt><dd>{context.fields.map(field => field.label).join(' · ')}</dd></div><div><dt>Unidad predefinida</dt><dd>{context.fixed_unit || 'Sin unidad reconocida'}</dd></div><div><dt>Formato</dt><dd>{graphing ? 'Trazado manual en ALEKS' : eligible ? (context.fields.length === 2 ? 'Dos recuadros vacíos compatibles' : 'Recuadro vacío compatible') : 'Escritura automática bloqueada'}</dd></div><div><dt>Huella de actividad</dt><dd><code>{context.fingerprint}</code></dd></div></dl></div>}
+      {context && <div className="bridge-context"><h3>Actividad observada</h3><p className="bridge-statement">{context.statement}</p><dl className="bridge-diagnostics"><div><dt>Respuestas solicitadas</dt><dd>{context.fields.map(field => field.label).join(' · ')}</dd></div><div><dt>Unidad predefinida</dt><dd>{context.fixed_unit || 'Sin unidad reconocida'}</dd></div><div><dt>Formato</dt><dd>{graphing ? (context.can_draw_parabola ? 'Cuadrícula vacía compatible con el trazado' : 'Respuesta en cuadrícula') : eligible ? (context.fields.length === 2 ? 'Dos recuadros vacíos compatibles' : 'Recuadro vacío compatible') : 'Escritura automática bloqueada'}</dd></div><div><dt>Huella de actividad</dt><dd><code>{context.fingerprint}</code></dd></div></dl></div>}
       {proposal && <div className="bridge-proposal"><p className={`verification-tag ${proposal.result.verified ? 'verified' : 'unverified'}`}>{proposal.result.verified ? 'Resultado comprobado' : 'Propuesta de IA sin verificar'}</p>{answerRows.map(({ field, answer, label }) => <p key={field.key}>{answerRows.length > 1 && <span>{label}: </span>}<strong>{answer.value}</strong> {answer.unit}</p>)}<p>{proposal.result.proposal.explanation}</p>{proposal.result.proposal.missing_information.map((information, index) => <p className="field-help" key={index}>{information}</p>)}</div>}
+      {canDraw && proposal && <div className="bridge-actions">
+        <button className="primary" disabled={Boolean(busy) || running} onClick={() => void perform('draw', { proposalId: proposal.id })}>Dibujar parábola en ALEKS</button>
+        <p className="field-help">Chrome activará la pestaña ALEKS. Mantenla visible hasta que aparezca la curva y pulsa Verificar allí para entregar.</p>
+      </div>}
       <div className="bridge-authorization"><h3>Autoriza un recorrido limitado</h3><p className="field-help">Texto con uno o dos recuadros vacíos: enteros, decimales con punto o coma y fracciones reducidas. Conserva unidades fijas y permite seleccionar cm, cm² o cm³. Diagramas y otros formatos requieren revisión manual.</p>
         <fieldset disabled={Boolean(busy) || running} className="bridge-limits">{([
           ['maxExercises', 'Máximo de ejercicios', 100], ['maxMinutes', 'Máximo de minutos', 120], ['maxAICalls', 'Máximo de llamadas IA', 100],

@@ -6,6 +6,7 @@ import { answerRoots,fillEditorAnswers } from './aleks-two-editors';
 import { inspectEditorRoot } from './aleks-single-editor';
 import { probabilityRowOrder } from './aleks-answer-roots';
 import { parseSupportedAnswer,sameAnswer } from './answer-format';
+import { inspectParabolaGrid,isEmptyParabolaGrid } from './aleks-graph';
 
 // Una definición de A y B también puede preceder a una sola pregunta sobre
 // A ∩ B. Solo la petición explícita de probabilidades separadas crea campos.
@@ -38,6 +39,7 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   }
   const editor=inspectAleksEditor(document),single=editor.singleEditor;
   const graphing=prompt.graphingExerciseDetected;
+  const graph=graphing && !prompt.diagramReferenceDetected?inspectParabolaGrid(document):undefined;
   const pair=answerRoots(document);
   if(pair.length>12)throw Error('Hay demasiados recuadros para esta consulta.');
   const definitions = readable ? requestedEventLabels(prompt.statement!) : undefined;
@@ -90,16 +92,19 @@ export async function assistContext(document:Document,allowImage=false):Promise<
   if(prompt.diagramReferenceDetected && !graphing)fill_blockers.push('diagram_required');
   const can_fill_integer=fill_blockers.length===0;
   const can_fill_fraction=can_fill_integer;
+  const canDraw=Boolean(graph && isEmptyParabolaGrid(graph) && !fill_blockers.includes('result_present'));
   // Cuando la lectura estructurada falla, el texto/MathML se usa solo en el
   // hash local. La IA recibe la captura elegida, sin HTML o enlaces de sesión.
   const fallback=readable?undefined:[prompts[0].textContent?.slice(0,8000),[...prompts[0].querySelectorAll('[mathml]')].slice(0,100).map(node=>node.getAttribute('mathml')?.slice(0,1000))];
   // Verificar y el menú pueden aparecer al enfocar. No son utilizados para
   // introducir el número y no forman parte de esta huella de escritura.
   const source=JSON.stringify([prompt.fingerprint,fallback,fields,fill_blockers,editor.inputDiagnostics.presentCount,
-    single.status,single.rootCount,single.disabled,single.readback,editor.circleTable,two?pairRead:undefined]);
+    single.status,single.rootCount,single.disabled,single.readback,editor.circleTable,two?pairRead:undefined,
+    ...(graphing?[graph?.signature,canDraw]:[])]);
   const fingerprint=[...new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(source)))].map(value=>value.toString(16).padStart(2,'0')).join('');
   return assistContextSchema.parse({fingerprint,statement:readable?prompt.statement:'No fue posible leer el enunciado como texto estructurado. Interpreta únicamente el ejercicio visible en la captura adjunta; si faltan datos, indícalo.',
     fields,diagram_required:!readable || Boolean(prompt.diagramReferenceDetected),can_fill_integer,can_fill_fraction,fill_blockers,
+    ...(graphing?{can_draw_parabola:canDraw}:{}),
     ...(!graphing && fields.length===1 && single.readback.fixed_unit?{fixed_unit:single.readback.fixed_unit}:{})});
 }
 

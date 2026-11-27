@@ -57,7 +57,7 @@ export type FillBlocker=z.infer<typeof fillBlockerSchema>;
 export const assistContextSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),statement:z.string().min(1).max(8000),
   fields:z.array(z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().min(1).max(200)}).strict()).min(1).max(12),
-  diagram_required:z.boolean(),can_fill_integer:z.boolean(),can_fill_fraction:z.boolean().optional(),fixed_unit:z.enum(fixedUnits).optional(),fill_blockers:z.array(fillBlockerSchema).max(fillBlockerSchema.options.length).default([])
+  diagram_required:z.boolean(),can_fill_integer:z.boolean(),can_fill_fraction:z.boolean().optional(),can_draw_parabola:z.boolean().optional(),fixed_unit:z.enum(fixedUnits).optional(),fill_blockers:z.array(fillBlockerSchema).max(fillBlockerSchema.options.length).default([])
 }).strict();
 export type AssistContext=z.infer<typeof assistContextSchema>;
 export const assistResultSchema=z.object({
