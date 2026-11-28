@@ -184,8 +184,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const automation = snapshot?.automation;
   const graphing = context?.fill_blockers.includes('graph_editor');
   const readyGraph = context && emptyParabolaContext(context);
-  const canDraw = Boolean(readyGraph && context.fingerprint===proposal?.context.fingerprint &&
-    !includeImage && drawableParabola(proposal));
+  const canDraw = Boolean(readyGraph && context.fingerprint === proposal?.context.fingerprint && drawableParabola(proposal));
   const eligible = Boolean(context && [1,2].includes(context.fields.length) && !context.diagram_required &&
     (context.can_fill_integer || context.can_fill_fraction) && !context.fill_blockers.length);
   let blockers = proposal ? automationProposalMessages(proposal) : context?.fill_blockers.map(reason => fillBlockerMessages[reason]) ?? [];
@@ -194,14 +193,14 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     if (!blockers.length) {
       if (context.diagram_required) blockers.push(fillBlockerMessages.diagram_required);
       else if (!readyGraph) blockers.push('Si ya hay puntos o una curva, vacía la cuadrícula y vuelve a leer la actividad. El recorrido requiere una cuadrícula compatible.');
-      else if (includeImage) blockers.push('Desmarca la captura y consulta de nuevo la vista previa para dibujar y verificar la parábola.');
-      else if (!canDraw) blockers.push('Consulta una vista previa comprobada del ejercicio actual para autorizar el recorrido de la parábola.');
-      else if (!nativeKeyboard) blockers.push('Activa los controles nativos de Chrome para autorizar este recorrido.');
+      else if (!proposal || context.fingerprint !== proposal.context.fingerprint) blockers.push('Consulta la vista previa del ejercicio actual para autorizar el recorrido de la parábola.');
+      else if (!canDraw) blockers.push('La vista previa debe confirmar los cinco puntos a partir de la ecuación para habilitar el recorrido.');
     }
   } else if (snapshot?.tab && !context) {
     blockers = ['Lee la actividad ALEKS para habilitar el recorrido.'];
   }
-  const canAuthorize = (graphing ? canDraw && nativeKeyboard : eligible) && blockers.length === 0;
+  const canAuthorize = (graphing ? canDraw : eligible) && blockers.length === 0;
+  const useNativeControls = Boolean(graphing) || nativeKeyboard;
   const format = graphing ? (readyGraph ? 'Cuadrícula vacía compatible con el trazado' : 'Cuadrícula ocupada o incompatible con el trazado')
     : eligible ? (context?.fields.length === 2 ? 'Dos recuadros vacíos compatibles' : 'Recuadro vacío compatible') : 'Escritura automática bloqueada';
   const answerRows = proposal?.context.fields.flatMap(field => {
@@ -239,11 +238,14 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
         <fieldset disabled={Boolean(busy) || running} className="bridge-limits">{([
           ['maxExercises', 'Máximo de ejercicios', 100], ['maxMinutes', 'Máximo de minutos', 120], ['maxAICalls', 'Máximo de llamadas IA', 100],
         ] as const).map(([key, label, max]) => <div key={key}><label htmlFor={`bridge-${key}`}>{label}</label><input id={`bridge-${key}`} type="number" min="1" max={max} step="1" value={limits[key]} onChange={event => { setLimits(previous => ({ ...previous, [key]: event.target.value })); setAuthorized(false); }} /></div>)}</fieldset>
-        <label className="check-label"><input type="checkbox" checked={nativeKeyboard} disabled={Boolean(busy) || running} onChange={event => { setNativeKeyboard(event.target.checked); setAuthorized(false); }} />{graphing ? 'Usar controles nativos de Chrome para dibujar en la pestaña vinculada' : 'Usar teclado de Chrome en la pestaña vinculada'}</label>
+        {!graphing && <label className="check-label"><input type="checkbox" checked={nativeKeyboard} disabled={Boolean(busy) || running} onChange={event => { setNativeKeyboard(event.target.checked); setAuthorized(false); }} />Usar teclado de Chrome en la pestaña vinculada</label>}
         {blockers.length > 0 && <p id="bridge-fill-blockers" className="result-caution">{blockers.join(' ')}</p>}
-        <label className="check-label"><input type="checkbox" aria-describedby={blockers.length ? 'bridge-fill-blockers' : undefined} checked={canAuthorize && authorized} disabled={!canAuthorize || Boolean(busy) || running} onChange={event => setAuthorized(event.target.checked)} />Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites</label>
+        <label className="check-label"><input type="checkbox" aria-describedby={blockers.length ? 'bridge-fill-blockers' : undefined} checked={canAuthorize && authorized} disabled={!canAuthorize || Boolean(busy) || running} onChange={event => setAuthorized(event.target.checked)} />
+          {graphing ? 'Autorizo dibujar, verificar y avanzar en la pestaña vinculada con los controles nativos de Chrome y estos límites'
+            : 'Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites'}
+        </label>
         <p className="result-caution">Al iniciar, Chrome activa ALEKS. Mantén ALEKS como pestaña enfocada: volver a esta web puede detener el recorrido por sus controles de foco. La extensión ejecuta el recorrido; esta página no lo reanuda por sí sola.</p>
-        <div className="bridge-actions"><button className="primary" disabled={!canAuthorize || !nativeKeyboard || !authorized || !validLimits || Boolean(busy) || running} onClick={() => void perform('start', { fingerprint: context!.fingerprint, limits: numericLimits, nativeKeyboard, ...(proposal ? { proposalId: proposal.id } : {}) })}>Autorizar e iniciar recorrido</button><button className="danger" onClick={() => { setAuthorized(false); void perform('stop'); }}>Detener recorrido ALEKS</button></div>
+        <div className="bridge-actions"><button className="primary" disabled={!canAuthorize || !useNativeControls || !authorized || !validLimits || Boolean(busy) || running} onClick={() => void perform('start', { fingerprint: context!.fingerprint, limits: numericLimits, nativeKeyboard: useNativeControls, ...(proposal ? { proposalId: proposal.id } : {}) })}>Autorizar e iniciar recorrido</button><button className="danger" onClick={() => { setAuthorized(false); void perform('stop'); }}>Detener recorrido ALEKS</button></div>
       </div>
       {snapshot && <div className="bridge-progress" aria-live="polite">{automation && <><h3>Estado: {automation.phase}</h3><p>{automation.message}</p></>}<dl><div><dt>«Correcta» confirmadas</dt><dd>{automation?.accepted ?? 0}</dd></div><div><dt>Presupuesto IA utilizado o reservado</dt><dd>{automation?.aiCalls ?? 0}</dd></div><div><dt>Llamadas confirmadas de la conexión</dt><dd>{snapshot.providerCallsUncertain ? 'Al menos ' : ''}{snapshot.providerCalls ?? 0}{snapshot.providerCallsUncertain && ' · consumo final sin confirmar'}</dd></div></dl></div>}
       {snapshot?.interrupted && <p className="message error" role="alert">{snapshot.interrupted} No se reanudará automáticamente.</p>}
