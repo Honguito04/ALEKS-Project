@@ -117,6 +117,73 @@ it('duplica el mismo comando sin duplicar consulta ni entrega y rechaza reutiliz
   p.send('start',{fingerprint,limits:{...limits,maxExercises:2},nativeKeyboard:true},id);
   await vi.waitFor(()=>expect(p.replies.at(-1).ok).toBe(false));
 });
+
+const choiceContext={...context,statement:'Marcar cada proposición verdadera.',can_fill_integer:false,can_fill_fraction:false,
+  can_select_options:true,choice:{mode:'multiple',options:[
+    {key:'option_1',label:'Un rectángulo tiene cuatro ángulos rectos.'},
+    {key:'option_2',label:'Un triángulo tiene cuatro lados.'},
+    {key:'option_3',label:'Un cuadrado tiene cuatro lados.'},
+  ]}};
+function useChoice(value='option_1,option_3') {
+  vi.mocked(deps.send).mockResolvedValue(choiceContext);
+  const original=fetcher.getMockImplementation()!;
+  fetcher.mockImplementation(async(url:string,init?:RequestInit)=>{
+    if(url.includes('/jobs/') && init?.method==='GET') {
+      const result=await (await original(url,init)).json();
+      result.result.proposal.answers[0].value=value;
+      return Response.json(result);
+    }
+    return original(url,init);
+  });
+}
+
+it('exige una vista previa y conserva la entrega de opciones si cambia su orden',async()=>{
+  useChoice();
+  const p=await connect();
+  const start={fingerprint,limits,nativeKeyboard:true};
+  expect(await p.request('start',start)).toMatchObject({ok:false,error:expect.stringContaining('vista previa vigente')});
+  expect(deps.deliver).not.toHaveBeenCalled();
+  const preview=await p.request('preview',{includeImage:true});
+  expect(preview.ok,preview.error).toBe(true);
+  expect(answerContext.choice).toEqual(choiceContext.choice);
+  expect(answerContext).not.toHaveProperty('can_select_options');
+  expect(await p.request('start',{...start,proposalId:preview.value.proposal.id})).toMatchObject({ok:true});
+  await vi.waitFor(()=>expect(p.replies.some(reply=>reply.value?.automation?.accepted===1)).toBe(true));
+  expect(deps.deliver).toHaveBeenCalledExactlyOnceWith(7,'automationSubmitChoice',
+    {fingerprint,keys:['option_1','option_3'],runId:expect.any(String)},expect.any(Function));
+
+  const reordered='b'.repeat(64);
+  vi.mocked(deps.send).mockResolvedValue({...choiceContext,fingerprint:reordered,
+    choice:{...choiceContext.choice,options:[...choiceContext.choice.options].reverse()
+      .map((option,index)=>({...option,key:`option_${index+1}`}))}});
+  await p.request('read');
+  const second=await p.request('preview');
+  expect(second.ok,second.error).toBe(true);
+  expect(await p.request('start',{...start,fingerprint:reordered,proposalId:second.value.proposal.id}))
+    .toMatchObject({ok:false,error:expect.stringContaining('no se repetirá')});
+  expect(deps.deliver).toHaveBeenCalledTimes(1);
+});
+
+it.each([
+  {...context,can_fill_integer:false,can_fill_fraction:false,fill_blockers:['choice_unrecognized']},
+  {...choiceContext,diagram_required:true},
+])('no consulta al proveedor si las opciones no se leen como texto suficiente',async observed=>{
+  vi.mocked(deps.send).mockResolvedValue(observed);
+  const p=await connect();
+  expect(await p.request('preview',{includeImage:true})).toMatchObject({ok:false});
+  expect(posted).toBe(0);
+});
+
+it.each(['option_9','option_1,option_1','option_3,option_1','12'])('no envía una propuesta de opciones inválida (%s)',async value=>{
+  useChoice(value);
+  const p=await connect();
+  const preview=await p.request('preview');
+  expect(preview.ok,preview.error).toBe(true);
+  const result=await p.request('start',{fingerprint,limits,nativeKeyboard:true,proposalId:preview.value.proposal.id});
+  expect(result.ok).toBe(false);
+  expect(deps.deliver).not.toHaveBeenCalled();
+});
+
 it('una vinculación no roba la pestaña de otra conexión',async()=>{
   await connect();const other=port();await other.request('connect',{writerVersion:WRITER_VERSION,token:'y'.repeat(43)});
   expect((await other.request('bind',{tabId:7})).ok).toBe(false);

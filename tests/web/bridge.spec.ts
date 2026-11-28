@@ -19,16 +19,25 @@ test.beforeAll(async({request})=>{
 });
 
 const graphStatement='Traza la gráfica de y = (x + 5)^2 + 1.';
-async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean;graph?:boolean;graphUnverified?:boolean}={}) {
-  await page.addInitScript(({version,legacy,fields,decimal,events,blocked,graph,graphUnverified,graphStatement}) => {
-    const context = graph ? {
+async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean;graph?:boolean;graphUnverified?:boolean;choice?:string}={}) {
+  await page.addInitScript(({version,legacy,fields,decimal,events,blocked,graph,graphUnverified,graphStatement,choice}) => {
+    const context = choice ? {
+      fingerprint:'a'.repeat(64), statement:'Marcar cada proposición que sea verdadera.',
+      fields:[{key:'answer',label:'Opciones a marcar'}],diagram_required:false,can_fill_integer:false,
+      choice:{mode:'multiple',options:[
+        {key:'option_1',label:'En la geometría esférica no hay rectas paralelas.'},
+        {key:'option_2',label:'Un triángulo esférico puede tener dos ángulos rectos.'},
+        {key:'option_3',label:'Ninguna proposición es verdadera.'},
+      ]},can_select_options:!blocked,fill_blockers:blocked?['choice_not_empty']:[]
+    } : graph ? {
       fingerprint:'a'.repeat(64),statement:graphStatement,fields:[{key:'answer',label:'Puntos y trazo de la función'}],
       diagram_required:false,can_fill_integer:false,can_fill_fraction:false,can_draw_parabola:!blocked,fill_blockers:['graph_editor']
     } : {
       fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
       fields:events?[{key:'field_1',label:'P(A): La suma es mayor que 9.'},{key:'field_2',label:'P(B): La suma es divisible entre 2 o 6 (o ambos).'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
     const exact=(graph && !graphUnverified)||events;
-    const answers=graph?[{field_key:'answer',value:'(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)',unit:''}]
+    const answers=choice?[{field_key:'answer',value:choice,unit:''}]
+      :graph?[{field_key:'answer',value:'(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)',unit:''}]
       :events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'1/6',unit:''}]
       :context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''}));
     const proposal = {id:'00000000-0000-4000-8000-000000000021',context,
@@ -69,9 +78,9 @@ async function prepare(page: Page, options:{version?:string;legacy?:boolean;fiel
           queueMicrotask(()=>api.emit({requestId:message.requestId,ok:true,value}));
         }};
     }}}});
-  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false,events:options.events??false,blocked:options.blocked??false,graph:options.graph??false,graphUnverified:options.graphUnverified??false,graphStatement});
+  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false,events:options.events??false,blocked:options.blocked??false,graph:options.graph??false,graphUnverified:options.graphUnverified??false,graphStatement,choice:options.choice??''});
   await page.goto('/app/');
-  await page.getByLabel('Correo electrónico').fill(options.graph || options.events ? exactAccount : account);
+  await page.getByLabel('Correo electrónico').fill(options.graph || options.events || options.choice ? exactAccount : account);
   await page.getByLabel('Contraseña',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
   await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
@@ -86,6 +95,35 @@ async function bindRead(page:Page,id='7',statement='Hay 4 nadadores y dos premio
   await page.getByRole('button',{name:'Leer actividad ALEKS'}).click();
   await expect(page.getByText(statement,{exact:true})).toBeVisible();
 }
+
+test('opciones: muestra las etiquetas propuestas y autoriza una selección completa', async ({ page }) => {
+  await prepare(page, { choice:'option_1,option_2' });
+  await bindRead(page, '7', 'Marcar cada proposición que sea verdadera.');
+  const consent = page.getByRole('checkbox', { name:/Autorizo seleccionar opciones/ });
+  await expect(page.getByText('3 opciones · selección múltiple')).toBeVisible();
+  await expect(consent).toBeDisabled();
+  await page.getByRole('button', { name:'Consultar vista previa' }).click();
+  const suggested = page.getByRole('list', { name:'Opciones propuestas' }).getByRole('listitem');
+  await expect(suggested).toHaveText([
+    'En la geometría esférica no hay rectas paralelas.',
+    'Un triángulo esférico puede tener dos ángulos rectos.',
+  ]);
+  await expect(page.getByText('Propuesta de IA sin verificar')).toBeVisible();
+  await consent.check();
+  await page.getByRole('button', { name:'Autorizar e iniciar recorrido' }).click();
+  const commands = await page.evaluate(() => (window as any).bridgeMock.commands as {command:string}[]);
+  expect(commands.filter(command => command.command==='start'))
+    .toMatchObject([{ proposalId:'00000000-0000-4000-8000-000000000021', nativeKeyboard:true }]);
+});
+
+test('opciones: una propuesta con un identificador desconocido queda bloqueada', async ({ page }) => {
+  await prepare(page, { choice:'option_1,option_4' });
+  await bindRead(page, '7', 'Marcar cada proposición que sea verdadera.');
+  await page.getByRole('button', { name:'Consultar vista previa' }).click();
+  await expect(page.getByRole('checkbox', { name:/Autorizo seleccionar opciones/ })).toBeDisabled();
+  await expect(page.getByText('La vista previa no devolvió una selección válida para las opciones leídas.')).toBeVisible();
+  await expect(page.getByRole('list', { name:'Opciones propuestas' })).toHaveCount(0);
+});
 
 test('parábola: una vista previa comprobada permite autorizar los controles nativos con una sola casilla',async({page})=>{
   await prepare(page,{graph:true});await bindRead(page,'7',graphStatement);

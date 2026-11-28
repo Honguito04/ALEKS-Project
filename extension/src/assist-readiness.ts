@@ -1,6 +1,7 @@
 import { parseSupportedAnswer } from './answer-format';
 import { answerUnit } from './answer-units';
 import { drawableParabola } from './parabola-answer';
+import { proposedChoiceKeys, selectedChoiceKeys } from './choice-answer';
 import type { AssistContext,AssistResult,AssistView,FillBlocker } from './shared';
 
 export const fillBlockerMessages:Record<FillBlocker,string>={
@@ -18,6 +19,10 @@ export const fillBlockerMessages:Record<FillBlocker,string>={
   image_based_proposal:'La propuesta depende de una captura. Si el ejercicio se resuelve solo con el texto, desmarca la captura y vuelve a consultar.',
   answer_format:'La escritura admite un entero, decimal o una fracción reducida no negativa por recuadro (hasta doce dígitos por componente). La unidad debe estar predefinida o tener un botón cm/cm²/cm³ reconocido.',
   fraction_control:'La lectura actual no confirmó un editor vacío compatible con fracciones. Vuelve a leer la actividad.',
+  choice_unrecognized:'Hay controles de respuesta que no se pudieron asociar a un grupo de opciones legibles. Revisa el ejercicio antes de responder.',
+  choice_not_empty:'Ya hay opciones marcadas. Quita la selección en ALEKS y vuelve a leer la actividad.',
+  choice_disabled:'Alguna opción está deshabilitada. Lee un ejercicio con opciones disponibles.',
+  choice_answer:'La vista previa no devolvió una selección válida para las opciones leídas.',
   no_answer:'No hay una respuesta estructurada disponible para introducir.',
   unknown:'Esta consulta no confirmó que pueda escribir. Vuelve a leer la actividad y consultar.'
 };
@@ -28,7 +33,7 @@ export function requireAssistImage(context:AssistContext,required:boolean):Assis
 }
 
 export function captureFillPolicy(context:AssistContext,result:AssistResult,includeImage:boolean):AssistContext {
-  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes','independent_spins','two_dice_events','parabola_points'].includes(result.verification) && !context.diagram_required;
+  const textVerified=result.verified && result.provider==='deterministic' && ['ordered_prizes','independent_boxes','independent_spins','two_dice_events','parabola_points'].includes(result.verification) && !context.diagram_required && !context.choice;
   if(!includeImage || textVerified)return context;
   return {...context,can_fill_integer:false,can_fill_fraction:false,fill_blockers:[...new Set([...context.fill_blockers,'image_based_proposal' as const])]};
 }
@@ -36,6 +41,11 @@ export function captureFillPolicy(context:AssistContext,result:AssistResult,incl
 /** Un mismo contrato de elegibilidad para el botón del panel y el worker. */
 export function proposalFillBlockers(view:AssistView):FillBlocker[] {
   const blockers=[...view.context.fill_blockers];
+  if(view.context.choice) {
+    if(!proposedChoiceKeys(view))blockers.push('choice_answer');
+    if(!blockers.length && !view.context.can_select_options)blockers.push('choice_unrecognized');
+    return blockers;
+  }
   if(!view.context.can_fill_integer && !view.context.can_fill_fraction && !blockers.length)blockers.push('unknown');
   const {proposal}=view.result;
   if(proposal.status!=='proposed')blockers.push('no_answer');
@@ -81,7 +91,7 @@ export function proposalFillMessages(view:AssistView):string[] {
 }
 
 export function automationProposalMessages(view:AssistView):string[] {
-  return drawableParabola(view) ? [] : proposalFillMessages(view);
+  return drawableParabola(view) || selectedChoiceKeys(view) ? [] : proposalFillMessages(view);
 }
 
 export function answerPayload(view:AssistView) {

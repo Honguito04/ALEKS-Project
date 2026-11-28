@@ -6,8 +6,8 @@ test.beforeAll(async()=>{
   fixture=await readFile('tests/fixtures/aleks-single-editor.html','utf8');
   bundle=(await build({entryPoints:['tests/e2e/aleks-content-harness.ts'],bundle:true,write:false,format:'iife',target:'es2022'})).outputFiles[0].text;
 });
-async function openContent(page:Page) {
-  await page.route('**/content-fixture',r=>r.fulfill({contentType:'text/html',body:fixture}));
+async function openContent(page:Page,html=fixture) {
+  await page.route('**/content-fixture',r=>r.fulfill({contentType:'text/html',body:html}));
   await page.route('**/__content.js',r=>r.fulfill({contentType:'application/javascript',body:bundle}));
   await page.goto('/content-fixture');await page.bringToFront();await page.addScriptTag({url:'/__content.js'});
 }
@@ -141,3 +141,75 @@ test('conserva Correcta en el mismo recorrido y avanza una vez con Siguiente tem
   expect(result).toMatchObject({accepted:{ok:true,data:{status:'accepted'}},before:{submits:1,nexts:0},
     advanced:{ok:true},duplicate:{ok:false},acceptedAgain:{ok:true,data:{status:'accepted'}},submits:2,nexts:1});
 });
+
+const choicesHTML=`<!doctype html><meta charset="utf-8">
+<main>
+  <p id="algoPrompt">Marcar cada proposición que sea verdadera.</p>
+  <fieldset aria-labelledby="algoPrompt">
+    <label><input type="checkbox">Un rectángulo tiene cuatro ángulos rectos.</label><br>
+    <label><input type="checkbox">Un triángulo tiene cuatro lados.</label><br>
+    <label><input type="checkbox">Un cuadrado tiene cuatro lados.</label>
+  </fieldset>
+  <button type="button" id="smt_bottomnav_button_input_checkAnswer" class="checkAnswer" disabled>
+    <div class="textContent">Verificar</div>
+  </button>
+</main>`;
+
+for (const fault of ['none','stop','change-selection','permission'] as const) {
+  test(`selección múltiple con autorización y lectura antes de Verificar (${fault})`,async({page})=>{
+    await openContent(page,choicesHTML);
+    const result=await page.evaluate(async fault=>{
+      const options=[...document.querySelectorAll<HTMLInputElement>('input[type=checkbox]')];
+      const submit=document.querySelector<HTMLButtonElement>('.checkAnswer')!;
+      const authorizations:unknown[]=[];
+      let submits=0,nexts=0;
+      const readSelected=()=>options.map(option=>option.checked);
+      for(const option of options)option.addEventListener('change',()=>{submit.disabled=!readSelected().some(Boolean);});
+      window.nativeContentHandler=async message=>{
+        authorizations.push(message);
+        if(message.step===2) {
+          if(fault==='stop')await window.contentRPC('stop');
+          if(fault==='change-selection')options[1].checked=true;
+          if(fault==='permission')return {ok:false,error:'Se revocó el permiso.'};
+        }
+        return {ok:true,data:true};
+      };
+      let selectedAtSubmit:boolean[]|undefined;
+      submit.addEventListener('click',()=>{
+        submits++;selectedAtSubmit=readSelected();submit.remove();
+        const feedback=document.createElement('div');
+        feedback.id='result_feedback_alert';feedback.setAttribute('aria-live','polite');
+        feedback.style.cssText='display:inline-block;border:1px solid rgb(57,108,41)';
+        feedback.innerHTML='<div style="display:inline-block;color:rgb(57,108,41)">Correcta</div>';
+        const next=document.createElement('button');
+        next.type='button';next.id='smt_bottomnav_button_input_learningCorrect';next.className='learningCorrect';
+        next.innerHTML='<div class="textContent">Siguiente</div>';
+        next.addEventListener('click',()=>{
+          nexts++;
+          (options[0].parentElement!.lastChild as Text).data='Un cuadrilátero tiene cuatro lados.';
+          options.forEach(option=>{option.checked=false;});
+          feedback.remove();next.remove();submit.disabled=true;document.querySelector('main')!.append(submit);
+        });
+        document.querySelector('main')!.append(feedback,next);
+      });
+      await window.contentRPC('automationReset',{runId:'choice-run'});
+      const first=await window.contentRPC('assistContext');
+      const command={runId:'choice-run',choiceWriteId:'choice-write',fingerprint:first.data.fingerprint,keys:['option_1','option_3']};
+      const accepted=await window.contentRPC('automationSubmitChoice',command);
+      const repeated=await window.contentRPC('automationSubmitChoice',command);
+      if(fault!=='none')return {accepted,repeated,submits,authorizations};
+      const advanced=await window.contentRPC('automationNext',{runId:'choice-run'});
+      const fresh=await window.contentRPC('assistContext');
+      return {accepted,repeated,advanced,submits,nexts,selectedAtSubmit,authorizations,
+        option:fresh.data.choice.options[0].label,fingerprintChanged:fresh.data.fingerprint!==first.data.fingerprint};
+    },fault);
+    expect(result.authorizations).toEqual([0,1,2].map(step=>({scope:'content',type:'choiceCheck',writeId:'choice-write',step})));
+    expect(result.repeated).toMatchObject({ok:false});
+    if(fault==='none') {
+      expect(result).toMatchObject({accepted:{ok:true,data:{status:'accepted'}},advanced:{ok:true},
+        submits:1,nexts:1,selectedAtSubmit:[true,false,true],option:'Un cuadrilátero tiene cuatro lados.',fingerprintChanged:true});
+    } else {
+      expect(result).toMatchObject({accepted:{ok:false},submits:0});
+    }
+  });
+}

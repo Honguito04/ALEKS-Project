@@ -7,6 +7,7 @@ import { assistContextSchema, assistResultSchema } from '../../extension/src/sha
 import { automationLimitsSchema } from '../../extension/src/aleks-automation';
 import { fillBlockerMessages, automationProposalMessages } from '../../extension/src/assist-readiness';
 import { drawableParabola, emptyParabolaContext } from '../../extension/src/parabola-answer';
+import { choiceAvailable, proposedChoiceKeys, selectedChoiceKeys } from '../../extension/src/choice-answer';
 import './bridge.css';
 
 const EXTENSION_ID = 'fjjgjakbpjhhegekcjogilmfheaicjge';
@@ -182,11 +183,15 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const context = snapshot?.context;
   const proposal = snapshot?.proposal;
   const automation = snapshot?.automation;
+  const choice = context?.choice;
   const graphing = context?.fill_blockers.includes('graph_editor');
   const readyGraph = context && emptyParabolaContext(context);
   const canDraw = Boolean(readyGraph && context.fingerprint === proposal?.context.fingerprint && drawableParabola(proposal));
   const eligible = Boolean(context && [1,2].includes(context.fields.length) && !context.diagram_required &&
     (context.can_fill_integer || context.can_fill_fraction) && !context.fill_blockers.length);
+  const readyChoice = Boolean(context && choiceAvailable(context));
+  const canSelect = Boolean(readyChoice && context?.fingerprint === proposal?.context.fingerprint && selectedChoiceKeys(proposal));
+  const choicePreviewKeys = proposedChoiceKeys(proposal);
   let blockers = proposal ? automationProposalMessages(proposal) : context?.fill_blockers.map(reason => fillBlockerMessages[reason]) ?? [];
   if (graphing && context) {
     blockers = context.fill_blockers.filter(reason => reason !== 'graph_editor').map(reason => fillBlockerMessages[reason]);
@@ -196,12 +201,15 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
       else if (!proposal || context.fingerprint !== proposal.context.fingerprint) blockers.push('Consulta la vista previa del ejercicio actual para autorizar el recorrido de la parábola.');
       else if (!canDraw) blockers.push('La vista previa debe confirmar los cinco puntos a partir de la ecuación para habilitar el recorrido.');
     }
+  } else if (readyChoice && !canSelect && !blockers.length) {
+    blockers = ['Consulta la vista previa para revisar las opciones antes de autorizar.'];
   } else if (snapshot?.tab && !context) {
     blockers = ['Lee la actividad ALEKS para habilitar el recorrido.'];
   }
-  const canAuthorize = (graphing ? canDraw : eligible) && blockers.length === 0;
-  const useNativeControls = Boolean(graphing) || nativeKeyboard;
-  const format = graphing ? (readyGraph ? 'Cuadrícula vacía compatible con el trazado' : 'Cuadrícula ocupada o incompatible con el trazado')
+  const canAuthorize = (choice ? canSelect : graphing ? canDraw : eligible) && blockers.length === 0;
+  const useNativeControls = Boolean(graphing || choice) || nativeKeyboard;
+  const format = choice ? `${choice.options.length} opciones · ${choice.mode === 'single' ? 'selección única' : 'selección múltiple'}`
+    : graphing ? (readyGraph ? 'Cuadrícula vacía compatible con el trazado' : 'Cuadrícula ocupada o incompatible con el trazado')
     : eligible ? (context?.fields.length === 2 ? 'Dos recuadros vacíos compatibles' : 'Recuadro vacío compatible') : 'Escritura automática bloqueada';
   const answerRows = proposal?.context.fields.flatMap(field => {
     const answer = proposal.result.proposal.answers.find(answer => answer.field_key === field.key);
@@ -212,11 +220,24 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     Number.isInteger(numericLimits.maxMinutes) && numericLimits.maxMinutes >= 1 && numericLimits.maxMinutes <= 120 &&
     Number.isInteger(numericLimits.maxAICalls) && numericLimits.maxAICalls >= 1 && numericLimits.maxAICalls <= 100;
   const running = Boolean(automation?.active);
+  const unsupported = Boolean(context && !eligible && !readyChoice && !readyGraph);
+  async function copyDiagnostic() {
+    if (!context) return;
+    const report = { version: WRITER_VERSION, blockers: context.fill_blockers, diagram: context.diagram_required,
+      fields: context.fields.length, graph: Boolean(graphing), selectionMode: choice?.mode,
+      options: choice?.options.length, choice: context.choice_diagnostic };
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(report, null, 2));
+      setNotice('Diagnóstico copiado. Puedes compartirlo sin el HTML de la página.');
+    } catch {
+      setError('El navegador no permitió copiar el diagnóstico.');
+    }
+  }
 
   return <section className="card bridge-card" aria-labelledby="bridge-title">
     <fieldset disabled={suspended}>
     <div className="section-heading"><div><span className="step-label">EXTENSIÓN / ALEKS</span><h2 id="bridge-title">Trabaja en tu pestaña ALEKS</h2></div><span className={`bridge-badge ${connected ? 'is-connected' : ''}`}>{connected ? 'Conectada' : 'Sin vínculo'}</span></div>
-    <p className="muted">La web controla únicamente la pestaña que vincules. La extensión lee el ejercicio y ejecuta las teclas, la verificación y el avance; las consultas usan tu cuenta y sus cuotas en la nube.</p>
+    <p className="muted">La web controla únicamente la pestaña que vincules. La extensión lee el ejercicio y ejecuta las acciones autorizadas. Las consultas usan tu cuenta y sus cuotas en la nube.</p>
     <p className="field-help">Web {WRITER_VERSION}{snapshot?.writerVersion ? ` · Extensión ${snapshot.writerVersion}` : ''}</p>
     {error && <p className="message error" role="alert">{error}</p>}
     <p className={notice ? 'message status bridge-status' : 'bridge-status'} role="status" aria-live="polite">{notice}</p>
@@ -225,23 +246,29 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
       <div className="bridge-tab-picker"><div><label htmlFor="bridge-tab">Pestaña ALEKS que autorizas</label><select id="bridge-tab" value={selected} disabled={Boolean(busy) || running} onChange={event => { setSelected(event.target.value); setAuthorized(false); }}><option value="">Selecciona una pestaña</option>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.title || 'ALEKS'} · pestaña {tab.id}{tab.active ? ' (activa)' : ''}</option>)}</select></div><button className="secondary" disabled={!selected || Boolean(busy) || running} onClick={() => void perform('bind', { tabId: Number(selected) })}>Vincular pestaña</button></div>
       {snapshot?.tab && <>
         <p className="bridge-bound">Vinculada: <strong>{snapshot.tab.title || 'ALEKS'}</strong> · pestaña {snapshot.tab.id}</p>
-        <label className="check-label"><input type="checkbox" checked={includeImage} disabled={Boolean(busy) || running} onChange={event => { setIncludeImage(event.target.checked); setAuthorized(false); setSnapshot(previous => previous ? { ...previous, proposal: undefined } : previous); }} />Adjuntar captura de la pestaña vinculada solo para vista previa; requiere permiso de Chrome y no autoriza escritura</label>
-        <div className="bridge-actions"><button className="secondary" disabled={Boolean(busy) || running} onClick={() => void perform('read')}>Leer actividad ALEKS</button><button className="secondary" disabled={!context || Boolean(busy) || running} onClick={() => void perform('preview', { includeImage })}>{busy === 'preview' ? 'Preparando vista previa…' : 'Consultar vista previa'}</button><button className="inline-button" disabled={Boolean(busy)} onClick={() => void perform('status')}>Actualizar estado</button></div>
+        {!choice && <label className="check-label"><input type="checkbox" checked={includeImage} disabled={Boolean(busy) || running} onChange={event => { setIncludeImage(event.target.checked); setAuthorized(false); setSnapshot(previous => previous ? { ...previous, proposal: undefined } : previous); }} />Adjuntar captura de la pestaña vinculada solo para vista previa; requiere permiso de Chrome y no autoriza escritura</label>}
+        <div className="bridge-actions"><button className="secondary" disabled={Boolean(busy) || running} onClick={() => void perform('read')}>Leer actividad ALEKS</button><button className="secondary" disabled={!context || Boolean(busy) || running || context.fill_blockers.includes('choice_unrecognized') || Boolean(choice && context.diagram_required)} onClick={() => void perform('preview', { includeImage: !choice && includeImage })}>{busy === 'preview' ? 'Preparando vista previa…' : 'Consultar vista previa'}</button><button className="inline-button" disabled={Boolean(busy)} onClick={() => void perform('status')}>Actualizar estado</button></div>
       </>}
       {context && <div className="bridge-context"><h3>Actividad observada</h3><p className="bridge-statement">{context.statement}</p><dl className="bridge-diagnostics"><div><dt>Respuestas solicitadas</dt><dd>{context.fields.map(field => field.label).join(' · ')}</dd></div><div><dt>Unidad predefinida</dt><dd>{context.fixed_unit || 'Sin unidad reconocida'}</dd></div><div><dt>Formato</dt><dd>{format}</dd></div><div><dt>Huella de actividad</dt><dd><code>{context.fingerprint}</code></dd></div></dl></div>}
-      {proposal && <div className="bridge-proposal"><p className={`verification-tag ${proposal.result.verified ? 'verified' : 'unverified'}`}>{proposal.result.verified ? 'Resultado comprobado' : 'Propuesta de IA sin verificar'}</p>{answerRows.map(({ field, answer, label }) => <p key={field.key}>{answerRows.length > 1 && <span>{label}: </span>}<strong>{answer.value}</strong> {answer.unit}</p>)}<p>{proposal.result.proposal.explanation}</p>{proposal.result.proposal.missing_information.map((information, index) => <p className="field-help" key={index}>{information}</p>)}</div>}
+      {choice && <details className="bridge-context"><summary>Opciones leídas en ALEKS</summary><ol>{choice.options.map(option => <li key={option.key}>{option.label}</li>)}</ol></details>}
+      {proposal && <div className="bridge-proposal"><p className={`verification-tag ${proposal.result.verified ? 'verified' : 'unverified'}`}>{proposal.result.verified ? 'Resultado comprobado' : 'Propuesta de IA sin verificar'}</p>
+        {proposal.context.choice ? choicePreviewKeys && <ul aria-label="Opciones propuestas">{proposal.context.choice.options.filter(option => choicePreviewKeys.includes(option.key)).map(option => <li key={option.key}>{option.label}</li>)}</ul>
+          : answerRows.map(({ field, answer, label }) => <p key={field.key}>{answerRows.length > 1 && <span>{label}: </span>}<strong>{answer.value}</strong> {answer.unit}</p>)}
+        <p>{proposal.result.proposal.explanation}</p>{proposal.result.proposal.missing_information.map((information, index) => <p className="field-help" key={index}>{information}</p>)}</div>}
       {canDraw && proposal && <div className="bridge-actions">
         <button className="primary" disabled={Boolean(busy) || running} onClick={() => void perform('draw', { proposalId: proposal.id })}>Dibujar parábola en ALEKS</button>
         <p className="field-help">Chrome activará la pestaña ALEKS. Mantenla visible hasta que aparezca la curva y pulsa Verificar allí para entregar.</p>
       </div>}
-      <div className="bridge-authorization"><h3>Autoriza un recorrido limitado</h3><p className="field-help">{graphing ? 'El recorrido usa la vista previa comprobada para marcar los cinco puntos, dibujar la curva y verificar tras comprobar ambos.' : 'Texto con uno o dos recuadros vacíos: enteros, decimales con punto o coma y fracciones reducidas. Conserva unidades fijas y permite seleccionar cm, cm² o cm³. Las parábolas compatibles se pueden resolver con una vista previa comprobada.'}</p>
+      <div className="bridge-authorization"><h3>Autoriza un recorrido limitado</h3><p className="field-help">{choice ? 'El recorrido marca las opciones propuestas y comprueba la selección completa antes de verificar.' : graphing ? 'El recorrido usa la vista previa comprobada para marcar los cinco puntos, dibujar la curva y verificar tras comprobar ambos.' : 'El recorrido admite recuadros numéricos, grupos de opciones reconocidos y parábolas compatibles.'}</p>
         <fieldset disabled={Boolean(busy) || running} className="bridge-limits">{([
           ['maxExercises', 'Máximo de ejercicios', 100], ['maxMinutes', 'Máximo de minutos', 120], ['maxAICalls', 'Máximo de llamadas IA', 100],
         ] as const).map(([key, label, max]) => <div key={key}><label htmlFor={`bridge-${key}`}>{label}</label><input id={`bridge-${key}`} type="number" min="1" max={max} step="1" value={limits[key]} onChange={event => { setLimits(previous => ({ ...previous, [key]: event.target.value })); setAuthorized(false); }} /></div>)}</fieldset>
-        {!graphing && <label className="check-label"><input type="checkbox" checked={nativeKeyboard} disabled={Boolean(busy) || running} onChange={event => { setNativeKeyboard(event.target.checked); setAuthorized(false); }} />Usar teclado de Chrome en la pestaña vinculada</label>}
-        {blockers.length > 0 && <p id="bridge-fill-blockers" className="result-caution">{blockers.join(' ')}</p>}
+        {!graphing && !choice && <label className="check-label"><input type="checkbox" checked={nativeKeyboard} disabled={Boolean(busy) || running} onChange={event => { setNativeKeyboard(event.target.checked); setAuthorized(false); }} />Usar teclado de Chrome en la pestaña vinculada</label>}
+        {blockers.length > 0 && <p id="bridge-fill-blockers" className="result-caution">{blockers.join(' ')} {context?.choice_diagnostic?.reason}</p>}
+        {unsupported && <button className="inline-button" onClick={() => void copyDiagnostic()}>Copiar diagnóstico de controles</button>}
         <label className="check-label"><input type="checkbox" aria-describedby={blockers.length ? 'bridge-fill-blockers' : undefined} checked={canAuthorize && authorized} disabled={!canAuthorize || Boolean(busy) || running} onChange={event => setAuthorized(event.target.checked)} />
-          {graphing ? 'Autorizo dibujar, verificar y avanzar en la pestaña vinculada con los controles nativos de Chrome y estos límites'
+          {choice ? 'Autorizo seleccionar opciones, verificar y avanzar en la pestaña vinculada con estos límites'
+            : graphing ? 'Autorizo dibujar, verificar y avanzar en la pestaña vinculada con los controles nativos de Chrome y estos límites'
             : 'Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites'}
         </label>
         <p className="result-caution">Al iniciar, Chrome activa ALEKS. Mantén ALEKS como pestaña enfocada: volver a esta web puede detener el recorrido por sus controles de foco. La extensión ejecuta el recorrido; esta página no lo reanuda por sí sola.</p>

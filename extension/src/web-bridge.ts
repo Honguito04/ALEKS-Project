@@ -2,8 +2,9 @@ import { WRITER_VERSION,UPDATE_WRITER_MESSAGE } from './writer-version';
 import { z } from 'zod';
 import { ALEKS_ORIGINS,assistContextSchema,assistResultSchema,type AssistContext,type AssistView } from './shared';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
-import { answerPayload,captureFillPolicy } from './assist-readiness';
+import { answerPayload,captureFillPolicy,fillBlockerMessages } from './assist-readiness';
 import { drawableParabola,emptyParabolaContext } from './parabola-answer';
+import { choiceAvailable,choiceIdentity,selectedChoiceKeys } from './choice-answer';
 
 declare const __BRIDGE_WEB_ORIGIN__:string;
 export const BRIDGE_WEB_ORIGIN=typeof __BRIDGE_WEB_ORIGIN__==='string'?__BRIDGE_WEB_ORIGIN__:'';
@@ -43,9 +44,11 @@ type Journal={active?:boolean;tabId?:number;submitted?:string[]};
 const pause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
 
 async function submissionKey(context:AssistContext) {
-  if(!context.fill_blockers.includes('graph_editor'))return context.fingerprint;
-  // El zoom cambia la huella de escritura, pero no el ejercicio ya enviado.
-  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`parabola:${context.statement}`));
+  const activity=context.choice ? JSON.stringify(['choice',context.statement,choiceIdentity(context.choice)])
+    : context.fill_blockers.includes('graph_editor') ? `parabola:${context.statement}` : undefined;
+  if(!activity)return context.fingerprint;
+  // El zoom o el orden de los controles puede cambiar sin crear otro ejercicio.
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(activity));
   return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
 }
 
@@ -188,6 +191,11 @@ export class WebBridge {
   private async solve(c:Connection,epoch:number,includeImage=false,expectedFingerprint=c.context?.fingerprint):Promise<AssistView> {
     await this.session(c);const t=await this.bound(c,epoch),context=await this.read(c,epoch,includeImage);
     if(expectedFingerprint && context.fingerprint!==expectedFingerprint)throw Error('El ejercicio cambió sin un avance autorizado. Vuelve a leerlo antes de consultar.');
+    if(context.fill_blockers.includes('choice_unrecognized'))throw Error(fillBlockerMessages.choice_unrecognized);
+    if(context.choice) {
+      if(context.diagram_required)throw Error('Las opciones dependen de un diagrama. Revísalas directamente en ALEKS.');
+      includeImage=false;
+    }
     if(context.diagram_required && !includeImage)throw Error('Este ejercicio necesita una imagen; no se consultó al proveedor.');
     let image:string|undefined;
     if(includeImage) {
@@ -199,7 +207,7 @@ export class WebBridge {
       if(captured.fingerprint!==context.fingerprint)throw Error('El ejercicio cambió durante la captura. No se consultó IA.');
       if(image.length>1_333_359)throw Error('La captura supera el tamaño admitido.');
     }
-    const {fill_blockers,can_fill_fraction,can_draw_parabola,fixed_unit,...modelContext}=context;
+    const {fill_blockers,can_fill_fraction,can_draw_parabola,can_select_options,choice_diagnostic,fixed_unit,...modelContext}=context;
     let remote:string|undefined,reported=0,started=false,settled=false;
     const account=(calls:unknown)=>{if(typeof calls==='number' && Number.isInteger(calls) && calls>reported && calls<=2){c.providerCalls+=calls-reported;reported=calls;this.progress(c);}};
     try {
@@ -271,7 +279,9 @@ export class WebBridge {
     if(context.fingerprint!==command.fingerprint)throw Error('El ejercicio cambió. Vuelve a leerlo antes de autorizar.');
     const seed=command.proposalId?c.proposal:undefined;
     if(command.proposalId && (!seed || seed.id!==command.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta dejó de estar vigente.');
-    if(context.fill_blockers.includes('graph_editor')) {
+    if(context.choice) {
+      if(!choiceAvailable(context) || !selectedChoiceKeys(seed))throw Error('Consulta una vista previa vigente con las opciones sin marcar antes de autorizar.');
+    } else if(context.fill_blockers.includes('graph_editor')) {
       if(!emptyParabolaContext(context) || !drawableParabola(seed))throw Error('Consulta una vista previa comprobada con la cuadrícula vacía antes de autorizar.');
     } else if(context.diagram_required || (!context.can_fill_integer && !context.can_fill_fraction)) {
       throw Error('El editor o el ejercicio no admite este recorrido automático.');
@@ -292,11 +302,13 @@ export class WebBridge {
         submitted:[...(this.submitted.get(t.id)||[])]}});this.progress(c);
     };
     const run:AleksAutomation=new AleksAutomation(command.limits,{
-      canSubmitParabola:true,
+      canSubmitParabola:true,canSubmitChoices:true,
       now:()=>Date.now(),solve:async()=>{await ensure();return this.solve(c,epoch,false,expectedFingerprint);},
       submit:async proposal=>{
         await ensure();
         const points=drawableParabola(proposal);
+        const choiceKeys=selectedChoiceKeys(proposal);
+        if(proposal.context.choice && !choiceKeys)throw Error('La propuesta no identifica una selección compatible.');
         const key=await submissionKey(proposal.context);
         this.assert(c,epoch);
         const ledger=this.submitted.get(t.id)||new Set<string>();
@@ -304,6 +316,7 @@ export class WebBridge {
         ledger.add(key);this.submitted.set(t.id,ledger);
         await save(run.view);await ensure();
         const {fingerprint}=proposal.context;
+        if(choiceKeys)return this.deps.deliver(t.id,'automationSubmitChoice',{fingerprint,keys:choiceKeys,runId:run.view.id},current);
         return points
           ? this.deps.deliver(t.id,'automationSubmitParabola',{fingerprint,points,runId:run.view.id},current)
           : this.deps.deliver(t.id,'automationSubmit',{fingerprint,value:answerPayload(proposal),runId:run.view.id},current);

@@ -6,7 +6,7 @@ La automatización requiere **Chrome de escritorio 116 o posterior**, la extensi
 
 ## Actualización de versiones
 
-La conexión muestra **Web 0.6.0 · Extensión 0.6.0** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web.
+La conexión muestra **Web 0.6.1 · Extensión 0.6.1** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web.
 
 ## Primera prueba en Windows
 
@@ -22,6 +22,10 @@ La conexión muestra **Web 0.6.0 · Extensión 0.6.0** y comprueba también el a
 El inicio local no publica la web. La computadora debe seguir encendida para servirla. Consulta [WEB.md](WEB.md) para la instalación del servidor en Internet.
 
 ## Qué puede hacer el recorrido
+
+En ejercicios de selección única o múltiple, el lector busca un grupo de casillas o botones con etiquetas visibles asociado al enunciado. Si el grupo está vacío, pulsa **Consultar vista previa** para revisar el texto de las opciones propuestas. Luego marca **Autorizo seleccionar opciones, verificar y avanzar**. El recorrido comprueba todas las marcas antes de pulsar **Verificar**.
+
+Los controles de cada interfaz se reconocen por su estructura y función. Si la web no puede confirmar un formato, **Copiar diagnóstico de controles** comparte los motivos y cantidades observados. El diagnóstico omite el HTML, el enunciado y las credenciales. Las opciones que dependen de un diagrama requieren revisión manual.
 
 El flujo reutiliza las comprobaciones de la extensión: leer el enunciado, consultar al backend con la cuenta web, escribir, leer la respuesta representada por el editor, pulsar el control conocido de verificación una sola vez, esperar una devolución nueva **Correcta** y avanzar a otro ejercicio mediante los controles compatibles. Aplica los límites de ejercicios completos, tiempo y llamadas de IA: dos respuestas de un ejercicio cuentan como un ejercicio. Una respuesta incorrecta, un cambio inesperado, un formato incompatible o una entrega incierta detienen el recorrido; no se ensaya otra respuesta automáticamente.
 

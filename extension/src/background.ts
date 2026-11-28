@@ -1,5 +1,5 @@
 import { WRITER_VERSION } from './writer-version';
-import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,type AssistView,type Run } from './shared';
+import { BACKEND, ALEKS_ORIGINS, allowedTab, simulatorURL, exerciseSchema, limitsSchema, runSchema, solutionSchema, assistContextSchema,assistResultSchema,assistChoiceKeysSchema,type AssistView,type Run } from './shared';
 import { typeNativeAnswer,withNativePlot,type NativePlotClick } from './native-keyboard';
 import { parabolaPointsSchema } from './parabola-answer';
 import { parseSupportedAnswer } from './answer-format';
@@ -27,12 +27,15 @@ function cancelNative(id:number) {
   nativeTabEpoch.set(id,(nativeTabEpoch.get(id)||0)+1);
   nativeWrites.get(id)?.abort.abort();
   nativePlots.get(id)?.abort.abort();
+  choiceWrites.delete(id);
 }
 type NativeWrite={id:string;url:string;values:string[];index:number;used:boolean;abort:AbortController;current:()=>boolean};
 const nativeWrites=new Map<number,NativeWrite>();
 type NativePlot={id:string;url:string;documentId:string;next:number;busy:boolean;abort:AbortController;
   click?:NativePlotClick;checkBeforeSubmit?:()=>Promise<void>;checkedForSubmit?:boolean;current:()=>boolean};
 const nativePlots=new Map<number,NativePlot>();
+type ChoiceWrite={id:string;url:string;documentId:string;next:number;checks:number;busy:boolean;current:()=>boolean};
+const choiceWrites=new Map<number,ChoiceWrite>();
 const aleksDocuments=new Map<number,string>();
 let webBridge:WebBridge|undefined;
 async function deliverParabola(id:number,type:'drawParabola'|'automationSubmitParabola',data:Record<string,unknown>,current:()=>boolean) {
@@ -43,7 +46,7 @@ async function deliverParabola(id:number,type:'drawParabola'|'automationSubmitPa
   }
   const documentId=aleksDocuments.get(id);
   if(!documentId)throw Error('Vuelve a vincular la pestaña para identificar el documento de ALEKS antes de dibujar.');
-  if(nativePlots.has(id) || nativeWrites.has(id) || !current())throw Error('Ya hay una operación de entrada o se detuvo el dibujo.');
+  if(nativePlots.has(id) || nativeWrites.has(id) || choiceWrites.has(id) || !current())throw Error('Ya hay una operación de entrada o se detuvo el dibujo.');
   const plot:NativePlot={id:crypto.randomUUID(),url:t.url,documentId,next:0,busy:false,abort:new AbortController(),
     current:()=>current() && nativePlots.get(id)===plot && !plot.abort.signal.aborted};
   nativePlots.set(id,plot);
@@ -65,6 +68,7 @@ async function deliverParabola(id:number,type:'drawParabola'|'automationSubmitPa
 }
 async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,current=()=>true) {
   if(type==='drawParabola' || type==='automationSubmitParabola')return deliverParabola(id,type,data,current);
+  if(type==='automationSubmitChoice')return deliverChoice(id,data,current);
   if(!nativeTabs.has(id)) {
     if(legacyTests)return send(id,type,data,current);
     throw Error('Los controles de Chrome dejaron de estar autorizados para esta pestaña.');
@@ -74,13 +78,34 @@ async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,c
   const t=await tab(id);
   const values=Array.isArray(data.value)?(data.value.length===1?['answer']:['field_1','field_2']).map(key=>(data.value as {field_key:string;value:string}[]).find(answer=>answer.field_key===key)?.value):[data.value];
   if(!ALEKS_ORIGINS.includes(new URL(t.url).origin) || values.some(value=>typeof value!=='string' || !parseSupportedAnswer(value)))throw Error('Respuesta no admitida por el teclado de Chrome.');
-  if(!allowed() || nativeWrites.has(id) || nativePlots.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
+  if(!allowed() || nativeWrites.has(id) || nativePlots.has(id) || choiceWrites.has(id))throw Error('Ya hay otra escritura o el recorrido se detuvo.');
   if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Recarga la extensión actualizada y concede el permiso de depuración de Chrome.');
   if(!allowed())throw Error('Escritura cancelada.');
   const write:NativeWrite={id:crypto.randomUUID(),url:t.url,values:values as string[],index:0,used:false,abort:new AbortController(),current:allowed};
   nativeWrites.set(id,write);
   try{return await send(id,type,{...data,nativeWriteId:write.id},()=>allowed() && !write.abort.signal.aborted);}
   finally {write.abort.abort();if(nativeWrites.get(id)===write)nativeWrites.delete(id);}
+}
+async function deliverChoice(id:number,data:Record<string,unknown>,current:()=>boolean) {
+  const keys=assistChoiceKeysSchema.parse(data.keys),t=await tab(id),documentId=aleksDocuments.get(id);
+  if(!webBridge?.ownsTab(id) || !nativeTabs.has(id) || !documentId || typeof data.fingerprint!=='string' ||
+    !/^[a-f0-9]{64}$/u.test(data.fingerprint) || typeof data.runId!=='string') {
+    throw Error('La selección no corresponde al documento de ALEKS vinculado.');
+  }
+  if(choiceWrites.has(id) || nativeWrites.has(id) || nativePlots.has(id) || !current()) {
+    throw Error('Ya hay una operación de entrada o se detuvo la selección.');
+  }
+  const write:ChoiceWrite={id:crypto.randomUUID(),url:t.url,documentId,next:0,checks:keys.length+1,busy:false,
+    current:()=>current() && nativeTabs.has(id) && choiceWrites.get(id)===write};
+  choiceWrites.set(id,write);
+  try {
+    const result=await send(id,'automationSubmitChoice',{fingerprint:data.fingerprint,runId:data.runId,keys,
+      choiceWriteId:write.id},write.current,documentId);
+    if(!write.current() || write.next!==write.checks)throw Error('La selección no terminó todas sus comprobaciones. Revisa ALEKS.');
+    return result;
+  } finally {
+    if(choiceWrites.get(id)===write)choiceWrites.delete(id);
+  }
 }
 const automationKey=(id:number)=>`aleksAutomation:${id}`;
 async function cancelTabAssist(id:number) {
@@ -147,14 +172,14 @@ async function tab(id:unknown) {
   if(!await chrome.permissions.contains({origins:[`${new URL(t.url).origin}/*`]})) throw Error('Falta el permiso del sitio');
   return t as chrome.tabs.Tab & {id:number;url:string};
 }
-async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean) {
-  const cancelled=()=>{if(!isCurrent())throw Error('La operación de teclado fue cancelada o perdió su autorización.');};
+async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean,requiresDebugger=true) {
+  const cancelled=()=>{if(!isCurrent())throw Error('La operación de entrada fue cancelada o perdió su autorización.');};
   cancelled();
   const current=await tab(id);cancelled();
   if(current.url!==url)throw Error('La página de ALEKS cambió. Lee de nuevo la actividad antes de escribir.');
   const authorized = webBridge?.ownsTab(id) ? await webBridge.authorized(id) : legacyTests && Boolean(await auth());
   if(!authorized)throw Error('La sesión del asistente terminó. Vuelve a vincular la pestaña.');
-  if(!await chrome.permissions.contains({permissions:['debugger']}))throw Error('Falta el permiso de depuración de Chrome. Recarga la extensión y revisa sus permisos.');
+  if(requiresDebugger && !await chrome.permissions.contains({permissions:['debugger']}))throw Error('Falta el permiso de depuración de Chrome. Recarga la extensión y revisa sus permisos.');
   cancelled();
   const active=await chrome.tabs.query({active:true,windowId:current.windowId});cancelled();
   if(active.length!==1 || active[0].id!==id)throw Error('La pestaña seleccionada en el asistente no es la pestaña activa de esa ventana. Activa la pestaña ALEKS seleccionada.');
@@ -167,7 +192,7 @@ async function send(id:number,type:string,data:Record<string,unknown>={},isCurre
     ? chrome.tabs.sendMessage(id,message,{documentId})
     : chrome.tabs.sendMessage(id,message);
   // Read-only handshake before a write: an old adapter must never receive it.
-  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext','drawParabola','automationSubmitParabola'].includes(type)) {
+  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext','drawParabola','automationSubmitParabola','automationSubmitChoice'].includes(type)) {
     const version=await sendToAdapter({scope:'adapter',type:'writerVersion'}).catch(()=>undefined);
     if(version?.writerVersion!==WRITER_VERSION)throw Error(`La pestaña ALEKS conserva un adaptador antiguo. Recarga ALEKS para cargar la versión ${WRITER_VERSION} y vuelve a leer el ejercicio.`);
     if(!isCurrent())throw Error('Recorrido detenido.');
@@ -436,6 +461,24 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
 async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.MessageSender) {
   if(!sender.tab?.id || sender.frameId!==0) throw Error('Marco no autorizado');
   const t=await tab(sender.tab.id);
+  if(m.type==='choiceCheck') {
+    const write=choiceWrites.get(t.id);
+    if(!write || !write.current() || m.writeId!==write.id || write.busy || write.next>=write.checks || m.step!==write.next) {
+      throw Error('La autorización de esta opción dejó de estar vigente.');
+    }
+    const origin=new URL(write.url).origin;
+    if(t.url!==write.url || sender.documentId!==write.documentId || !sender.url || new URL(sender.url).origin!==origin ||
+      (sender.origin!==undefined && sender.origin!==origin) || (sender.documentLifecycle && sender.documentLifecycle!=='active')) {
+      throw Error('El documento de ALEKS cambió. Vuelve a vincular la pestaña y lee las opciones.');
+    }
+    write.busy=true;
+    try {
+      await checkNativeTab(t.id,write.url,write.current,false);
+      if(!write.current())throw Error('La selección fue cancelada.');
+      write.next++;
+      return true;
+    } finally {write.busy=false;}
+  }
   if(m.type==='nativeGraphClick' || m.type==='nativeGraphCheck') {
     const plot=nativePlots.get(t.id);
     if(!plot?.click || !plot.current() || m.writeId!==plot.id) {
@@ -532,7 +575,7 @@ webBridge=new WebBridge(BRIDGE_WEB_ORIGIN,{
   send:(id,type,data,current)=>send(id,type,data,current,aleksDocuments.get(id)),
   deliver:deliverAnswer,cancel:cancelTabAssist,
   setNative:(id,enabled)=>{if(enabled)nativeTabs.add(id);else{nativeTabs.delete(id);cancelNative(id);}},
-  legacyBusy:id=>nativeWrites.has(id) || nativePlots.has(id) ||
+  legacyBusy:id=>nativeWrites.has(id) || nativePlots.has(id) || choiceWrites.has(id) ||
     (legacyTests && Boolean(automations.get(id)?.view.active || automationStarting.has(id) || assistJobs.has(id) || assistWriters.has(id))),
   focus:async id=>{
     const current=await tab(id);

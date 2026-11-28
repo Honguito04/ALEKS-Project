@@ -9,6 +9,8 @@ import { visible,disabled } from './aleks-dom';
 import { resolveAleksRoute,type AleksRouteObservation } from './aleks-route';
 import { drawAleksParabola,type GraphClick } from './aleks-graph';
 import { emptyParabolaContext,type PlotPoint } from './parabola-answer';
+import { markAleksChoice } from './aleks-choice';
+import { choiceAvailable,choiceIdentity } from './choice-answer';
 
 const SUBMITS=[
   ['button#smt_bottomnav_button_input_checkAnswer.checkAnswer[type="button"]','Verificar'],
@@ -16,6 +18,7 @@ const SUBMITS=[
 ] as const;
 const NEXT='button#smt_bottomnav_button_input_learningCorrect.learningCorrect[type="button"]';
 const delay=()=>new Promise(resolve=>setTimeout(resolve,50));
+type DeliveryEvidence={confirm:()=>void;choiceKey?:string};
 
 function buttons(document:Document,selector:string,labels:readonly string[]) {
   return [...document.querySelectorAll<HTMLButtonElement>(selector)].filter(button=>visible(button) &&
@@ -33,7 +36,7 @@ function alerts(document:Document) {
 export class AleksSubmission {
   private phase:'idle'|'submitting'|'accepted'|'advancing'|'failed'='idle';
   private generation=0;
-  private pending?:{fingerprint:string;prompt:HTMLElement;feedback:HTMLElement;next:HTMLButtonElement};
+  private pending?:{fingerprint:string;prompt:HTMLElement;feedback:HTMLElement;next:HTMLButtonElement;choiceKey?:string};
   private submittedGraphPrompts=new Set<string>();
   constructor(private document:Document,private timeout=15_000) {}
   reset() {this.generation++;this.pending=undefined;this.phase='idle';}
@@ -96,7 +99,7 @@ export class AleksSubmission {
       if(ordered.length!==(Array.isArray(value)?value.length:1) || !ordered.length)throw Error('Los recuadros no corresponden a todas las respuestas de esta entrega.');
       const root=ordered[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
       await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);
-      return ()=>{
+      return {confirm:()=>{
         const editor=inspectAleksEditor(this.document);
         const valid=Array.isArray(value)?ordered.every((node,i)=>{
           const field=inspectEditorRoot(node),current=answerRoots(this.document);
@@ -106,7 +109,7 @@ export class AleksSubmission {
         }):ordered.length===1 && root.querySelector('input.ansed_input')===inputs[0] && this.document.activeElement===inputs[0] && editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
           sameAnswer(editor.singleEditor.readback.value,value) && !editor.singleEditor.readback.selected_unit && editor.singleEditor.readback.fixed_unit===fixedUnit;
         if(!root.isConnected || !visible(root) || !valid)throw Error('El recuadro cambió antes de verificar. No se entregó la respuesta.');
-      };
+      }};
     });
   }
   submitParabola(fingerprint:string,points:PlotPoint[],signal:AbortSignal,click:GraphClick,authorize:()=>Promise<void>) {
@@ -115,10 +118,21 @@ export class AleksSubmission {
       if(context.fingerprint!==fingerprint || !emptyParabolaContext(context)) {
         throw Error('El ejercicio o la cuadrícula cambió. Vuelve a leer la actividad antes de dibujar.');
       }
-      return drawAleksParabola(this.document,promptFingerprint,points,signal,click);
-    },authorize);
+      return {confirm:await drawAleksParabola(this.document,promptFingerprint,points,signal,click)};
+    },{authorize,parabola:true});
   }
-  private async verify(signal:AbortSignal,prepare:(promptFingerprint:string)=>Promise<()=>void>,authorizeGraph?:()=>Promise<void>):Promise<{status:'accepted'}> {
+  submitChoice(fingerprint:string,keys:string[],signal:AbortSignal,authorize:()=>Promise<void>) {
+    return this.verify(signal,async promptFingerprint=>{
+      const context=await assistContext(this.document);
+      if(context.fingerprint!==fingerprint || !context.choice || !choiceAvailable(context)) {
+        throw Error('Las opciones cambiaron o ya están marcadas. Vuelve a leer la actividad antes de verificar.');
+      }
+      const confirm=await markAleksChoice(this.document,promptFingerprint,context.choice,keys,signal,authorize);
+      return {confirm,choiceKey:choiceIdentity(context.choice)};
+    },{authorize});
+  }
+  private async verify(signal:AbortSignal,prepare:(promptFingerprint:string)=>Promise<DeliveryEvidence>,
+      {authorize,parabola}:{authorize?:()=>Promise<void>;parabola?:true}={}):Promise<{status:'accepted'}> {
     if(this.phase!=='idle')throw Error('Esta entrega ya fue iniciada; no se vuelve a pulsar Verificar.');
     this.phase='submitting';const generation=this.generation;
     let feedbackObserver:MutationObserver|undefined;
@@ -126,18 +140,18 @@ export class AleksSubmission {
       this.check(signal,generation);
       const prompt=this.promptNode(),read=await readAleksPrompt(this.document);this.check(signal,generation);
       if(read.status!=='readable' || !read.fingerprint)throw Error('No se puede identificar el enunciado de esta entrega.');
-      if(authorizeGraph && this.submittedGraphPrompts.has(read.fingerprint))throw Error('Esta gráfica ya tuvo una entrega. Revisa ALEKS antes de continuar.');
-      if(authorizeGraph && this.submittedGraphPrompts.size>=100)throw Error('Se alcanzó el máximo de entregas gráficas de esta pestaña.');
+      if(parabola && this.submittedGraphPrompts.has(read.fingerprint))throw Error('Esta gráfica ya tuvo una entrega. Revisa ALEKS antes de continuar.');
+      if(parabola && this.submittedGraphPrompts.size>=100)throw Error('Se alcanzó el máximo de entregas gráficas de esta pestaña.');
       if(alerts(this.document).length)throw Error('Ya existe un resultado visible. Lee el siguiente ejercicio antes de iniciar.');
       const targets=this.submitButtons();
-      // La cuadrícula puede habilitar el mismo control al completar la curva.
-      if(targets.length!==1 || (!authorizeGraph && disabled(targets[0])))throw Error('No hay un único botón Verificar o Entregar disponible.');
+      // El dibujo y las opciones pueden habilitar el mismo control al completarse.
+      if(targets.length!==1 || (!authorize && disabled(targets[0])))throw Error('No hay un único botón Verificar o Entregar disponible.');
       const target=targets[0];
-      const confirm=await prepare(read.fingerprint);this.check(signal,generation);
+      const {confirm,choiceKey}=await prepare(read.fingerprint);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
-      if(authorizeGraph) {
+      if(authorize) {
         const sameEvidence=currentAleksPromptGuard(this.document);
-        await authorizeGraph();this.check(signal,generation);
+        await authorize();this.check(signal,generation);
         if(this.promptNode()!==prompt || !sameEvidence())throw Error('El ejercicio cambió antes de verificar. No se entregó la respuesta.');
       }
       const editor=inspectAleksEditor(this.document);
@@ -159,7 +173,7 @@ export class AleksSubmission {
       feedbackObserver.observe(this.document,{subtree:true,childList:true,characterData:true});
       this.check(signal,generation);
       confirm();
-      if(authorizeGraph)this.submittedGraphPrompts.add(read.fingerprint);
+      if(parabola)this.submittedGraphPrompts.add(read.fingerprint);
       target.click();
       const deadline=Date.now()+this.timeout;
       while(Date.now()<deadline) {
@@ -170,7 +184,7 @@ export class AleksSubmission {
         recordChanges(feedbackObserver.takeRecords());
         const positive=this.positiveFeedback();
         if(positive && (!previousAlerts.has(positive.feedback) || changedAlerts.has(positive.feedback))) {
-          this.pending={fingerprint:read.fingerprint,prompt,...positive};this.phase='accepted';
+          this.pending={fingerprint:read.fingerprint,prompt,...positive,choiceKey};this.phase='accepted';
           return {status:'accepted'};
         }
         await delay();this.check(signal,generation);
@@ -211,16 +225,24 @@ export class AleksSubmission {
             // El coordinador conserva además el límite global del recorrido.
             deadline=Date.now()+this.timeout;
           }
-        } else if(prompt.status==='readable' && prompt.fingerprint && prompt.fingerprint!==pending.fingerprint && !alerts(this.document).length) {
+        } else if(prompt.status==='readable' && prompt.fingerprint &&
+          (prompt.fingerprint!==pending.fingerprint || pending.choiceKey) && !alerts(this.document).length) {
           const context=await assistContext(this.document);this.check(signal,generation);
-          if(resolveAleksRoute(this.document).observation.labelCount)continue;
-          const editor=inspectAleksEditor(this.document);
-          if(emptyParabolaContext(context)) {this.phase='idle';return;}
-          if((context.can_fill_integer || context.can_fill_fraction) && answerRoots(this.document).every(root=>inspectEditorRoot(root).readback.status==='empty')) {this.phase='idle';return;}
-          if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
-            // Un nuevo ejercicio visual también puede terminar el avance. El
-            // coordinador decide si su formato admite otra entrega.
-            this.phase='idle';return;
+          if(!resolveAleksRoute(this.document).observation.labelCount) {
+            const newPrompt=prompt.fingerprint!==pending.fingerprint;
+            if(context.choice && (newPrompt || choiceIdentity(context.choice)!==pending.choiceKey) && choiceAvailable(context)) {
+              this.phase='idle';return;
+            }
+            if(newPrompt) {
+              const editor=inspectAleksEditor(this.document);
+              if(emptyParabolaContext(context)) {this.phase='idle';return;}
+              if((context.can_fill_integer || context.can_fill_fraction) && answerRoots(this.document).every(root=>inspectEditorRoot(root).readback.status==='empty')) {this.phase='idle';return;}
+              if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
+                // Un nuevo ejercicio visual también puede terminar el avance. El
+                // coordinador decide si su formato admite otra entrega.
+                this.phase='idle';return;
+              }
+            }
           }
         }
         await delay();this.check(signal,generation);

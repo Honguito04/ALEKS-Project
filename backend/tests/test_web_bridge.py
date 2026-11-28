@@ -105,6 +105,26 @@ def outcome(client, token, key):
     pytest.fail("Bridge job did not finish")
 
 
+def test_bridge_previews_choice_using_option_ids_even_for_known_math(bridge_client, gemini_calls, monkeypatch):
+    answer = {"field_key": "answer", "value": "option_2", "unit": ""}
+    monkeypatch.setitem(PROPOSAL, "answers", [answer])
+    register(bridge_client)
+    token = issue(bridge_client)["token"]
+    context = {
+        **CONTEXT,
+        "statement": "Hay 4 nadadores en una carrera. Hay premios para un primer lugar y un segundo lugar. ¿De cuántas maneras distintas se pueden otorgar los 2 premios?",
+        "choice": {
+            "mode": "single",
+            "options": [{"key": "option_1", "label": "8"}, {"key": "option_2", "label": "12"}],
+        },
+    }
+    job = outcome(bridge_client, token, create(bridge_client, token, context))
+    assert job["status"] == "completed"
+    assert job["result"]["proposal"]["answers"] == [answer]
+    assert job["result"]["provider"] == "gemini" and not job["result"]["verified"]
+    assert len(gemini_calls) == 1
+
+
 @pytest.mark.parametrize("a,b,expected_a,expected_b", [
     ("mayor que 9", "divisible entre 2 o 6 (o ambos)", "1/6", "1/2"),
     ("mayor que 9", "divisible entre 2 o 3 (o ambos)", "1/6", "2/3"),

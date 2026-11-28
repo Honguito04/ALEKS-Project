@@ -18,6 +18,18 @@ from app.web_store import initialize_web, web_db
 CONTEXT = {"fingerprint": "a" * 64, "statement": "Calcula el resultado de sumar veinte y tres.",
            "fields": [{"key": "answer", "label": "Respuesta sin unidades"}],
            "diagram_required": False, "can_fill_integer": False}
+CHOICE_CONTEXT = {
+    **CONTEXT,
+    "statement": "Marca cada número primo.",
+    "choice": {
+        "mode": "multiple",
+        "options": [
+            {"key": "option_1", "label": "2"},
+            {"key": "option_2", "label": "4"},
+            {"key": "option_3", "label": "5"},
+        ],
+    },
+}
 PROPOSAL = {"status": "proposed", "answers": [{"field_key": "answer", "value": "23", "unit": ""}],
             "explanation": "Veinte más tres es veintitrés.", "missing_information": []}
 VISUAL = {**PROPOSAL, "answers": [{"field_key": "answer", "value": "1496", "unit": "cm^3"}],
@@ -127,6 +139,66 @@ def test_cloud_transport_has_no_local_model_no_key_in_public_result_and_one_call
     assert "can_fill_integer" not in payload["contents"][0]["parts"][0]["text"]
     assert payload["generationConfig"]["responseJsonSchema"]["additionalProperties"] is False
     assert len(calls) == 1
+
+
+@pytest.mark.parametrize("image", [None, IMAGE])
+def test_choice_preview_validates_selection_order_and_only_sends_text(web_client, gemini, image):
+    calls, outputs = gemini
+    outputs.append({**PROPOSAL, "answers": [{"field_key": "answer", "value": "option_3, option_1", "unit": ""}]})
+    account = register(web_client)
+    body = completed(web_client, create(web_client, account, context=CHOICE_CONTEXT, image=image))
+    assert body["status"] == "completed" and body["result"]["provider_calls"] == 1
+    assert body["result"]["verified"] is False
+    assert body["result"]["proposal"]["answers"] == [
+        {"field_key": "answer", "value": "option_1,option_3", "unit": ""}
+    ]
+    assert len(calls) == 1
+    payload = json.loads(calls[0].content)
+    parts = payload["contents"][0]["parts"]
+    assert len(parts) == 1
+    assert json.loads(parts[0]["text"])["choice"] == CHOICE_CONTEXT["choice"]
+    assert "option_1,option_3" in payload["systemInstruction"]["parts"][0]["text"]
+
+
+@pytest.mark.parametrize("value,unit,mode", [
+    ("option_1,option_1", "", "multiple"),
+    ("option_4", "", "multiple"),
+    ("option_1,", "", "multiple"),
+    ("option_1", "cm", "multiple"),
+    ("option_1,option_3", "", "single"),
+])
+def test_choice_preview_rejects_invalid_provider_selection(web_client, gemini, value, unit, mode):
+    calls, outputs = gemini
+    outputs.append({**PROPOSAL, "answers": [{"field_key": "answer", "value": value, "unit": unit}]})
+    account = register(web_client)
+    context = {**CHOICE_CONTEXT, "choice": {**CHOICE_CONTEXT["choice"], "mode": mode}}
+    body = completed(web_client, create(web_client, account, context=context))
+    assert body["status"] == "error" and body["error"]["code"] == "invalid_output"
+    assert len(calls) == 1 and body["provider_calls"] == 1
+
+
+def test_diagram_choice_stays_manual_without_sending_image(web_client, gemini):
+    account = register(web_client)
+    body = completed(web_client, create(web_client, account,
+                                       context={**CHOICE_CONTEXT, "diagram_required": True}, image=IMAGE))
+    assert body["status"] == "completed"
+    assert body["result"]["proposal"]["status"] == "unable_to_solve"
+    assert body["result"]["proposal"]["answers"] == []
+    assert body["result"]["provider_calls"] == 0 and gemini[0] == [] and usage() == {}
+
+
+@pytest.mark.parametrize("options", [
+    [{"key": "option_1", "label": "2"}, {"key": "option_3", "label": "4"}],
+    [{"key": "option_1", "label": "2"}, {"key": "option_2", "label": " 2 "}],
+    [{"key": "option_1", "label": "2"}, {"key": "option_2", "label": " "}],
+])
+def test_choice_context_requires_ordered_ids_and_distinct_nonblank_labels(web_client, gemini, options):
+    account = register(web_client)
+    response = web_client.post("/web-api/jobs", headers=headers(account), json={
+        "context": {**CHOICE_CONTEXT, "choice": {"mode": "multiple", "options": options}},
+    })
+    assert response.status_code == 422
+    assert gemini[0] == []
 
 
 def test_recognized_math_and_missing_diagram_need_no_provider_or_quota(web_client, gemini):

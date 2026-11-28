@@ -877,6 +877,73 @@ it.each(['same-document','automatic','detached-before-verify','focus-lost-before
     }
   });
 
+it.each(['authorized','foreign-document','focus-lost','stopped'] as const)(
+  'liga cada autorización de selección al documento y recorrido actuales (%s)',async mode=>{
+    const origin='https://bridge.example.test',documentId='aleks-choice-document';
+    delete session.auth;
+    url=ALEKS_ACTIVITY+'/choice-fixture';
+    const context={...assistContext,can_fill_integer:false,can_fill_fraction:false,can_select_options:true,
+      choice:{mode:'multiple',options:[{key:'option_1',label:'Primera'},{key:'option_2',label:'Segunda'}]}};
+    let accept!:(port:chrome.runtime.Port)=>void,receive!:(message:unknown)=>void,closed!:()=>void;
+    const replies:any[]=[];
+    (chrome.runtime as any).onConnectExternal={addListener:(fn:typeof accept)=>{accept=fn;}};
+    chrome.scripting.executeScript=vi.fn(async()=>[{documentId,frameId:0}]) as any;
+    chrome.windows.update=vi.fn(async()=>({id:1,focused:true})) as any;
+    chrome.tabs.update=vi.fn(async()=>({id:7,url,active:true,windowId:1})) as any;
+    fetchMock.mockImplementation(async(destination:string,options?:RequestInit)=>{
+      if(destination.endsWith('/session'))return Response.json({user:{id:'account'}});
+      if(options?.method==='DELETE')return new Response(null,{status:204});
+      if(options?.method==='POST')return Response.json({id:crypto.randomUUID()});
+      return Response.json({status:'completed',result:{...assistResult,provider:'gemini',
+        fingerprint:context.fingerprint,proposal:{...assistResult.proposal,answers:[
+          {field_key:'answer',value:'option_1',unit:''}
+        ]}}});
+    });
+    tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>,options?:chrome.tabs.MessageSendOptions)=>{
+      if(message.type==='assistContext')return {ok:true,data:context};
+      if(message.type!=='automationSubmitChoice')return {ok:true,data:true};
+      expect(options?.documentId).toBe(documentId);
+      expect(message.keys).toEqual(['option_1']);
+      const sender={...content(),origin:ALEKS_ACTIVITY,documentId};
+      const guard={scope:'content',type:'choiceCheck',writeId:message.choiceWriteId};
+      expect((await send({...guard,step:1},sender)).ok).toBe(false);
+      expect((await send({...guard,step:0},sender)).ok).toBe(true);
+      expect((await send({...guard,step:0},sender)).ok).toBe(false);
+      if(mode==='foreign-document')sender.documentId='other-document';
+      if(mode==='focus-lost')nativeFocused=false;
+      if(mode==='stopped')receive({requestId:crypto.randomUUID(),command:'stop'});
+      const result=await send({...guard,step:1},sender);
+      return result.ok?{ok:true,data:{status:'accepted'}}:result;
+    });
+    vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.stubGlobal('__TEST_LEGACY_EXTENSION__',false);vi.resetModules();
+    await import('../../extension/src/background');
+    accept({name:'aleks-web-bridge-v1',sender:{url:origin+'/app/',origin,frameId:0,documentId:'web-document',tab:{id:99,url:origin+'/app/'}},
+      onMessage:{addListener:(fn:typeof receive)=>{receive=fn;}},onDisconnect:{addListener:(fn:typeof closed)=>{closed=fn;}},
+      postMessage:(message:any)=>replies.push(message),disconnect:()=>closed()} as any);
+    async function command(name:string,data:Record<string,unknown>={}) {
+      const requestId=crypto.randomUUID();receive({requestId,command:name,...data});
+      await vi.waitFor(()=>expect(replies.some(reply=>reply.requestId===requestId)).toBe(true));
+      return replies.find(reply=>reply.requestId===requestId);
+    }
+    try {
+      expect((await command('connect',{writerVersion:WRITER_VERSION,token:'x'.repeat(43)})).ok).toBe(true);
+      expect((await command('bind',{tabId:7})).ok).toBe(true);
+      const preview=await command('preview');
+      expect(preview.ok,preview.error).toBe(true);
+      const started=await command('start',{fingerprint:context.fingerprint,proposalId:preview.value.proposal.id,
+        nativeKeyboard:true,limits:{maxExercises:1,maxMinutes:1,maxAICalls:2}});
+      expect(started.ok,started.error).toBe(true);
+      const phase=mode==='authorized'?'COMPLETADO':'DETENIDO',accepted=mode==='authorized'?1:0;
+      await vi.waitFor(()=>expect(replies.some(reply=>reply.value?.automation?.phase===phase &&
+        reply.value.automation.accepted===accepted)).toBe(true));
+      expect(adapterCalls('automationSubmitChoice')).toHaveLength(1);
+      expect(nativeAttach).not.toHaveBeenCalled();
+    } finally {
+      closed?.();
+      vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',undefined);
+    }
+  });
+
 it.each([false,true])('escribe dos campos por separado y rechaza repetir el índice de teclado; unidades: %s',async units=>{
   const answers=[{field_key:'field_2',value:'6',unit:units?'cm²':''},{field_key:'field_1',value:'12',unit:units?'cm':''}];
   prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers}});

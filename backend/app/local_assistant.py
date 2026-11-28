@@ -82,17 +82,38 @@ class AssistField(Strict):
     label: str = Field(min_length=1, max_length=200)
 
 
+class AssistChoiceOption(Strict):
+    key: str = Field(pattern=r"^option_(?:[1-9]|1[0-2])$")
+    label: str = Field(min_length=1, max_length=600)
+
+
+class AssistChoice(Strict):
+    mode: Literal["single", "multiple"]
+    options: list[AssistChoiceOption] = Field(min_length=2, max_length=12)
+
+    @model_validator(mode="after")
+    def ordered_and_distinct(self):
+        keys = [option.key for option in self.options]
+        labels = {" ".join(option.label.split()) for option in self.options}
+        if keys != [f"option_{index}" for index in range(1, len(keys) + 1)] or "" in labels or len(labels) != len(keys):
+            raise ValueError("Se requieren opciones distintas y ordenadas")
+        return self
+
+
 class AssistContext(Strict):
     fingerprint: str = Field(pattern=r"^[a-f0-9]{64}$")
     statement: str = Field(min_length=1, max_length=8000)
     fields: list[AssistField] = Field(min_length=1, max_length=12)
     diagram_required: bool
     can_fill_integer: bool
+    choice: AssistChoice | None = None
 
     @model_validator(mode="after")
     def unique_fields(self):
         if len({field.key for field in self.fields}) != len(self.fields):
             raise ValueError("Campos repetidos")
+        if self.choice and ([field.key for field in self.fields] != ["answer"] or self.can_fill_integer):
+            raise ValueError("La selección debe corresponder a un único campo de opciones")
         return self
 
 
@@ -213,7 +234,7 @@ class AssistResult(Strict):
 
 def exact_text_proposal(context: AssistContext) -> tuple[AssistProposal, ExactVerification] | None:
     """Resuelve plantillas completas usando el enunciado como fuente de datos."""
-    if context.diagram_required:
+    if context.diagram_required or context.choice:
         return None
     if len(context.fields) == 1 and context.fields[0].key == "answer":
         points = parabola_points(context.statement)
@@ -373,7 +394,7 @@ async def consult_visual(body, instructions):
 
 
 async def _consult_visual(body, instructions, client):
-    message = {"role": "user", "content": body.context.model_dump_json(exclude={"fingerprint", "can_fill_integer"}),
+    message = {"role": "user", "content": body.context.model_dump_json(exclude={"fingerprint", "can_fill_integer", "choice"}),
                "images": [body.image.split(",", 1)[1]]}
     visual_instructions = (
         " Para imágenes, enumera en observations las etiquetas y medidas legibles, indicando a qué borde o región "
@@ -424,7 +445,7 @@ async def _consult_visual(body, instructions, client):
         "Para inconsistent da motivos concretos en issues. Si no se distingue un dato, usa needs_context "
         "y detalla missing_information. No propongas una respuesta alternativa."
     )
-    review_message = {**message, "content": json.dumps({"context": body.context.model_dump(exclude={"fingerprint", "can_fill_integer"}),
+    review_message = {**message, "content": json.dumps({"context": body.context.model_dump(exclude={"fingerprint", "can_fill_integer", "choice"}),
                                                        "candidate": draft.model_dump()}, ensure_ascii=False)}
     try:
         review = await local_chat(client, [{"role": "system", "content": review_instructions}, review_message], VisualReview)
@@ -471,6 +492,10 @@ async def local_status():
 
 
 async def consult_local(body: AssistRequest) -> AssistResult:
+    if body.context.choice:
+        return AssistResult(fingerprint=body.context.fingerprint, model=settings.ai_model, provider_calls=0,
+            proposal=AssistProposal(status="unable_to_solve", answers=[], missing_information=[],
+                                    explanation="Consulta las opciones de selección desde la web."))
     if body.context.diagram_required and body.image is None:
         return AssistResult(fingerprint=body.context.fingerprint, model=settings.ai_model, provider_calls=0,
             proposal=AssistProposal(status="needs_context", answers=[], explanation="El enunciado requiere un diagrama. Incluye la captura visible del ejercicio.",
@@ -503,7 +528,7 @@ async def consult_local(body: AssistRequest) -> AssistResult:
     )
     if body.image:
         return await consult_visual(body, instructions)
-    message = {"role": "user", "content": body.context.model_dump_json(exclude={"fingerprint", "can_fill_integer"})}
+    message = {"role": "user", "content": body.context.model_dump_json(exclude={"fingerprint", "can_fill_integer", "choice"})}
     template = {"status": "proposed", "answers": [{"field_key": field.key, "value": "resultado calculado", "unit": ""}
                 for field in body.context.fields], "explanation": "Cálculo y justificación", "missing_information": []}
     messages = [{"role": "system", "content": instructions + " Plantilla de salida: " + json.dumps(template, ensure_ascii=False)}, message]

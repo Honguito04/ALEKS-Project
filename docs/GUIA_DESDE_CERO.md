@@ -91,7 +91,7 @@ Si necesitas detener la sesión, pulsa **Detener recorrido ALEKS** en la web. Al
 
 Para volver a usarla, ejecuta `scripts\start-web.cmd` desde la carpeta del proyecto y vuelve a abrir la web. Usa la misma cuenta y vincula de nuevo la pestaña. Los recorridos detenidos no se reanudan automáticamente.
 
-Para actualizar desde un ZIP, detén el servidor anterior, extrae el ZIP nuevo en otra carpeta e inicia la aplicación desde allí. Las cuentas y la configuración se guardan en `%LOCALAPPDATA%\ALEKS-Project`. En `chrome://extensions`, carga el `dist` nuevo si la extensión todavía apunta a la carpeta anterior. Recarga después ALEKS y la web. Al conectar debe aparecer **Web 0.6.0 · Extensión 0.6.0**. [Actualizar con Git o recuperar una cuenta local](WEB.md#actualizar-la-instalacion-local-de-windows)
+Para actualizar desde un ZIP, detén el servidor anterior, extrae el ZIP nuevo en otra carpeta e inicia la aplicación desde allí. Las cuentas y la configuración se guardan en `%LOCALAPPDATA%\ALEKS-Project`. En `chrome://extensions`, carga el `dist` nuevo si la extensión todavía apunta a la carpeta anterior. Recarga después ALEKS y la web. Al conectar debe aparecer **Web 0.6.1 · Extensión 0.6.1**. [Actualizar con Git o recuperar una cuenta local](WEB.md#actualizar-la-instalacion-local-de-windows)
 
 ## Si aparece un problema
 

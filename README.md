@@ -23,13 +23,14 @@ Consulta la [guía de instalación paso a paso](docs/GUIA_DESDE_CERO.md) y la [g
 
 Detén el servidor anterior con **Ctrl+C**. Si usas Git, ejecuta `scripts\update-web.cmd` en la misma carpeta. Si usas ZIP, extrae la versión nueva en otra carpeta y ejecuta `scripts\start-web.cmd`. El iniciador reutiliza cuentas y configuración de `%LOCALAPPDATA%\ALEKS-Project`.
 
-Recarga la extensión desde la carpeta `dist` indicada por el iniciador. Si Chrome apunta al ZIP anterior, carga el `dist` nuevo. Recarga ALEKS y la web antes de vincular. La versión actual muestra **Web 0.6.0 · Extensión 0.6.0**.
+Recarga la extensión desde la carpeta `dist` indicada por el iniciador. Si Chrome apunta al ZIP anterior, carga el `dist` nuevo. Recarga ALEKS y la web antes de vincular. La versión actual muestra **Web 0.6.1 · Extensión 0.6.1**.
 
 Si necesitas migrar una cuenta anterior al perfil persistente o editar el modelo y la clave del servidor, sigue la [guía de actualización de Windows](docs/WEB.md#actualizar-la-instalacion-local-de-windows).
 
 ## Qué admite el recorrido
 
 - Uno o dos recuadros numéricos vacíos con enteros, decimales o fracciones reducidas. La extensión lee cada valor y unidad antes de verificar. Los dos recuadros de una actividad cuentan como un ejercicio.
+- Grupos compatibles de selección única o múltiple con opciones legibles. La web muestra las opciones propuestas y la extensión comprueba la selección antes de verificar.
 - Parábolas compatibles con una cuadrícula vacía. La extensión confirma los cinco puntos y la curva antes de verificar.
 - Unidades fijas o botones reconocidos de cm, cm² y cm³.
 - Comprobadores que resuelven algunas plantillas, como la probabilidad de dos lanzamientos de un dado, sin llamar a Gemini.

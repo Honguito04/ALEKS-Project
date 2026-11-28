@@ -1,7 +1,7 @@
 import { WRITER_VERSION } from './writer-version';
 import { Controller } from './controller';
 import { SimulatorAdapter, PendingAleksAdapter } from './adapters';
-import { simulatorURL, type Limits, type Run, limitsSchema } from './shared';
+import { simulatorURL, type Limits, type Run, limitsSchema,assistChoiceKeysSchema } from './shared';
 import { AleksSubmission } from './aleks-submission';
 import { editorDiagnostics } from './editor-diagnostics';
 import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist';
@@ -97,6 +97,16 @@ if(!window.__mathAssistantLoaded) {
         if(message.type==='automationReset' && !simulatorURL(location.href)) {
           if(typeof message.runId!=='string')throw Error('Recorrido inválido');
           submission.reset();automationId=message.runId;return true;
+        }
+        if(message.type==='automationSubmitChoice' && !simulatorURL(location.href)) {
+          if(!automationId || message.runId!==automationId)throw Error('Recorrido detenido o reemplazado.');
+          if(typeof message.choiceWriteId!=='string' || typeof message.fingerprint!=='string')throw Error('Selección no autorizada.');
+          const keys=assistChoiceKeysSchema.parse(message.keys),writeId=message.choiceWriteId;
+          let step=0;
+          assistAbort=new AbortController();
+          return await submission.submitChoice(message.fingerprint,keys,assistAbort.signal,async()=>{
+            await rpc('choiceCheck',{writeId,step:step++});
+          });
         }
         if(message.type==='automationSubmit' && !simulatorURL(location.href)) {
           if(!automationId || message.runId!==automationId)throw Error('Recorrido detenido o reemplazado.');

@@ -52,13 +52,32 @@ export interface SingleEditorObservation {
   readback:{status:'empty'|'readable'|'unsupported';reason:string;value?:string;display?:string;fixed_unit?:FixedUnit;selected_unit?:'cm'|'cm^2'|'cm^3';unitLabel?:string};
 }
 export const fillBlockerSchema=z.enum(['unreadable_prompt','editor_missing','field_count_mismatch','multiple_editors','editor_structure','editor_disabled',
-  'editor_not_empty','unsupported_readback','result_present','diagram_required','graph_editor','image_based_proposal','answer_format','no_answer','fraction_control','unknown']);
+  'editor_not_empty','unsupported_readback','result_present','diagram_required','graph_editor','image_based_proposal','answer_format','no_answer','fraction_control',
+  'choice_unrecognized','choice_not_empty','choice_disabled','choice_answer','unknown']);
 export type FillBlocker=z.infer<typeof fillBlockerSchema>;
+export const assistChoiceKeySchema=z.string().regex(/^option_(?:[1-9]|1[0-2])$/u);
+export const assistChoiceKeysSchema=z.array(assistChoiceKeySchema).min(1).max(12)
+  .refine(keys=>new Set(keys).size===keys.length);
+export const assistChoiceSchema=z.object({
+  mode:z.enum(['single','multiple']),
+  options:z.array(z.object({key:assistChoiceKeySchema,label:z.string().trim().min(1).max(600)}).strict()).min(2).max(12)
+}).strict().refine(({options})=>options.every((option,index)=>option.key===`option_${index+1}`) &&
+  new Set(options.map(option=>option.label.replace(/\s+/gu,' '))).size===options.length);
+export type AssistChoice=z.infer<typeof assistChoiceSchema>;
+const choiceDiagnosticSchema=z.object({
+  status:z.enum(['missing','unsupported','observed']),intent:z.boolean(),
+  candidateCount:z.number().int().nonnegative(),nativeCount:z.number().int().nonnegative(),
+  ariaCount:z.number().int().nonnegative(),reason:z.string().max(300)
+}).strict();
 export const assistContextSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),statement:z.string().min(1).max(8000),
   fields:z.array(z.object({key:z.string().regex(/^[a-z][a-z0-9_]{0,39}$/),label:z.string().min(1).max(200)}).strict()).min(1).max(12),
-  diagram_required:z.boolean(),can_fill_integer:z.boolean(),can_fill_fraction:z.boolean().optional(),can_draw_parabola:z.boolean().optional(),fixed_unit:z.enum(fixedUnits).optional(),fill_blockers:z.array(fillBlockerSchema).max(fillBlockerSchema.options.length).default([])
-}).strict();
+  diagram_required:z.boolean(),can_fill_integer:z.boolean(),can_fill_fraction:z.boolean().optional(),can_draw_parabola:z.boolean().optional(),
+  choice:assistChoiceSchema.optional(),can_select_options:z.boolean().optional(),choice_diagnostic:choiceDiagnosticSchema.optional(),
+  fixed_unit:z.enum(fixedUnits).optional(),fill_blockers:z.array(fillBlockerSchema).max(fillBlockerSchema.options.length).default([])
+}).strict().refine(context=>context.choice
+  ? context.fields.length===1 && context.fields[0].key==='answer' && !context.can_fill_integer && !context.can_fill_fraction && !context.can_draw_parabola
+  : context.can_select_options!==true);
 export type AssistContext=z.infer<typeof assistContextSchema>;
 export const assistResultSchema=z.object({
   fingerprint:z.string().regex(/^[a-f0-9]{64}$/),model:z.string().max(200),provider:z.enum(['ollama','gemini','deterministic']),provider_calls:z.number().int().min(0).max(2),verified:z.boolean(),
