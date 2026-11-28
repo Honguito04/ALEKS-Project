@@ -21,7 +21,7 @@ function store(data:Record<string,unknown>) {
     set:async(values:Record<string,unknown>)=>{Object.assign(data,structuredClone(values));},remove:async(keys:string|string[])=>{for(const k of typeof keys==='string'?[keys]:keys)delete data[k];},clear:async()=>{for(const k of Object.keys(data))delete data[k];},setAccessLevel:async()=>{}};
 }
 beforeEach(async()=>{
-  vi.resetModules();local={};session={auth:{token:'not-exposed-to-content',mode:'demo'}};url=BACKEND+'/simulator/';permitted=true;
+  vi.resetModules();vi.stubGlobal('__TEST_LEGACY_EXTENSION__',true);local={};session={auth:{token:'not-exposed-to-content',mode:'demo'}};url=BACKEND+'/simulator/';permitted=true;
   tabsSend=vi.fn(async()=>({ok:true,data:{detection:{origin:BACKEND,activity:'activity',session:true,supported:true}}}));
   fetchMock=vi.fn(async()=>Response.json({status:'ok',mode:'demo'}));vi.stubGlobal('fetch',fetchMock);
   nativeAttach=vi.fn(async()=>{});nativeCommand=vi.fn(async()=>{});nativeDetach=vi.fn(async()=>{});nativeFocused=true;nativeActiveTab=7;
@@ -42,6 +42,18 @@ const content=():chrome.runtime.MessageSender=>({id,url,tab:{id:7,url,index:0,ac
 async function send(message:Record<string,unknown>,sender:chrome.runtime.MessageSender=ui):Promise<any> {
   return new Promise(resolve=>{if(listener(message,sender,resolve)!==true)resolve(undefined);});
 }
+it('en producción ni el panel ni una sesión local previa pueden consultar Ollama o arrancar el simulador',async()=>{
+  vi.resetModules();vi.stubGlobal('__TEST_LEGACY_EXTENSION__',false);
+  await import('../../extension/src/background');
+  for(const type of ['demo','google','assist','localAIStatus','automationStart','start']) {
+    expect(await send({scope:'ui',type,tabId:7})).toBeUndefined();
+  }
+  expect(await send({scope:'content',type:'solve',exercise,allowAI:true},content())).toEqual({
+    ok:false,error:'Pestaña fuera de los dominios admitidos'
+  });
+  expect(fetchMock).not.toHaveBeenCalled();
+  expect(tabsSend).not.toHaveBeenCalled();
+});
 it('el clic del icono abre el panel en esa pestaña conservando el gesto y sin capturar o consultar por su cuenta',()=>{
   // Regresión: el modo automático de Chromium no concede activeTab. Las APIs
   // están simuladas; aquí se comprueba la ruta de apertura, no el permiso nativo.
@@ -734,7 +746,7 @@ it.each(['authorized','focus-lost','capability-revoked'] as const)('web → back
     }
     return {ok:true,data:true};
   });
-  vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.resetModules();
+  vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.stubGlobal('__TEST_LEGACY_EXTENSION__',false);vi.resetModules();
   await import('../../extension/src/background');
   const port={name:'aleks-web-bridge-v1',sender:{url:origin+'/app/',origin,frameId:0,documentId:'web-document',tab:{id:99,url:origin+'/app/'}},
     onMessage:{addListener:(fn:typeof receive)=>{receive=fn;}},onDisconnect:{addListener:(fn:typeof closed)=>{closed=fn;}},
@@ -762,7 +774,7 @@ it.each(['authorized','focus-lost','capability-revoked'] as const)('web → back
     expect(chrome.tabs.update).toHaveBeenCalledWith(7,{active:true});
     expect(session.auth).toBeUndefined();
   }finally{
-    await send({scope:'ui',type:'logout'});
+    closed?.();
     vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',undefined);
   }
 });
@@ -826,7 +838,7 @@ it.each(['same-document','automatic','detached-before-verify','focus-lost-before
       else if(!verified.ok)return verified;
       return {ok:true,data:message.type==='automationSubmitParabola'?{status:'accepted'}:{drawn:true}};
     });
-    vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.resetModules();
+    vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.stubGlobal('__TEST_LEGACY_EXTENSION__',false);vi.resetModules();
     await import('../../extension/src/background');
     accept({name:'aleks-web-bridge-v1',sender:{url:origin+'/app/',origin,frameId:0,documentId:'web-document',tab:{id:99,url:origin+'/app/'}},
       onMessage:{addListener:(fn:typeof receive)=>{receive=fn;}},onDisconnect:{addListener:(fn:typeof closed)=>{closed=fn;}},
@@ -860,7 +872,7 @@ it.each(['same-document','automatic','detached-before-verify','focus-lost-before
       if(boundary==='detached-before-verify')expect(nativeDetach).not.toHaveBeenCalled();
       else expect(nativeDetach).toHaveBeenCalledExactlyOnceWith({tabId:7});
     }finally{
-      await send({scope:'ui',type:'logout'});
+      closed?.();
       vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',undefined);
     }
   });

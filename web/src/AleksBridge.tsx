@@ -113,7 +113,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     setBusy('connect'); setError(''); setNotice('Comprobando sesión y extensión…');
     try {
       if (typeof chrome === 'undefined' || !chrome.runtime?.connect) {
-        throw new Error('Esta función necesita Chrome de escritorio y la extensión instalada. En celulares puedes seguir usando las consultas web.');
+        throw new Error('Para automatizar ejercicios, abre Aleks Project en Chrome de escritorio con la extensión instalada.');
       }
       const issuingCsrf = csrf.current;
       const capability = await api.current<{ token: string; capability_id: string; expires_at: number; user: { id: string } }>('/bridge-token', 'POST');
@@ -220,7 +220,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     <p className="field-help">Web {WRITER_VERSION}{snapshot?.writerVersion ? ` · Extensión ${snapshot.writerVersion}` : ''}</p>
     {error && <p className="message error" role="alert">{error}</p>}
     <p className={notice ? 'message status bridge-status' : 'bridge-status'} role="status" aria-live="polite">{notice}</p>
-    {!connected ? <div className="bridge-connect"><button className="secondary" disabled={Boolean(busy)} onClick={() => void connect()}>{busy ? 'Conectando extensión…' : 'Conectar extensión ALEKS'}</button><p className="field-help">Necesitas Chrome de escritorio, la extensión actualizada y este origen autorizado en su compilación. No se conecta automáticamente.</p></div> : <>
+    {!connected ? <div className="bridge-connect"><button className="secondary" disabled={Boolean(busy)} onClick={() => void connect()}>{busy ? 'Conectando extensión…' : 'Conectar extensión ALEKS'}</button><p className="field-help">En Chrome de escritorio, abre el panel de Aleks Project y concede los permisos de conexión. Después pulsa Conectar extensión ALEKS.</p></div> : <>
       <div className="bridge-toolbar"><button className="inline-button" disabled={Boolean(busy) || running} onClick={() => void perform('list')}>Actualizar pestañas</button><button className="text-button" onClick={() => disconnect()}>Desvincular extensión</button></div>
       <div className="bridge-tab-picker"><div><label htmlFor="bridge-tab">Pestaña ALEKS que autorizas</label><select id="bridge-tab" value={selected} disabled={Boolean(busy) || running} onChange={event => { setSelected(event.target.value); setAuthorized(false); }}><option value="">Selecciona una pestaña</option>{tabs.map(tab => <option key={tab.id} value={tab.id}>{tab.title || 'ALEKS'} · pestaña {tab.id}{tab.active ? ' (activa)' : ''}</option>)}</select></div><button className="secondary" disabled={!selected || Boolean(busy) || running} onClick={() => void perform('bind', { tabId: Number(selected) })}>Vincular pestaña</button></div>
       {snapshot?.tab && <>

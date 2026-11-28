@@ -1,4 +1,6 @@
-# Copiloto local con Ollama para ALEKS
+# Historial del copiloto local con Ollama
+
+Esta página conserva las instrucciones de las versiones anteriores. Desde 0.6.0 el panel de Chrome abre Aleks Project y solicita permisos. Las consultas y los recorridos se controlan desde la web con el proveedor configurado en el servidor. [Instalación y uso actuales](WEB_BRIDGE.md)
 
 El objetivo es ampliar la cobertura por interpretación del contenido, sin programar una regla para cada enunciado. Una IA multimodal puede trabajar con texto, fórmulas y diagramas. La extensión puede introducir respuestas y pulsar controles, pero necesita comprobar lo que la interfaz registró. Ningún modelo garantiza resolver todos los ejercicios ni manejar cualquier editor.
 

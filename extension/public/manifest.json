@@ -1,20 +1,18 @@
 {
   "manifest_version": 3,
-  "name": "Asistente Matem\u00e1tico \u2014 MVP",
-  "version": "0.5.9",
-  "description": "Asistente matemático con conexión opcional a la web autorizada y controles para ALEKS.",
+  "name": "Aleks Project",
+  "version": "0.6.0",
+  "description": "Conecta la web de Aleks Project con la pestaña ALEKS que autorices.",
   "minimum_chrome_version": "116",
   "permissions": [
     "storage",
     "scripting",
     "sidePanel",
     "activeTab",
-    "identity",
     "debugger",
     "alarms"
   ],
   "optional_host_permissions": [
-    "http://127.0.0.1:8000/*",
     "https://latam.aleks.com/*",
     "https://latam-awu.aleks.com/*"
   ],
@@ -22,15 +20,24 @@
     "service_worker": "background.js",
     "type": "module"
   },
+  "icons": {
+    "16": "icons/aleks-16.png",
+    "32": "icons/aleks-32.png",
+    "48": "icons/aleks-48.png",
+    "128": "icons/aleks-128.png"
+  },
   "action": {
-    "default_title": "Abrir asistente matem\u00e1tico"
+    "default_title": "Abrir Aleks Project",
+    "default_icon": {
+      "16": "icons/aleks-16.png",
+      "32": "icons/aleks-32.png"
+    }
   },
   "side_panel": {
     "default_path": "panel.html"
   },
-  "options_page": "options.html",
   "content_security_policy": {
-    "extension_pages": "script-src 'self'; object-src 'self'; connect-src http://127.0.0.1:8000"
+    "extension_pages": "script-src 'self'; object-src 'self'; connect-src 'none'"
   },
   "key": "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAiLk6woSGGOfgq1dOzm/CkTP+GWDtFveoxLu4lhWmLElAtjvNJauonAaoaBvcNeNfUQTC9v+ySjnSxi7nGMWsysLpRr9IvDDKpH1iAhPsJVqpjdsBbMiQ4G4J2GIrZJfVTd3rfjRd2CfLtwdtNRh/JPWbszbGgM5Hs57Ikwox4R+dTZSpSSC3Q0ZISX4KyMK8ISbwfUS8Z9J+L+ZBI914m/erjtS/R/F/5ahzjlsh9iaIlv4L8+QTyc051hr6wwQgnrcCcF7H03o9xcarnE4lsMzs2su4Rm39DqWm++fA9hRhhKfWhCIL2Ak2qlk5iXT+QJDphqoBzYod6wX6+yUieQIDAQAB"
 }

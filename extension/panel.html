@@ -1,1 +1,23 @@
-<!doctype html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Asistente matemático</title></head><body><div id="root"></div><script type="module" src="/src/ui.tsx"></script></body></html>
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <title>Aleks Project</title>
+  </head>
+  <body>
+    <main class="panel">
+      <header>
+        <img class="logo" src="./icons/aleks-128.png" width="64" height="64" alt="">
+        <h1>Aleks Project</h1>
+        <p>Vincula tu pestaña ALEKS y controla el recorrido desde la web.</p>
+      </header>
+      <p id="access-status" class="access-status" role="status"></p>
+      <div class="actions">
+        <button id="grant-access" class="action primary" type="button" hidden>Autorizar acceso</button>
+        <a id="open-web" class="action secondary" target="_blank" rel="noopener noreferrer" hidden>Abrir Aleks Project</a>
+      </div>
+    </main>
+    <script type="module" src="/src/panel.ts"></script>
+  </body>
+</html>

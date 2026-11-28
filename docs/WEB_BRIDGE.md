@@ -1,22 +1,23 @@
 # Conectar la web con ALEKS en Chrome
 
-La web conserva tu cuenta y consulta la IA del servidor. La extensión conecta sus controles con la pestaña ALEKS que tú autorices. No introduce la contraseña de ALEKS ni inicia su sesión: debes abrir ALEKS e iniciar sesión por tu cuenta.
+Desde la web lees la actividad, consultas la vista previa y controlas el recorrido. El panel de la extensión solicita los permisos de Chrome y abre Aleks Project. La extensión conecta la web con la pestaña ALEKS que tú vincules. Entra en tu cuenta de ALEKS directamente en esa pestaña.
 
-La automatización requiere **Chrome de escritorio 116 o posterior**, la extensión cargada y la pestaña ALEKS disponible en el mismo equipo. Un celular puede usar la demo web para consultar ejercicios, pero no cargar esta extensión ni automatizar ALEKS. Cerrar o suspender el navegador interrumpe la conexión; ningún recorrido se reanuda automáticamente después de reiniciar.
+La automatización requiere **Chrome de escritorio 116 o posterior**, la extensión cargada y la pestaña ALEKS disponible en el mismo equipo. Cerrar o suspender el navegador interrumpe la conexión. Después de reiniciar, vuelve a vincular la pestaña y autoriza un recorrido nuevo.
 
 ## Actualización de versiones
 
-Desde 0.5.1 la conexión muestra **Web 0.5.9 · Extensión 0.5.9** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web. Los recorridos detenidos no se reanudan automáticamente.
+La conexión muestra **Web 0.6.0 · Extensión 0.6.0** y comprueba también el adaptador cargado en ALEKS. Una versión distinta se detiene antes de consultar o escribir, con instrucciones para recargar el componente antiguo. Después de actualizar el proyecto, compila con `scripts\start-web.cmd` o actualiza y compila con `scripts\update-web.cmd`. Recarga la extensión desde la carpeta `dist` indicada por el iniciador y después las pestañas de ALEKS y la web.
 
 ## Primera prueba en Windows
 
 1. Instala Python 3.12, Node.js 24 y Chrome. Descarga o actualiza este repositorio conservando tu archivo `.env`.
 2. Abre `scripts\start-web.cmd` con doble clic. Instala dependencias, compila la web y genera `dist/` con permiso para **una sola web local**: `http://127.0.0.1:8000`. Conserva esa ventana abierta.
 3. En Chrome abre `chrome://extensions`, activa **Modo de desarrollador**, pulsa **Cargar descomprimida** y selecciona la carpeta `dist` del proyecto. Si ya estaba instalada, pulsa su botón **Recargar**. El ID de desarrollo esperado es `fjjgjakbpjhhegekcjogilmfheaicjge`.
-4. Abre `http://127.0.0.1:8000/app/` en ese mismo Chrome e inicia sesión en la web. Abre otra pestaña con el sitio ALEKS compatible y entra en tu cuenta allí.
-5. Abre el panel de la extensión desde su icono. Pulsa **Autorizar conexión con la web** y concede el permiso solicitado. Pulsa **Autorizar sitio ALEKS** y concede también ese acceso. Un botón de la página web no puede conceder estos permisos por ti.
-6. Vuelve a la web y conecta la extensión. Comprueba la pestaña y el ejercicio seleccionado antes de consultar o iniciar un recorrido. Mantén ALEKS como pestaña activa cuando deba escribir. Chrome puede mostrar un aviso de depuración mientras el teclado está conectado.
-7. Para la primera ejecución usa **1 ejercicio, 5 minutos y 2 llamadas IA**. Lee la actividad, consulta la vista previa y revisa su propuesta. Marca las casillas de teclado y autorización; pulsa **Autorizar e iniciar recorrido**. **Detener recorrido ALEKS** cancela lo pendiente; una consulta ya enviada al proveedor puede haber consumido cuota.
+4. Abre el panel de la extensión. Pulsa **Autorizar acceso**, acepta los permisos de Chrome y selecciona **Abrir Aleks Project**.
+5. Entra en tu cuenta web y abre otra pestaña con tu sesión de ALEKS y un ejercicio sin responder.
+6. En la web, pulsa **Conectar extensión ALEKS**, selecciona la pestaña del ejercicio y pulsa **Vincular pestaña**. Pulsa **Leer actividad ALEKS** y revisa que coincida con tu ejercicio.
+7. Para la primera ejecución usa **1 ejercicio, 5 minutos y 2 llamadas IA**. Consulta la vista previa y revisa la propuesta. Para respuestas numéricas, marca las casillas de teclado y autorización. Para una parábola compatible, marca **Autorizo dibujar, verificar y avanzar**. Pulsa **Autorizar e iniciar recorrido**.
+8. Mantén ALEKS como pestaña activa durante el recorrido. Chrome puede mostrar un aviso de depuración mientras los controles nativos están conectados. **Detener recorrido ALEKS** cancela lo pendiente. Una consulta que ya se envió al proveedor puede haber consumido su cuota.
 
 El inicio local no publica la web. La computadora debe seguir encendida para servirla. Consulta [WEB.md](WEB.md) para la instalación del servidor en Internet.
 
@@ -28,11 +29,11 @@ La vista previa es una consulta manual: consume cuota de la cuenta y aparece en 
 
 Al alcanzar un límite no se pulsa Siguiente. Para otro recorrido, avanza manualmente en ALEKS, vuelve a leer desde la web y autoriza nuevos límites. Reconectar no recupera automáticamente una entrega ni vuelve a enviarla. La sesión de Chrome conserva las huellas ya enviadas por pestaña para impedir duplicados. Hay una vinculación por sesión web: conectar desde otra pestaña web con la misma sesión revoca el vínculo anterior. Varias pestañas ALEKS pueden estar abiertas; solo actúa sobre la vinculada.
 
-La escritura automática admite uno o dos recuadros numéricos vacíos, con una respuesta por campo y lectura de ambos antes de verificar: entero, decimal no negativo o fracción reducida, con doce dígitos por componente. Los sufijos fijos, como `hora(s)`, conservan sus comprobaciones originales. En uno o dos recuadros permite seleccionar cm, cm² o cm³ mediante sus botones y exige leer el número y su unidad en cada campo. El recorrido automático se detiene ante gráficos incompatibles, más de dos recuadros, otras unidades interactivas o respuestas de formato arbitrario. Adjuntar una imagen en la demo conserva el flujo de consulta y revisión visual; no habilita un recorrido automático sobre diagramas.
+La escritura automática admite uno o dos recuadros numéricos vacíos con un entero, decimal no negativo o fracción reducida por campo, con doce dígitos por componente. La extensión lee ambos campos antes de verificar. Los sufijos fijos, como `hora(s)`, conservan sus comprobaciones. Los botones reconocidos de cm, cm² o cm³ permiten seleccionar la unidad y comprobarla junto al valor de cada campo. El recorrido automático se detiene ante gráficos incompatibles, más de dos recuadros, otras unidades interactivas o respuestas de formato arbitrario. Puedes elegir una captura de la pestaña vinculada para la vista previa de un ejercicio que dependa de un diagrama. Esa consulta sirve para revisión manual.
 
 La versión 0.5.3 reconoce la tabla aportada de dos filas con `P(A) =` y `P(B) =`: contrasta la etiqueta de cada input con el MathML de su fila, sin depender de los IDs dinámicos. La vista previa muestra cada resultado junto al suceso correspondiente. Si el enunciado pide explícitamente la probabilidad de cada suceso y faltan sus recuadros, la consulta conserva los resultados separados, pero la autorización indica el motivo del bloqueo. Las etiquetas incompatibles o un cambio de identidad durante la escritura impiden entregar. Otros diseños de tabla necesitan su propio HTML para adaptar y probar el reconocimiento.
 
-La versión 0.5.4 abrevia la etiqueta de cada valor en la vista previa: `P(A): 13/18` y `P(B): 1/2`. El panel lateral identifica ambos valores y llama «ejercicios» al límite de entregas: los dos recuadros de una actividad cuentan como un ejercicio completo.
+La vista previa identifica los valores con etiquetas breves, como `P(A): 13/18` y `P(B): 1/2`. Los dos recuadros de una actividad cuentan como un ejercicio completo.
 
 Desde 0.5.5, la plantilla de dos lanzamientos de un dado se calcula sin consultar la IA cuando el texto y los dos sucesos se reconocen. El cálculo enumera los 36 pares de lanzamientos y cuenta una sola vez cada par que satisface un suceso. Por ejemplo, «divisible entre 2 o 6 (o ambos)» da 18 de 36, o 1/2.
 
@@ -50,7 +51,7 @@ Las pruebas automáticas usan fixtures de ALEKS y APIs simuladas donde correspon
 
 ## Frontera de seguridad
 
-El worker valida el origen exacto, la pestaña web y su documento principal. El protocolo solo admite conectar, listar pestañas, vincular, leer, consultar vista previa, iniciar con límites, detener, consultar estado y desvincular. Rechaza campos adicionales, JavaScript, selectores y URLs enviados por la web. Cada entrega usa la pestaña vinculada, la huella leída y el identificador del recorrido; el teclado conserva sus comprobaciones de foco, editor y token de un uso.
+El worker valida el origen exacto, la pestaña web y su documento principal. El protocolo admite conectar, listar pestañas, vincular, leer, consultar la vista previa, dibujar una parábola comprobada, iniciar con límites, detener, consultar estado y desvincular. Rechaza campos adicionales, JavaScript, selectores y URLs enviados por la web. Cada entrega usa la pestaña vinculada, la huella leída y el identificador del recorrido; el teclado conserva sus comprobaciones de foco, editor y token de un uso.
 
 La web obtiene una capacidad temporal mediante su sesión y CSRF. El backend guarda únicamente su hash, limita su vigencia a una hora o al vencimiento de la sesión y la revoca al salir o eliminar la cuenta. Una revocación tardía solo afecta a su capacidad exacta. El token permite consultar IA, no administrar cuentas. El diario de entregas conserva huellas y contadores; no guarda enunciados, respuestas ni claves de IA.
 
@@ -65,16 +66,6 @@ npm.cmd ci
 npm.cmd run build
 ```
 
-En Chrome recarga la extensión desde `chrome://extensions` y vuelve a conceder el acceso a la web mediante **Autorizar conexión con la web**. Abre `https://tu-demo.onrender.com/app/`, inicia sesión y conecta la extensión. Configura en el servidor `WEB_PUBLIC_URL` con ese mismo origen y `WEB_BRIDGE_EXTENSION_ID` con el ID permitido de la extensión (`fjjgjakbpjhhegekcjogilmfheaicjge` con la clave de desarrollo incluida). Cambiar de dirección web requiere recompilar y recargar: ninguna página puede elegir un servidor alternativo mediante un mensaje.
+En Chrome recarga la extensión desde `chrome://extensions` y vuelve a conceder el acceso mediante **Autorizar acceso**. Pulsa **Abrir Aleks Project**, inicia sesión y conecta la extensión desde la web. Configura en el servidor `WEB_PUBLIC_URL` con ese mismo origen y `WEB_BRIDGE_EXTENSION_ID` con el ID permitido de la extensión (`fjjgjakbpjhhegekcjogilmfheaicjge` con la clave de desarrollo incluida). Cambiar de dirección web requiere recompilar y recargar. La extensión usa el único origen definido al compilar.
 
 `BRIDGE_WEB_ORIGIN` es una dirección pública, no una clave. Los secretos de PostgreSQL y Gemini permanecen exclusivamente en el backend; no se incluyen en variables `VITE_*`, la extensión, la URL o este archivo. No se permiten comodines ni páginas de terceros. Aunque un permiso de Chrome pueda abarcar más puertos del mismo host, el puente comprueba el origen completo en ejecución.
-
-Para compilar el modo anterior, sin conexión externa a una web:
-
-```powershell
-Remove-Item Env:BRIDGE_WEB_ORIGIN -ErrorAction SilentlyContinue
-Remove-Item Env:BRIDGE_ALLOW_LOCAL -ErrorAction SilentlyContinue
-npm.cmd run build
-```
-
-Sin `BRIDGE_WEB_ORIGIN`, el manifiesto generado no contiene `externally_connectable`. La extensión conserva los controles y el simulador locales de las versiones anteriores.

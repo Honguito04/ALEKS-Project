@@ -25,13 +25,13 @@ export default defineConfig(() => {
       const manifest = JSON.parse(readFileSync(manifestPath, 'utf8'));
       manifest.externally_connectable = { matches: [`${origin}/*`] };
       manifest.optional_host_permissions = [...new Set([...manifest.optional_host_permissions, `${origin}/*`])];
-      manifest.content_security_policy.extension_pages += ` ${origin}`;
+      manifest.content_security_policy.extension_pages = `script-src 'self'; object-src 'self'; connect-src ${origin}`;
       writeFileSync(manifestPath, JSON.stringify(manifest, null, 2) + '\n');
     }
   }],
-  define: { __BRIDGE_WEB_ORIGIN__: JSON.stringify(origin) },
+  define: { __BRIDGE_WEB_ORIGIN__: JSON.stringify(origin), __TEST_LEGACY_EXTENSION__: 'false' },
   build: { outDir: '../dist', emptyOutDir: true, rollupOptions: {
-    input: { panel: resolve('extension/panel.html'), options: resolve('extension/options.html'), background: resolve('extension/src/background.ts') },
+    input: { panel: resolve('extension/panel.html'), background: resolve('extension/src/background.ts') },
     output: { entryFileNames: '[name].js' }
   } }
   };

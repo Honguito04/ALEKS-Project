@@ -1,0 +1,64 @@
+:root {
+  color-scheme: light;
+  font-family: "Segoe UI", system-ui, sans-serif;
+  color: #173832;
+  background: #f4f7f2;
+}
+
+body { margin: 0; }
+
+.panel {
+  box-sizing: border-box;
+  max-width: 26rem;
+  margin: 0 auto;
+  padding: 2rem 1.375rem;
+}
+
+.logo { display: block; border-radius: 1rem; }
+
+h1 {
+  margin: 1rem 0 0.45rem;
+  font-size: clamp(1.65rem, 9vw, 2.125rem);
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+}
+
+p { margin: 0; line-height: 1.5; }
+
+header p { color: #43625a; }
+
+.access-status {
+  margin: 1.5rem 0 0.875rem;
+  padding: 0.875rem;
+  border: 1px solid #d6e3d9;
+  border-radius: 0.75rem;
+  background: #fff;
+  font-size: 0.875rem;
+}
+
+.access-status:empty { display: none; }
+
+.actions { display: grid; gap: 0.625rem; }
+
+.action {
+  box-sizing: border-box;
+  display: grid;
+  min-height: 2.75rem;
+  place-items: center;
+  padding: 0.625rem 0.875rem;
+  border: 1px solid transparent;
+  border-radius: 0.625rem;
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  text-align: center;
+  text-decoration: none;
+}
+
+.action[hidden] { display: none; }
+.primary { background: #164b43; color: #fff; }
+.primary:hover { background: #0c3b34; }
+.secondary { border-color: #bdcfc5; background: #fff; color: #164b43; }
+.secondary:hover { background: #e6f1e8; }
+.action:focus-visible { outline: 3px solid #386e5e; outline-offset: 3px; }
+.action:disabled { cursor: wait; opacity: 0.65; }

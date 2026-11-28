@@ -6,6 +6,8 @@ RUN --mount=type=secret,id=proxy_ca \
     if [ -f /run/secrets/proxy_ca ]; then export NODE_EXTRA_CA_CERTS=/run/secrets/proxy_ca; fi; \
     npm ci --no-audit --no-fund
 COPY web ./web
+COPY extension/src ./extension/src
+COPY extension/public/icons ./extension/public/icons
 COPY vite.web.config.ts ./
 RUN npx vite build --config vite.web.config.ts
 

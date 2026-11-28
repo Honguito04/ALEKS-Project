@@ -1,12 +1,12 @@
-# Demo web independiente
+# Web de Aleks Project
 
-La web permite crear una cuenta, pegar un enunciado, adjuntar una imagen JPEG/PNG/WebP y pedir propuestas matemáticas. Funciona en móvil y computadora. Para leer y controlar una pestaña ALEKS desde Chrome de escritorio utiliza el [puente con la extensión](WEB_BRIDGE.md). La web por sí sola no accede a otras pestañas.
+La web conserva tu cuenta y reúne la vista previa, la autorización y el estado del recorrido. La extensión de Chrome conecta la web con la pestaña ALEKS que tú vincules. Su panel abre Aleks Project y solicita los permisos de Chrome. [Uso del puente con la extensión](WEB_BRIDGE.md)
 
 ## Windows: primera prueba
 
 Instala Python **3.12** desde python.org y Node.js **24** desde nodejs.org. Descarga la version actual del repositorio y extrae el ZIP completo en una carpeta nueva. Si estas actualizando desde una version anterior al perfil persistente, conserva tu `.env` y los datos de `.runtime` como se indica abajo; no copies `.venv` ni `node_modules`.
 
-En la carpeta extraida abre `scripts` y haz doble clic en **start-web.cmd**. El archivo instala dependencias, compila la web e inicia el servidor. La primera vez necesita Internet y puede tardar varios minutos. Cuando aparezca `Application startup complete`, abre **http://127.0.0.1:8000/app/** en Chrome o Edge. Conserva la ventana abierta.
+En la carpeta extraída abre `scripts` y haz doble clic en **start-web.cmd**. El archivo instala dependencias, compila la web y la extensión, e inicia el servidor. La primera vez necesita Internet y puede tardar varios minutos. Cuando aparezca `Application startup complete`, abre **http://127.0.0.1:8000/app/** en Chrome. Conserva la ventana abierta.
 
 El iniciador guarda las cuentas y la configuracion fuera del ZIP, en **`%LOCALAPPDATA%\ALEKS-Project`**. Muestra las rutas completas de `.runtime` y `.env` en la consola. Para editar la clave o el modelo, abre **`scripts\edit-local-config.cmd`**, guarda y reinicia el servidor. Las actualizaciones siguientes reutilizan ese perfil; no vuelvas a crear la cuenta. El `.env` de la carpeta del codigo se importa solamente al preparar el perfil por primera vez.
 
@@ -16,9 +16,9 @@ Tambien puedes ejecutarlo desde PowerShell, situado en la carpeta del proyecto:
 .\scripts\start-web.cmd
 ```
 
-Crea una cuenta con una contrasena de al menos doce caracteres, pulsa **Probar un ejemplo** y **Consultar**: debe aparecer **12** como resultado comprobado. Este ejemplo no requiere Gemini. Los ejercicios generales y las imagenes requieren configurar la clave y modelo del backend. No existe recuperacion por correo.
+Crea una cuenta con una contraseña de al menos doce caracteres. Carga la extensión desde la carpeta `dist` indicada en consola, abre su panel y pulsa **Autorizar acceso**. En la web, conecta la extensión, vincula una pestaña ALEKS y pulsa **Leer actividad ALEKS** y **Consultar vista previa**. Los ejercicios generales requieren `GEMINI_API_KEY` y `GEMINI_MODEL` en la configuración del servidor. Algunas plantillas se calculan a partir del texto sin llamar al proveedor. [Instalación y primera prueba completas](WEB_BRIDGE.md)
 
-Si el puerto 8000 esta ocupado, revisa si ya dejaste otra ventana del servidor abierta. Para detener tu servidor pulsa Ctrl+C en su ventana. Este inicio es local: para usar la web desde celulares por Internet sigue el despliegue descrito mas abajo.
+Si el puerto 8000 está ocupado, revisa si ya dejaste otra ventana del servidor abierta. Para detenerla, pulsa **Ctrl+C** en esa ventana. Si despliegas el servidor en Internet, los recorridos siguen requiriendo Chrome de escritorio con la extensión compilada para ese origen.
 
 ## Actualizar la instalacion local de Windows
 
@@ -32,7 +32,7 @@ Si usas ZIP, descarga la version actual desde **Code → Download ZIP** en la ra
 
 **Si despues de actualizar ya aparece «Correo o contraseña incorrectos»:** no crees otra cuenta. Deten el servidor, localiza la carpeta anterior que contiene `.runtime` y abre **`scripts\restore-local-data.cmd`** del proyecto nuevo e indica su ruta completa; tambien puedes arrastrar esa carpeta sobre el archivo. Tambien puedes ejecutar `scripts\restore-local-data.cmd "C:\ruta de la carpeta anterior"`. Inicia de nuevo con `start-web.cmd` y usa tu cuenta anterior. La recuperacion conserva una copia de la base vacia anterior y rechaza reemplazar un perfil que ya tiene cuentas o datos del panel, incluidas sesiones Google. En ese caso conserva ambas carpetas: no borres ninguna base para forzar la importacion. La configuracion existente se conserva; solo se sustituye si aun es la plantilla original sin modificar. Si se elimino la carpeta con la base original y no existe respaldo, no es posible recuperar sus cuentas a partir del ZIP de GitHub.
 
-El iniciador muestra la **version compilada** y la **ruta completa de `dist`**. En `chrome://extensions`, comprueba que uses esa carpeta y pulsa **Recargar**. Si la extension esta cargada desde la carpeta antigua, quita esa copia y usa **Cargar descomprimida** con el nuevo `dist`. Despues recarga las pestanas de ALEKS y de la web y vuelve a vincularlas. La conexion debe mostrar **Web 0.5.9 · Extension 0.5.9**. Si el puerto 8000 ya esta ocupado, el iniciador se detiene antes de instalar o compilar: cierra tu servidor anterior con Ctrl+C. No finaliza procesos automaticamente.
+El iniciador muestra la **versión compilada** y la **ruta completa de `dist`**. En `chrome://extensions`, comprueba que uses esa carpeta y pulsa **Recargar**. Si la extensión está cargada desde la carpeta antigua, quita esa copia y usa **Cargar descomprimida** con el nuevo `dist`. Después recarga las pestañas de ALEKS y de la web y vuelve a vincularlas. La conexión debe mostrar **Web 0.6.0 · Extensión 0.6.0**. Si el puerto 8000 ya está ocupado, el iniciador se detiene. Cierra el servidor anterior con **Ctrl+C**.
 
 ## Desarrollo local
 
@@ -45,7 +45,7 @@ npm run build:web
 .venv/bin/python -m uvicorn app.main:app --app-dir backend --host 127.0.0.1 --port 8000 --no-access-log
 ```
 
-Abre `/app/` en el backend local. Para cambiar la interfaz sin recompilar, `npm run dev:web` usa el proxy al backend; consulta su configuración de puerto/origen. No abras el backend local a Internet con `WEB_PUBLIC_MODE=false`.
+Abre `/app/` en el backend local. Para compilar la extensión con el puente habilitado para ese origen, ejecuta `BRIDGE_WEB_ORIGIN=http://127.0.0.1:8000 BRIDGE_ALLOW_LOCAL=true npm run build`. Para cambiar la interfaz sin recompilar, `npm run dev:web` usa el proxy al backend. Consulta su configuración de puerto y origen. El servidor local escucha en loopback.
 
 Las opciones nuevas están en `.env.web.example`. Añade las que necesites a `.env`, conservando su contenido anterior. La web usa una base SQLite separada en desarrollo; el despliegue público exige PostgreSQL y HTTPS. Los comprobadores exactos de texto funcionan sin clave de IA en los formatos ya reconocidos; los demás ejercicios muestran un mensaje de configuración pendiente.
 
@@ -112,10 +112,10 @@ La aplicación no activa facturación ni cambia de modelo. Tampoco puede comprob
 | `AI_PROVIDER` | `none` (solo afecta a los proveedores heredados) |
 
 5. Despliega manualmente. El Dockerfile compila React y sirve web/backend en el mismo origen. No configures múltiples workers ni múltiples instancias: las consultas en curso viven en la memoria de un único proceso.
-6. Abre `/health`: debe responder `status: ok`. Abre `/app/`, registra una cuenta y prueba cerrar y volver a iniciar sesión. Prueba un problema sin datos sensibles, comprueba su respuesta y si figura como propuesta sin verificar. Una propuesta de IA no garantiza corrección matemática.
+6. Comprueba que `/health` muestre el estado `ok`. Abre `/app/`, registra una cuenta y prueba cerrar y volver a iniciar sesión. Compila la extensión para el origen HTTPS, conecta una pestaña ALEKS y consulta la vista previa de un ejercicio sin datos sensibles. Revisa si se muestra un resultado comprobado o una propuesta de IA sin verificar. [Conexión con una web HTTPS](WEB_BRIDGE.md#usar-una-web-https-publicada)
 7. Reinicia el servicio y vuelve a entrar: la cuenta debe persistir. Una consulta que estaba en curso puede perderse; la interfaz lo indica y no la reenvía automáticamente. Si no pasa esta comprobación, no presentes el despliegue como validado.
 
-La configuración pública falla al arrancar si el origen no es HTTPS o no existe PostgreSQL seguro. Las rutas locales heredadas de demostración, OAuth, Ollama, OpenAI y simulador quedan bloqueadas aunque se manipule `Host`; la extensión mantiene esas rutas en su backend local habitual.
+La configuración pública falla al arrancar si el origen no es HTTPS o no existe PostgreSQL seguro. Las rutas locales heredadas de demostración, OAuth, Ollama, OpenAI y simulador quedan bloqueadas. El puente de la extensión usa la cuenta web y el proveedor configurado en su servidor.
 
 ## Límites y seguridad
 

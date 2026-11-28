@@ -1,5 +1,7 @@
 # Contratos y ampliación del adaptador
 
+En la versión 0.6.0, la web conserva la sesión y controla el recorrido. El panel lateral solicita los permisos de Chrome y abre Aleks Project. El worker conecta la web con la pestaña vinculada y ejecuta los controles de ALEKS. Las secciones numeradas documentan las versiones en que se introdujo cada cambio.
+
 ## Ampliación 0.4.5: destino del teclado
 
 El worker marca la pestaña activa de `lastFocusedWindow`; el panel la preselecciona
