@@ -96,12 +96,20 @@ async function bindRead(page:Page,id='7',statement='Hay 4 nadadores y dos premio
   await expect(page.getByText(statement,{exact:true})).toBeVisible();
 }
 
+async function expectStartDiagnosis(page: Page, consent: ReturnType<Page['getByRole']>, reason: RegExp) {
+  await consent.check();
+  await page.getByRole('button', { name:'Autorizar e iniciar recorrido' }).click();
+  await expect(page.getByRole('alert').filter({hasText:'No se inició el recorrido.'})).toContainText(reason);
+  const commands = await page.evaluate(() => (window as any).bridgeMock.commands as {command:string}[]);
+  expect(commands.filter(command => command.command==='start')).toHaveLength(0);
+}
+
 test('opciones: muestra las etiquetas propuestas y autoriza una selección completa', async ({ page }) => {
   await prepare(page, { choice:'option_1,option_2' });
   await bindRead(page, '7', 'Marcar cada proposición que sea verdadera.');
   const consent = page.getByRole('checkbox', { name:/Autorizo seleccionar opciones/ });
   await expect(page.getByText('3 opciones · selección múltiple')).toBeVisible();
-  await expect(consent).toBeDisabled();
+  await expectStartDiagnosis(page, consent, /Consulta la vista previa/);
   await page.getByRole('button', { name:'Consultar vista previa' }).click();
   const suggested = page.getByRole('list', { name:'Opciones propuestas' }).getByRole('listitem');
   await expect(suggested).toHaveText([
@@ -120,8 +128,7 @@ test('opciones: una propuesta con un identificador desconocido queda bloqueada',
   await prepare(page, { choice:'option_1,option_4' });
   await bindRead(page, '7', 'Marcar cada proposición que sea verdadera.');
   await page.getByRole('button', { name:'Consultar vista previa' }).click();
-  await expect(page.getByRole('checkbox', { name:/Autorizo seleccionar opciones/ })).toBeDisabled();
-  await expect(page.getByText('La vista previa no devolvió una selección válida para las opciones leídas.')).toBeVisible();
+  await expectStartDiagnosis(page, page.getByRole('checkbox', { name:/Autorizo seleccionar opciones/ }), /selección válida/);
   await expect(page.getByRole('list', { name:'Opciones propuestas' })).toHaveCount(0);
 });
 
@@ -130,7 +137,7 @@ test('parábola: una vista previa comprobada permite autorizar los controles nat
   const consent=page.getByRole('checkbox',{name:/Autorizo (escribir|dibujar)/});
   const preview=page.getByRole('button',{name:'Consultar vista previa'});
   const start=page.getByRole('button',{name:'Autorizar e iniciar recorrido'});
-  await expect(consent).toBeDisabled();
+  await expectStartDiagnosis(page, consent, /Consulta la vista previa/);
   await preview.click();
   await expect(consent).toBeEnabled();
   await expect(consent).toHaveAccessibleName(/controles nativos de Chrome/);
@@ -138,7 +145,7 @@ test('parábola: una vista previa comprobada permite autorizar los controles nat
   await consent.check();
   await expect(start).toBeEnabled();
   const capture=page.getByLabel(/Adjuntar captura de la pestaña vinculada/);
-  await capture.check();await expect(consent).toBeDisabled();
+  await capture.check();await expect(consent).not.toBeChecked();
   await preview.click();
   await expect(consent).toBeEnabled();
   await expect(consent).not.toBeChecked();
@@ -163,9 +170,8 @@ for (const scenario of [
     await page.getByRole('button',{name:'Consultar vista previa'}).click();
     await expect(page.getByRole('status').filter({hasText:'Vista previa lista'})).toBeVisible();
     const consent=page.getByRole('checkbox',{name:/Autorizo dibujar/});
-    await expect(consent).toBeDisabled();
     await expect(consent).toHaveAccessibleDescription(scenario.reason);
-    await expect(page.getByRole('button',{name:'Autorizar e iniciar recorrido'})).toBeDisabled();
+    await expectStartDiagnosis(page, consent, scenario.reason);
     await expect(page.getByRole('button',{name:'Dibujar parábola en ALEKS'})).toHaveCount(0);
   });
 }
@@ -227,6 +233,7 @@ test('puerto simulado: cambiar pestaña requiere nueva lectura y autorización; 
   await page.getByRole('button',{name:'Vincular pestaña',exact:true}).click();
   await expect(page.getByText('Propuesta simulada para probar la interfaz del puente.')).toHaveCount(0);
   await expect(page.getByRole('button',{name:'Autorizar e iniciar recorrido'})).toBeDisabled();
+  await expectStartDiagnosis(page, page.getByRole('checkbox',{name:/Autorizo escribir/}), /Lee la actividad ALEKS/);
   await page.getByRole('button',{name:'Leer actividad ALEKS'}).click();
   await page.getByLabel('Usar teclado de Chrome en la pestaña vinculada').check();
   await page.getByLabel('Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites').check();
@@ -295,7 +302,7 @@ for (const blocked of [false, true]) {
     await bindRead(page);
     const consent = page.getByRole('checkbox', { name: /Autorizo escribir/ });
     if (blocked) {
-      await expect(consent).toBeDisabled();
+      await expect(consent).toBeEnabled();
       await expect(page.locator('#bridge-fill-blockers')).toContainText(/recuadro/);
     }
     await page.getByRole('button', { name: 'Consultar vista previa' }).click();
@@ -304,7 +311,7 @@ for (const blocked of [false, true]) {
     await expect(page.getByText('Resultado comprobado', { exact: true })).toBeVisible();
     if (blocked) {
       await expect(page.locator('#bridge-fill-blockers')).not.toContainText('compatible con fracciones');
-      await expect(consent).toBeDisabled();
+      await expectStartDiagnosis(page, consent, /recuadro/);
       return;
     }
     await page.getByLabel('Usar teclado de Chrome en la pestaña vinculada').check();

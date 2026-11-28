@@ -46,6 +46,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   const [busy, setBusy] = useState('');
   const [notice, setNotice] = useState('Conecta la extensión para trabajar sobre una pestaña ALEKS concreta.');
   const [error, setError] = useState('');
+  const [startDiagnosis, setStartDiagnosis] = useState('');
   const [nativeKeyboard, setNativeKeyboard] = useState(false);
   const [includeImage, setIncludeImage] = useState(false);
   const [authorized, setAuthorized] = useState(false);
@@ -67,7 +68,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     for (const item of pending.current.values()) { clearTimeout(item.timer); item.reject(new Error('El vínculo se desconectó.')); }
     pending.current.clear(); revoke(issued.current); issued.current = null;
     setConnected(false); setTabs([]); setSelected(''); setSnapshot(null); setExpires(null);
-    setBusy(''); setAuthorized(false); setNativeKeyboard(false); setIncludeImage(false); setError(''); setNotice(message);
+    setBusy(''); setAuthorized(false); setNativeKeyboard(false); setIncludeImage(false); setError(''); setStartDiagnosis(''); setNotice(message);
   }
 
   useEffect(() => {
@@ -150,8 +151,8 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
 
   async function perform(name: string, values: Record<string, unknown> = {}) {
     const epoch = lifecycle.current; const operation = ++action.current;
-    setBusy(name); setError(''); setNotice('');
-    if (name === 'preview' || name === 'draw' || name === 'start') setAuthorized(false);
+    setBusy(name); setError(''); setStartDiagnosis(''); setNotice('');
+    if (name === 'read' || name === 'preview' || name === 'draw' || name === 'start') setAuthorized(false);
     if (name === 'preview') setSnapshot(previous => previous ? { ...previous, proposal: undefined } : previous);
     try {
       if (name === 'list') {
@@ -176,7 +177,10 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
           : name === 'stop' ? 'Se solicitó detener el recorrido y cancelar las consultas pendientes.' : 'Estado actualizado.');
       }
     } catch (reason) {
-      if (epoch === lifecycle.current && operation === action.current) setError(reason instanceof Error ? reason.message : 'La extensión rechazó la orden.');
+      if (epoch === lifecycle.current && operation === action.current) {
+        if (name === 'read') setSnapshot(previous => previous ? { ...previous, context: undefined, proposal: undefined } : previous);
+        setError(reason instanceof Error ? reason.message : 'La extensión rechazó la orden.');
+      }
     } finally { if (operation === action.current) setBusy(''); }
   }
 
@@ -206,7 +210,7 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
   } else if (snapshot?.tab && !context) {
     blockers = ['Lee la actividad ALEKS para habilitar el recorrido.'];
   }
-  const canAuthorize = (choice ? canSelect : graphing ? canDraw : eligible) && blockers.length === 0;
+  const canRun = (choice ? canSelect : graphing ? canDraw : eligible) && blockers.length === 0;
   const useNativeControls = Boolean(graphing || choice) || nativeKeyboard;
   const format = choice ? `${choice.options.length} opciones · ${choice.mode === 'single' ? 'selección única' : 'selección múltiple'}`
     : graphing ? (readyGraph ? 'Cuadrícula vacía compatible con el trazado' : 'Cuadrícula ocupada o incompatible con el trazado')
@@ -221,6 +225,17 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
     Number.isInteger(numericLimits.maxAICalls) && numericLimits.maxAICalls >= 1 && numericLimits.maxAICalls <= 100;
   const running = Boolean(automation?.active);
   const unsupported = Boolean(context && !eligible && !readyChoice && !readyGraph);
+  function startRun() {
+    if (suspended || !snapshot?.tab || busy || running || !authorized || !validLimits) return;
+    if (!context || !canRun || !useNativeControls) {
+      const detail = !context ? error || 'Lee la actividad ALEKS y vuelve a intentar.'
+        : !canRun ? [...blockers, context.choice_diagnostic?.reason].filter(Boolean).join(' ') || 'El formato de respuesta aún no es compatible con el recorrido.'
+        : 'Activa «Usar teclado de Chrome» para escribir en los recuadros.';
+      setStartDiagnosis(detail);
+      return;
+    }
+    void perform('start', { fingerprint: context.fingerprint, limits: numericLimits, nativeKeyboard: true, ...(proposal ? { proposalId: proposal.id } : {}) });
+  }
   async function copyDiagnostic() {
     if (!context) return;
     const report = { version: WRITER_VERSION, blockers: context.fill_blockers, diagram: context.diagram_required,
@@ -264,15 +279,16 @@ export default function AleksBridge({ userId, csrfToken, request, disconnectRef,
           ['maxExercises', 'Máximo de ejercicios', 100], ['maxMinutes', 'Máximo de minutos', 120], ['maxAICalls', 'Máximo de llamadas IA', 100],
         ] as const).map(([key, label, max]) => <div key={key}><label htmlFor={`bridge-${key}`}>{label}</label><input id={`bridge-${key}`} type="number" min="1" max={max} step="1" value={limits[key]} onChange={event => { setLimits(previous => ({ ...previous, [key]: event.target.value })); setAuthorized(false); }} /></div>)}</fieldset>
         {!graphing && !choice && <label className="check-label"><input type="checkbox" checked={nativeKeyboard} disabled={Boolean(busy) || running} onChange={event => { setNativeKeyboard(event.target.checked); setAuthorized(false); }} />Usar teclado de Chrome en la pestaña vinculada</label>}
-        {blockers.length > 0 && <p id="bridge-fill-blockers" className="result-caution">{blockers.join(' ')} {context?.choice_diagnostic?.reason}</p>}
-        {unsupported && <button className="inline-button" onClick={() => void copyDiagnostic()}>Copiar diagnóstico de controles</button>}
-        <label className="check-label"><input type="checkbox" aria-describedby={blockers.length ? 'bridge-fill-blockers' : undefined} checked={canAuthorize && authorized} disabled={!canAuthorize || Boolean(busy) || running} onChange={event => setAuthorized(event.target.checked)} />
+        {!startDiagnosis && blockers.length > 0 && <p id="bridge-fill-blockers" className="result-caution">{blockers.join(' ')} {context?.choice_diagnostic?.reason}</p>}
+        {(unsupported || (context && startDiagnosis)) && <button className="inline-button" onClick={() => void copyDiagnostic()}>Copiar diagnóstico de controles</button>}
+        <label className="check-label"><input type="checkbox" aria-describedby={startDiagnosis ? 'bridge-start-diagnosis' : blockers.length ? 'bridge-fill-blockers' : undefined} checked={authorized} disabled={!snapshot?.tab || Boolean(busy) || running} onChange={event => { setStartDiagnosis(''); setAuthorized(event.target.checked); }} />
           {choice ? 'Autorizo seleccionar opciones, verificar y avanzar en la pestaña vinculada con estos límites'
             : graphing ? 'Autorizo dibujar, verificar y avanzar en la pestaña vinculada con los controles nativos de Chrome y estos límites'
             : 'Autorizo escribir, verificar y avanzar en la pestaña vinculada con estos límites'}
         </label>
         <p className="result-caution">Al iniciar, Chrome activa ALEKS. Mantén ALEKS como pestaña enfocada: volver a esta web puede detener el recorrido por sus controles de foco. La extensión ejecuta el recorrido; esta página no lo reanuda por sí sola.</p>
-        <div className="bridge-actions"><button className="primary" disabled={!canAuthorize || !useNativeControls || !authorized || !validLimits || Boolean(busy) || running} onClick={() => void perform('start', { fingerprint: context!.fingerprint, limits: numericLimits, nativeKeyboard: useNativeControls, ...(proposal ? { proposalId: proposal.id } : {}) })}>Autorizar e iniciar recorrido</button><button className="danger" onClick={() => { setAuthorized(false); void perform('stop'); }}>Detener recorrido ALEKS</button></div>
+        <div className="bridge-actions"><button className="primary" disabled={!snapshot?.tab || !authorized || !validLimits || Boolean(busy) || running} onClick={startRun}>Autorizar e iniciar recorrido</button><button className="danger" onClick={() => { setAuthorized(false); void perform('stop'); }}>Detener recorrido ALEKS</button></div>
+        {startDiagnosis && <p id="bridge-start-diagnosis" className="message error" role="alert"><strong>No se inició el recorrido.</strong> {startDiagnosis}</p>}
       </div>
       {snapshot && <div className="bridge-progress" aria-live="polite">{automation && <><h3>Estado: {automation.phase}</h3><p>{automation.message}</p></>}<dl><div><dt>«Correcta» confirmadas</dt><dd>{automation?.accepted ?? 0}</dd></div><div><dt>Presupuesto IA utilizado o reservado</dt><dd>{automation?.aiCalls ?? 0}</dd></div><div><dt>Llamadas confirmadas de la conexión</dt><dd>{snapshot.providerCallsUncertain ? 'Al menos ' : ''}{snapshot.providerCalls ?? 0}{snapshot.providerCallsUncertain && ' · consumo final sin confirmar'}</dd></div></dl></div>}
       {snapshot?.interrupted && <p className="message error" role="alert">{snapshot.interrupted} No se reanudará automáticamente.</p>}

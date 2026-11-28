@@ -102,7 +102,7 @@ Para actualizar desde un ZIP, detén el servidor anterior, extrae el ZIP nuevo e
 | Chrome no encuentra el manifiesto | Elige la carpeta `dist` indicada en consola. Comprueba que contenga `manifest.json`. |
 | La web no encuentra la extensión | Abre su panel, pulsa **Autorizar acceso** y comprueba que cargaste el `dist` del servidor actual. |
 | No aparece la pestaña del ejercicio | Comprueba que ALEKS esté abierto en el mismo Chrome y pulsa **Actualizar pestañas** en la web. |
-| La casilla de autorización está deshabilitada | Lee el motivo que muestra la web junto a la casilla. Revisa si el editor está vacío y el enunciado coincide con la vista previa. |
+| El recorrido no se inició | Lee el motivo que aparece junto al botón de inicio. Puede faltar la lectura o la vista previa, o puede que el ejercicio use un formato incompatible. |
 | Tu contraseña deja de funcionar después de actualizar | Conserva la instalación anterior y sigue [la recuperación de cuentas locales](WEB.md#actualizar-la-instalacion-local-de-windows). |
 
 Si necesitas ayuda, copia el aviso que muestra la web y omite contraseñas, cookies y enlaces completos de ALEKS. [Detalles de los formatos y el recorrido](WEB_BRIDGE.md)
