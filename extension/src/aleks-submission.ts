@@ -4,9 +4,11 @@ import { answerUnit } from './answer-units';
 import { answerRoots,probabilityRowOrder } from './aleks-answer-roots';
 import { inspectEditorRoot } from './aleks-single-editor';
 import { inspectAleksEditor } from './aleks-editor';
-import { readAleksPrompt } from './aleks-prompt';
+import { currentAleksPromptGuard,readAleksPrompt } from './aleks-prompt';
 import { visible,disabled } from './aleks-dom';
 import { resolveAleksRoute,type AleksRouteObservation } from './aleks-route';
+import { drawAleksParabola,type GraphClick } from './aleks-graph';
+import { emptyParabolaContext,type PlotPoint } from './parabola-answer';
 
 const SUBMITS=[
   ['button#smt_bottomnav_button_input_checkAnswer.checkAnswer[type="button"]','Verificar'],
@@ -32,6 +34,7 @@ export class AleksSubmission {
   private phase:'idle'|'submitting'|'accepted'|'advancing'|'failed'='idle';
   private generation=0;
   private pending?:{fingerprint:string;prompt:HTMLElement;feedback:HTMLElement;next:HTMLButtonElement};
+  private submittedGraphPrompts=new Set<string>();
   constructor(private document:Document,private timeout=15_000) {}
   reset() {this.generation++;this.pending=undefined;this.phase='idle';}
   private check(signal:AbortSignal,generation:number) {
@@ -72,7 +75,8 @@ export class AleksSubmission {
       return true;
     };
     if(selectors.some(selector=>[...this.document.querySelectorAll<HTMLElement>(selector)].some(occupied)))return false;
-    return ![...this.document.querySelectorAll<HTMLElement>('.ansed_root')].some(root=>
+    return ![...this.document.querySelectorAll<HTMLElement>('.figed_root[role="application"]')].some(visible) &&
+      ![...this.document.querySelectorAll<HTMLElement>('.ansed_root')].some(root=>
       visible(root) && Boolean(root.querySelector('input.ansed_input')));
   }
   private routeFailure(observation:AleksRouteObservation) {
@@ -82,7 +86,39 @@ export class AleksSubmission {
     if(observation.markerCount && !observation.labelCount)return 'Se encontró «Temas restantes», pero no el botón visible «Continuar en Mi ruta». Revisa ALEKS.';
     return 'La pantalla de fin de tema conserva un ejercicio, resultado o control incompatible. No se pulsó «Continuar en Mi ruta».';
   }
-  async submit(fingerprint:string,value:string|FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput):Promise<{status:'accepted'}> {
+  private submitButtons() {
+    return SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
+  }
+  submit(fingerprint:string,value:string|FieldAnswer[],signal:AbortSignal,nativeInput?:NativeInput) {
+    return this.verify(signal,async()=>{
+      const ordered=answerRoots(this.document),inputs=ordered.map(root=>root.querySelector('input.ansed_input'));
+      const eventOrder=probabilityRowOrder(ordered)?.join();
+      if(ordered.length!==(Array.isArray(value)?value.length:1) || !ordered.length)throw Error('Los recuadros no corresponden a todas las respuestas de esta entrega.');
+      const root=ordered[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
+      await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);
+      return ()=>{
+        const editor=inspectAleksEditor(this.document);
+        const valid=Array.isArray(value)?ordered.every((node,i)=>{
+          const field=inspectEditorRoot(node),current=answerRoots(this.document);
+          const answer=value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`));
+          return probabilityRowOrder(current)?.join()===eventOrder && current.length===ordered.length && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && this.document.activeElement===inputs.at(-1) && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
+            sameAnswer(field.readback.value,answer?.value) && !field.readback.fixed_unit && field.readback.selected_unit===answerUnit(answer?.unit || '');
+        }):ordered.length===1 && root.querySelector('input.ansed_input')===inputs[0] && this.document.activeElement===inputs[0] && editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
+          sameAnswer(editor.singleEditor.readback.value,value) && !editor.singleEditor.readback.selected_unit && editor.singleEditor.readback.fixed_unit===fixedUnit;
+        if(!root.isConnected || !visible(root) || !valid)throw Error('El recuadro cambió antes de verificar. No se entregó la respuesta.');
+      };
+    });
+  }
+  submitParabola(fingerprint:string,points:PlotPoint[],signal:AbortSignal,click:GraphClick,authorize:()=>Promise<void>) {
+    return this.verify(signal,async promptFingerprint=>{
+      const context=await assistContext(this.document);
+      if(context.fingerprint!==fingerprint || !emptyParabolaContext(context)) {
+        throw Error('El ejercicio o la cuadrícula cambió. Vuelve a leer la actividad antes de dibujar.');
+      }
+      return drawAleksParabola(this.document,promptFingerprint,points,signal,click);
+    },authorize);
+  }
+  private async verify(signal:AbortSignal,prepare:(promptFingerprint:string)=>Promise<()=>void>,authorizeGraph?:()=>Promise<void>):Promise<{status:'accepted'}> {
     if(this.phase!=='idle')throw Error('Esta entrega ya fue iniciada; no se vuelve a pulsar Verificar.');
     this.phase='submitting';const generation=this.generation;
     let feedbackObserver:MutationObserver|undefined;
@@ -90,29 +126,24 @@ export class AleksSubmission {
       this.check(signal,generation);
       const prompt=this.promptNode(),read=await readAleksPrompt(this.document);this.check(signal,generation);
       if(read.status!=='readable' || !read.fingerprint)throw Error('No se puede identificar el enunciado de esta entrega.');
+      if(authorizeGraph && this.submittedGraphPrompts.has(read.fingerprint))throw Error('Esta gráfica ya tuvo una entrega. Revisa ALEKS antes de continuar.');
+      if(authorizeGraph && this.submittedGraphPrompts.size>=100)throw Error('Se alcanzó el máximo de entregas gráficas de esta pestaña.');
       if(alerts(this.document).length)throw Error('Ya existe un resultado visible. Lee el siguiente ejercicio antes de iniciar.');
-      // Validar los controles antes de tocar el recuadro. Una duplicación no se
-      // resuelve eligiendo el primer botón de la página.
-      const targets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
-      if(targets.length!==1 || disabled(targets[0]))throw Error('No hay un único botón Verificar o Entregar habilitado.');
+      const targets=this.submitButtons();
+      // La cuadrícula puede habilitar el mismo control al completar la curva.
+      if(targets.length!==1 || (!authorizeGraph && disabled(targets[0])))throw Error('No hay un único botón Verificar o Entregar disponible.');
       const target=targets[0];
-      const ordered=answerRoots(this.document),inputs=ordered.map(root=>root.querySelector('input.ansed_input'));
-      const eventOrder=probabilityRowOrder(ordered)?.join();
-      if(ordered.length!==(Array.isArray(value)?value.length:1) || !ordered.length)throw Error('Los recuadros no corresponden a todas las respuestas de esta entrega.');
-      const root=ordered[0],fixedUnit=inspectAleksEditor(this.document).singleEditor.readback.fixed_unit;
-      await fillAssistAnswer(this.document,fingerprint,value,signal,nativeInput);this.check(signal,generation);
+      const confirm=await prepare(read.fingerprint);this.check(signal,generation);
       await this.samePrompt(prompt,read.fingerprint,signal,generation);
+      if(authorizeGraph) {
+        const sameEvidence=currentAleksPromptGuard(this.document);
+        await authorizeGraph();this.check(signal,generation);
+        if(this.promptNode()!==prompt || !sameEvidence())throw Error('El ejercicio cambió antes de verificar. No se entregó la respuesta.');
+      }
       const editor=inspectAleksEditor(this.document);
-      const freshTargets=SUBMITS.flatMap(([selector,label])=>buttons(this.document,selector,[label]));
-      const valid=Array.isArray(value)?ordered.every((node,i)=>{
-        const field=inspectEditorRoot(node),current=answerRoots(this.document);
-        return probabilityRowOrder(current)?.join()===eventOrder && current.length===ordered.length && current[i]===node && node.querySelector('input.ansed_input')===inputs[i] && document.activeElement===inputs.at(-1) && field.status==='observed' && !field.disabled && field.readback.status==='readable' &&
-          sameAnswer(field.readback.value,value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`))?.value) && !field.readback.fixed_unit && field.readback.selected_unit===answerUnit(value.find(answer=>answer.field_key===(ordered.length===1?'answer':`field_${i+1}`))?.unit || '');
-      }):ordered.length===1 && root.querySelector('input.ansed_input')===inputs[0] && document.activeElement===inputs[0] && editor.singleEditor.status==='observed' && !editor.singleEditor.disabled && editor.singleEditor.readback.status==='readable' &&
-        sameAnswer(editor.singleEditor.readback.value,value) && !editor.singleEditor.readback.selected_unit && editor.singleEditor.readback.fixed_unit===fixedUnit;
-      if(!root.isConnected || !visible(root) || !valid ||
-        freshTargets.length!==1 || freshTargets[0]!==target || disabled(target) || alerts(this.document).length ||
-        editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('El recuadro o los controles cambiaron antes de verificar. No se entregó la respuesta.');
+      const freshTargets=this.submitButtons();
+      if(freshTargets.length!==1 || freshTargets[0]!==target || disabled(target) || alerts(this.document).length ||
+        editor.resultMarker.positiveMessageCount || editor.nextControl.count || editor.nextTopicControl.count)throw Error('Los controles cambiaron antes de verificar. No se entregó la respuesta.');
       // Ocultar/mostrar un resultado antiguo no acredita otra entrega. Solo
       // admitimos un alert nuevo o con cambios de texto/hijos desde el clic.
       const previousAlerts=new Set(this.document.querySelectorAll<HTMLElement>('#result_feedback_alert'));
@@ -127,6 +158,8 @@ export class AleksSubmission {
       feedbackObserver=new MutationObserver(recordChanges);
       feedbackObserver.observe(this.document,{subtree:true,childList:true,characterData:true});
       this.check(signal,generation);
+      confirm();
+      if(authorizeGraph)this.submittedGraphPrompts.add(read.fingerprint);
       target.click();
       const deadline=Date.now()+this.timeout;
       while(Date.now()<deadline) {
@@ -182,6 +215,7 @@ export class AleksSubmission {
           const context=await assistContext(this.document);this.check(signal,generation);
           if(resolveAleksRoute(this.document).observation.labelCount)continue;
           const editor=inspectAleksEditor(this.document);
+          if(emptyParabolaContext(context)) {this.phase='idle';return;}
           if((context.can_fill_integer || context.can_fill_fraction) && answerRoots(this.document).every(root=>inspectEditorRoot(root).readback.status==='empty')) {this.phase='idle';return;}
           if(editor.singleEditor.status==='observed' && editor.singleEditor.readback.status==='empty' && !editor.resultMarker.positiveMessageCount && !editor.nextControl.count && !editor.nextTopicControl.count) {
             // Un nuevo ejercicio visual también puede terminar el avance. El

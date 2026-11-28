@@ -25,21 +25,33 @@ function cancelNative(id:number) {
 }
 type NativeWrite={id:string;url:string;values:string[];index:number;used:boolean;abort:AbortController;current:()=>boolean};
 const nativeWrites=new Map<number,NativeWrite>();
-type NativePlot={id:string;url:string;next:number;busy:boolean;abort:AbortController;click?:NativePlotClick;current:()=>boolean};
+type NativePlot={id:string;url:string;documentId:string;next:number;busy:boolean;abort:AbortController;
+  click?:NativePlotClick;checkBeforeSubmit?:()=>Promise<void>;checkedForSubmit?:boolean;current:()=>boolean};
 const nativePlots=new Map<number,NativePlot>();
+const aleksDocuments=new Map<number,string>();
 let webBridge:WebBridge|undefined;
-async function deliverParabola(id:number,data:Record<string,unknown>,current:()=>boolean) {
+async function deliverParabola(id:number,type:'drawParabola'|'automationSubmitParabola',data:Record<string,unknown>,current:()=>boolean) {
   const points=parabolaPointsSchema.parse(data.points),t=await tab(id);
   if(!webBridge?.ownsTab(id) || !ALEKS_ORIGINS.includes(new URL(t.url).origin) || typeof data.fingerprint!=='string' ||
-    !/^[a-f0-9]{64}$/u.test(data.fingerprint))throw Error('El dibujo no corresponde a la actividad vinculada.');
+    !/^[a-f0-9]{64}$/u.test(data.fingerprint) || (type==='automationSubmitParabola' && typeof data.runId!=='string')) {
+    throw Error('El dibujo no corresponde a la actividad vinculada.');
+  }
+  const documentId=aleksDocuments.get(id);
+  if(!documentId)throw Error('Vuelve a vincular la pestaña para identificar el documento de ALEKS antes de dibujar.');
   if(nativePlots.has(id) || nativeWrites.has(id) || !current())throw Error('Ya hay una operación de entrada o se detuvo el dibujo.');
-  const plot:NativePlot={id:crypto.randomUUID(),url:t.url,next:0,busy:false,abort:new AbortController(),
+  const plot:NativePlot={id:crypto.randomUUID(),url:t.url,documentId,next:0,busy:false,abort:new AbortController(),
     current:()=>current() && nativePlots.get(id)===plot && !plot.abort.signal.aborted};
   nativePlots.set(id,plot);
   try {
-    return await withNativePlot(id,{signal:plot.abort.signal,isCurrent:plot.current,check:()=>checkNativeTab(id,t.url,plot.current)},async click=>{
+    return await withNativePlot(id,{signal:plot.abort.signal,isCurrent:plot.current,check:()=>checkNativeTab(id,t.url,plot.current)},async(click,check)=>{
       plot.click=click;
-      return send(id,'drawParabola',{fingerprint:data.fingerprint,points,nativeWriteId:plot.id},plot.current);
+      if(type==='automationSubmitParabola')plot.checkBeforeSubmit=check;
+      const result=await send(id,type,{fingerprint:data.fingerprint,points,nativeWriteId:plot.id,
+        ...(type==='automationSubmitParabola'?{runId:data.runId}:{})},plot.current,plot.documentId);
+      if(!plot.current() || plot.next!==7 || (type==='automationSubmitParabola' && !plot.checkedForSubmit)) {
+        throw Error('El dibujo no completó todas sus etapas. Revisa la cuadrícula en ALEKS.');
+      }
+      return result;
     });
   } finally {
     plot.abort.abort();
@@ -47,7 +59,7 @@ async function deliverParabola(id:number,data:Record<string,unknown>,current:()=
   }
 }
 async function deliverAnswer(id:number,type:string,data:Record<string,unknown>,current=()=>true) {
-  if(type==='drawParabola')return deliverParabola(id,data,current);
+  if(type==='drawParabola' || type==='automationSubmitParabola')return deliverParabola(id,type,data,current);
   if(!nativeTabs.has(id))return send(id,type,data,current);
   const epoch=nativeEpoch,tabEpoch=nativeTabEpoch.get(id)||0;
   const allowed=()=>current() && nativeTabs.has(id) && epoch===nativeEpoch && tabEpoch===(nativeTabEpoch.get(id)||0);
@@ -136,15 +148,18 @@ async function checkNativeTab(id:number,url:string,isCurrent:()=>boolean) {
   const browserWindow=await chrome.windows.get(current.windowId);cancelled();
   if(!browserWindow.focused)throw Error('La ventana de Chrome que contiene ALEKS no está en primer plano. Vuelve a esa ventana y revisa el recuadro antes de iniciar de nuevo.');
 }
-async function send(id:number,type:string,data:Record<string,unknown>={},isCurrent=()=>true) {
+async function send(id:number,type:string,data:Record<string,unknown>={},isCurrent=()=>true,documentId?:string) {
   const t=await tab(id);if(!isCurrent())throw Error('Recorrido detenido.');
+  const sendToAdapter=(message:Record<string,unknown>)=>documentId
+    ? chrome.tabs.sendMessage(id,message,{documentId})
+    : chrome.tabs.sendMessage(id,message);
   // Read-only handshake before a write: an old adapter must never receive it.
-  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext','drawParabola'].includes(type)) {
-    const version=await chrome.tabs.sendMessage(id,{scope:'adapter',type:'writerVersion'}).catch(()=>undefined);
+  if(!simulatorURL(t.url) && ['assistFill','automationReset','automationSubmit','automationNext','drawParabola','automationSubmitParabola'].includes(type)) {
+    const version=await sendToAdapter({scope:'adapter',type:'writerVersion'}).catch(()=>undefined);
     if(version?.writerVersion!==WRITER_VERSION)throw Error(`La pestaña ALEKS conserva un adaptador antiguo. Recarga ALEKS para cargar la versión ${WRITER_VERSION} y vuelve a leer el ejercicio.`);
     if(!isCurrent())throw Error('Recorrido detenido.');
   }
-  const response=await chrome.tabs.sendMessage(id,{scope:'adapter',type,...data}).catch(error=>{
+  const response=await sendToAdapter({scope:'adapter',type,...data}).catch(error=>{
     if(!simulatorURL(t.url))throw Error('La pestaña ALEKS no responde a la extensión actual. Recarga esa pestaña y vuelve a vincularla antes de iniciar otro recorrido.');
     throw error;
   });
@@ -153,8 +168,13 @@ async function send(id:number,type:string,data:Record<string,unknown>={},isCurre
 }
 async function attach(id:unknown) {
   const t=await tab(id);
-  await chrome.scripting.executeScript({target:{tabId:t.id},files:['content.js']});
-  return {...await send(t.id,'status'),tab:{id:t.id,title:t.title || 'Actividad matemática',url:t.url}};
+  const injected=await chrome.scripting.executeScript({target:{tabId:t.id},files:['content.js']});
+  const documentId=injected?.find(result=>result.frameId===0)?.documentId;
+  if(!simulatorURL(t.url)) {
+    if(documentId)aleksDocuments.set(t.id,documentId);
+    else aleksDocuments.delete(t.id);
+  }
+  return {...await send(t.id,'status',{},()=>true,documentId),tab:{id:t.id,title:t.title || 'Actividad matemática',url:t.url}};
 }
 async function stopAll() {
   await webBridge?.stopAll('Se cambió la sesión o los permisos del asistente.');
@@ -403,12 +423,33 @@ async function handleUI(m:Record<string,unknown>,automated=false,isCurrent=()=>t
 async function handleContent(m:Record<string,unknown>,sender:chrome.runtime.MessageSender) {
   if(!sender.tab?.id || sender.frameId!==0) throw Error('Marco no autorizado');
   const t=await tab(sender.tab.id);
-  if(m.type==='nativeGraphClick') {
+  if(m.type==='nativeGraphClick' || m.type==='nativeGraphCheck') {
     const plot=nativePlots.get(t.id);
-    if(!plot?.click || !plot.current() || plot.busy || plot.next>6 || m.step!==plot.next || m.writeId!==plot.id ||
-      sender.url!==plot.url || t.url!==plot.url)throw Error('No hay un clic de dibujo autorizado para esta pestaña.');
+    if(!plot?.click || !plot.current() || m.writeId!==plot.id) {
+      throw Error('El permiso de dibujo ya no está vigente. Revisa ALEKS y vuelve a leer la actividad.');
+    }
+    const origin=new URL(plot.url).origin;
+    // Chrome puede informar en sender.url la URL que tenía el mismo documento
+    // al inyectar el script. Validar su identidad y la URL viva por separado.
+    if(t.url!==plot.url || sender.documentId!==plot.documentId || !sender.url || new URL(sender.url).origin!==origin ||
+      (sender.origin!==undefined && sender.origin!==origin) || (sender.documentLifecycle && sender.documentLifecycle!=='active')) {
+      throw Error('El documento de ALEKS cambió. Vuelve a vincular la pestaña y lee la actividad antes de dibujar.');
+    }
+    if(m.type==='nativeGraphCheck') {
+      if(plot.busy || !plot.checkBeforeSubmit || plot.next!==7 || plot.checkedForSubmit) {
+        throw Error('El dibujo no está preparado para verificar. Revisa la cuadrícula en ALEKS.');
+      }
+      plot.busy=true;
+      await plot.checkBeforeSubmit();
+      plot.checkedForSubmit=true;
+      plot.busy=false;
+      return true;
+    }
+    if(plot.busy || plot.next>6 || m.step!==plot.next) {
+      throw Error('La secuencia de dibujo se interrumpió. Revisa los puntos en ALEKS antes de continuar.');
+    }
     plot.busy=true;
-    await plot.click(()=>send(t.id,'nativeGraphTarget',{writeId:plot.id,step:plot.next},plot.current));
+    await plot.click(()=>send(t.id,'nativeGraphTarget',{writeId:plot.id,step:plot.next},plot.current,plot.documentId));
     plot.next++;
     plot.busy=false;
     return true;
@@ -464,6 +505,7 @@ chrome.runtime.onMessage.addListener((message,sender,reply)=>{
 });
 chrome.permissions.onRemoved.addListener(()=>{void stopAll();});
 chrome.tabs.onRemoved.addListener(id=>{
+  aleksDocuments.delete(id);
   nativeTabs.delete(id);cancelNative(id);
   void automations.get(id)?.stop('La pestaña se cerró.').finally(()=>chrome.storage.session.remove(automationKey(id)));automations.delete(id);
   assistProposals.delete(id);assistJobs.delete(id);assistWriters.delete(id);
@@ -472,7 +514,9 @@ chrome.tabs.onRemoved.addListener(id=>{
 });
 
 webBridge=new WebBridge(BRIDGE_WEB_ORIGIN,{
-  tab,attach,send,deliver:deliverAnswer,cancel:cancelTabAssist,
+  tab,attach,
+  send:(id,type,data,current)=>send(id,type,data,current,aleksDocuments.get(id)),
+  deliver:deliverAnswer,cancel:cancelTabAssist,
   setNative:(id,enabled)=>{if(enabled)nativeTabs.add(id);else{nativeTabs.delete(id);cancelNative(id);}},
   legacyBusy:id=>Boolean(automations.get(id)?.view.active || automationStarting.has(id) || assistJobs.has(id) || assistWriters.has(id) || nativeWrites.has(id) || nativePlots.has(id)),
   focus:async id=>{

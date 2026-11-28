@@ -178,17 +178,22 @@ export async function drawAleksParabola(document:Document,promptFingerprint:stri
     signal.throwIfAborted();
     if(!document.hasFocus())throw Error('ALEKS perdió el foco. Revisa la cuadrícula antes de continuar.');
   };
-  const guard=async(expected:PlotPoint[],withCurve=false)=>{
-    checkFocus();
-    const prompt=await readAleksPrompt(document);
+  const checkPlot=(expected:PlotPoint[],withCurve=false)=>{
     checkFocus();
     const current=inspectParabolaGrid(document);
-    if(prompt.fingerprint!==promptFingerprint || !prompt.graphingExerciseDetected || prompt.diagramReferenceDetected ||
-      !current || current.signature!==grid.signature || current.root!==grid.root || current.grid!==grid.grid ||
+    if(!current || current.signature!==grid.signature || current.root!==grid.root || current.grid!==grid.grid ||
       current.overlay!==grid.overlay || current.objects!==grid.objects || current.pencil!==grid.pencil || current.curve!==grid.curve) {
       throw Error('Cambió el ejercicio o la escala de la cuadrícula. Revisa ALEKS y vuelve a leer la actividad.');
     }
     if(!reflected(expected,withCurve))throw Error('ALEKS no reflejó los puntos o la curva esperados. Revisa el dibujo antes de continuar.');
+  };
+  const guard=async(expected:PlotPoint[],withCurve=false)=>{
+    checkFocus();
+    const prompt=await readAleksPrompt(document);
+    if(prompt.fingerprint!==promptFingerprint || !prompt.graphingExerciseDetected || prompt.diagramReferenceDetected) {
+      throw Error('Cambió el ejercicio de la parábola. Revisa ALEKS y vuelve a leer la actividad.');
+    }
+    checkPlot(expected,withCurve);
   };
   const reflected=(expected:PlotPoint[],withCurve=false)=>{
     const objects=observedObjects(grid);
@@ -230,4 +235,6 @@ export async function drawAleksParabola(document:Document,promptFingerprint:stri
   });
   await waitFor(()=>reflected(positions,true),'ALEKS no mostró la parábola esperada. Revisa el dibujo en la cuadrícula.');
   await guard(positions,true);
+  // El coordinador la vuelve a comprobar justo antes de Verificar.
+  return ()=>checkPlot(positions,true);
 }

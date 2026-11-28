@@ -49,19 +49,23 @@ it('no expone órdenes arbitrarias ni permite operar sin vincular cuenta',async(
   expect((await p.request('bind',{tabId:7,selector:'input'})).ok).toBe(false);
   expect(deps.send).not.toHaveBeenCalled();
 });
-it('dibuja una vez los puntos de la vista previa comprobada y rechaza coordenadas enviadas desde la web',async()=>{
-  const graphContext={...context,fields:[{key:'answer',label:'Puntos y trazo de la función'}],can_fill_integer:false,
-    can_fill_fraction:false,can_draw_parabola:true,fill_blockers:['graph_editor']};
+const graphContext={...context,statement:'Trazar la parábola y = (x + 5)^(2) + 1.',
+  fields:[{key:'answer',label:'Puntos y trazo de la función'}],can_fill_integer:false,
+  can_fill_fraction:false,can_draw_parabola:true,fill_blockers:['graph_editor']};
+function useCheckedParabola() {
   vi.mocked(deps.send).mockResolvedValue(graphContext);
-  vi.mocked(deps.deliver).mockResolvedValue({drawn:true});
   const original=fetcher.getMockImplementation()!;
   fetcher.mockImplementation(async(url:string,init?:RequestInit)=>{
     if(url.includes('/jobs/') && init?.method==='GET')return Response.json({status:'completed',result:{
-      fingerprint,model:'',provider:'deterministic',provider_calls:0,verified:true,verification:'parabola_points',
+      fingerprint:answerContext.fingerprint,model:'',provider:'deterministic',provider_calls:0,verified:true,verification:'parabola_points',
       proposal:{status:'proposed',answers:[{field_key:'answer',value:'(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)',unit:''}],
         explanation:'Parábola comprobada.',missing_information:[]}}});
     return original(url,init);
   });
+}
+it('dibuja una vez los puntos de la vista previa comprobada y rechaza coordenadas enviadas desde la web',async()=>{
+  useCheckedParabola();
+  vi.mocked(deps.deliver).mockResolvedValue({drawn:true});
   const p=await connect();
   const preview=await p.request('preview');
   expect(preview.ok,preview.error).toBe(true);
@@ -75,6 +79,32 @@ it('dibuja una vez los puntos de la vista previa comprobada y rechaza coordenada
   expect((await p.request('draw',{proposalId})).ok).toBe(false);
   expect(deps.deliver).toHaveBeenCalledExactlyOnceWith(7,'drawParabola',
     {fingerprint,points:[[-5,1],[-7,5],[-6,2],[-4,2],[-3,5]]},expect.any(Function));
+});
+it('autoriza el recorrido de la parábola con vista previa y conserva la entrega registrada si cambia el zoom',async()=>{
+  useCheckedParabola();
+  const p=await connect();
+  const start={fingerprint,limits,nativeKeyboard:true};
+  expect(await p.request('start',start)).toMatchObject({ok:false,error:expect.stringContaining('vista previa comprobada')});
+  expect(deps.deliver).not.toHaveBeenCalled();
+  const preview=await p.request('preview');
+  expect(preview.ok,preview.error).toBe(true);
+  expect(await p.request('start',{...start,proposalId:preview.value.proposal.id})).toMatchObject({ok:true});
+  await vi.waitFor(()=>expect(p.replies.some(reply=>reply.value?.automation?.phase==='COMPLETADO' &&
+    reply.value.automation.accepted===1)).toBe(true));
+  expect(deps.deliver).toHaveBeenCalledExactlyOnceWith(7,'automationSubmitParabola',
+    {fingerprint,points:[[-5,1],[-7,5],[-6,2],[-4,2],[-3,5]],runId:expect.any(String)},expect.any(Function));
+  expect(deps.send).not.toHaveBeenCalledWith(7,'automationNext',expect.anything(),expect.anything());
+  expect(posted).toBe(1);
+
+  // Misma actividad recalibrada. La propuesta nueva no permite repetir la entrega.
+  const zoomed='b'.repeat(64);
+  vi.mocked(deps.send).mockResolvedValue({...graphContext,fingerprint:zoomed});
+  await p.request('read');
+  const newPreview=await p.request('preview');
+  expect(newPreview.ok,newPreview.error).toBe(true);
+  expect(await p.request('start',{...start,fingerprint:zoomed,proposalId:newPreview.value.proposal.id}))
+    .toMatchObject({ok:false,error:expect.stringContaining('no se repetirá')});
+  expect(deps.deliver).toHaveBeenCalledTimes(1);
 });
 it('duplica el mismo comando sin duplicar consulta ni entrega y rechaza reutilizar ID',async()=>{
   const p=await connect();const id=crypto.randomUUID();

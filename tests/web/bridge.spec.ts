@@ -5,12 +5,12 @@ import { test, expect, type Page, type Route } from '@playwright/test';
 import { createHash } from 'node:crypto';
 
 const account=`bridge-${crypto.randomUUID()}@example.com`;
-const eventAccount=`bridge-events-${crypto.randomUUID()}@example.com`;
+const exactAccount=`bridge-exact-${crypto.randomUUID()}@example.com`;
 const password='Prueba-bridge-segura-42';
 test.beforeAll(async({request})=>{
   // Distinct journeys use separate users; do not exhaust the real per-user
   // login throttle while testing the bridge instead of authentication.
-  for(const email of [account,eventAccount]){
+  for(const email of [account,exactAccount]){
   const session=await request.get('/web-api/session').then(r=>r.json());
   const registered=await request.post('/web-api/register',{data:{email,password},
     headers:{Origin:'http://127.0.0.1:8000','X-CSRF-Token':session.csrf_token}});
@@ -18,13 +18,22 @@ test.beforeAll(async({request})=>{
   }
 });
 
-async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean}={}) {
-  await page.addInitScript(({version,legacy,fields,decimal,events,blocked}) => {
-    const context = { fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
+const graphStatement='Traza la gráfica de y = (x + 5)^2 + 1.';
+async function prepare(page: Page, options:{version?:string;legacy?:boolean;fields?:number;decimal?:boolean;events?:boolean;blocked?:boolean;graph?:boolean}={}) {
+  await page.addInitScript(({version,legacy,fields,decimal,events,blocked,graph,graphStatement}) => {
+    const context = graph ? {
+      fingerprint:'a'.repeat(64),statement:graphStatement,fields:[{key:'answer',label:'Puntos y trazo de la función'}],
+      diagram_required:false,can_fill_integer:false,can_fill_fraction:false,can_draw_parabola:true,fill_blockers:['graph_editor']
+    } : {
+      fingerprint:'a'.repeat(64), statement:'Hay 4 nadadores y dos premios por puestos distintos.',
       fields:events?[{key:'field_1',label:'P(A): La suma es mayor que 9.'},{key:'field_2',label:'P(B): La suma es divisible entre 2 o 6 (o ambos).'}]:fields===2?[{key:'field_1',label:'Recuadro 1'},{key:'field_2',label:'Recuadro 2'}]:[{key:'answer',label:'Número de maneras'}], diagram_required:false,can_fill_integer:!blocked,can_fill_fraction:!blocked,fill_blockers:blocked?['editor_missing']:[] };
+    const exact=graph||events;
+    const answers=graph?[{field_key:'answer',value:'(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)',unit:''}]
+      :events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'1/6',unit:''}]
+      :context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''}));
     const proposal = {id:'00000000-0000-4000-8000-000000000021',context,
-      result:{fingerprint:context.fingerprint,model:events?'':'mock-gemini',provider:events?'deterministic':'gemini',provider_calls:events?0:1,verified:Boolean(events),verification:events?'two_dice_events':'none',
-        proposal:{status:'proposed',answers:events?[{field_key:'field_2',value:'1/2',unit:''},{field_key:'field_1',value:'1/6',unit:''}]:context.fields.map(field=>({field_key:field.key,value:decimal?'169,56':'12',unit:decimal?'cm²':''})),explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
+      result:{fingerprint:context.fingerprint,model:exact?'':'mock-gemini',provider:exact?'deterministic':'gemini',provider_calls:exact?0:1,verified:exact,verification:graph?'parabola_points':events?'two_dice_events':'none',
+        proposal:{status:'proposed',answers,explanation:'Propuesta simulada para probar la interfaz del puente.',missing_information:[]}}};
     let state:any={connected:true,writerVersion:version,providerCalls:0},listeners:((message:any)=>void)[]=[],disconnects:(()=>void)[]=[];
     let deferred:any;
     const api:any={commands:[],disconnections:0,holdPreview:false,
@@ -46,8 +55,12 @@ async function prepare(page: Page, options:{version?:string;legacy?:boolean;fiel
             case 'connect':if(legacy){queueMicrotask(()=>api.emit({requestId:message.requestId,ok:false,error:'Comando del puente no admitido.'}));return;}state={connected:true,writerVersion:version,providerCalls:0};value=state;break;
             case 'list':value=[{id:7,title:'Álgebra',active:true},{id:8,title:'Probabilidad'}];break;
             case 'bind':state={connected:true,writerVersion:version,providerCalls:0,tab:{id:message.tabId,title:message.tabId===7?'Álgebra':'Probabilidad'}};value=state;break;
-            case 'read':state={...state,context};value={context};break;
+            case 'read':state={...state,context,proposal:undefined};value={context};break;
             case 'preview':if(api.holdPreview){deferred=message;return;}state={...state,proposal,providerCalls:proposal.result.provider_calls};api.progress({});value={proposal};break;
+            case 'draw':
+              api.progress({context:undefined,proposal:undefined});
+              queueMicrotask(()=>api.emit({requestId:message.requestId,ok:false,error:'No hay un clic de dibujo autorizado para esta pestaña.'}));
+              return;
             case 'start':state={...state,automation:{id:'00000000-0000-4000-8000-000000000022',phase:'LISTO',active:true,busy:false,canContinue:false,accepted:0,aiCalls:2,started:Date.now(),limits:message.limits,message:'ALEKS activado para usar el teclado.'}};value={automation:state.automation};break;
             case 'stop':state={...state,automation:{...state.automation,phase:'DETENIDO',active:false,busy:false,message:'Detenido por el usuario.'}};value=state;break;
             case 'status':value=state;break;
@@ -56,9 +69,9 @@ async function prepare(page: Page, options:{version?:string;legacy?:boolean;fiel
           queueMicrotask(()=>api.emit({requestId:message.requestId,ok:true,value}));
         }};
     }}}});
-  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false,events:options.events??false,blocked:options.blocked??false});
+  },{version:options.version??WRITER_VERSION,legacy:options.legacy??false,fields:options.fields??1,decimal:options.decimal??false,events:options.events??false,blocked:options.blocked??false,graph:options.graph??false,graphStatement});
   await page.goto('/app/');
-  await page.getByLabel('Correo electrónico').fill(options.events?eventAccount:account);
+  await page.getByLabel('Correo electrónico').fill(options.graph || options.events ? exactAccount : account);
   await page.getByLabel('Contraseña',{exact:true}).fill(password);
   await page.getByRole('button',{name:'Entrar',exact:true}).click();
   await expect(page.getByRole('button',{name:'Cerrar sesión'})).toBeVisible();
@@ -67,12 +80,49 @@ async function prepare(page: Page, options:{version?:string;legacy?:boolean;fiel
   await expect(page.getByLabel('Pestaña ALEKS que autorizas')).toBeVisible();
 }
 
-async function bindRead(page:Page,id='7'){
+async function bindRead(page:Page,id='7',statement='Hay 4 nadadores y dos premios por puestos distintos.'){
   await page.getByLabel('Pestaña ALEKS que autorizas').selectOption(id);
   await page.getByRole('button',{name:'Vincular pestaña',exact:true}).click();
   await page.getByRole('button',{name:'Leer actividad ALEKS'}).click();
-  await expect(page.getByText('Hay 4 nadadores y dos premios por puestos distintos.',{exact:true})).toBeVisible();
+  await expect(page.getByText(statement,{exact:true})).toBeVisible();
 }
+
+test('parábola: autoriza solo con vista previa comprobada vigente y controles nativos',async({page})=>{
+  await prepare(page,{graph:true});await bindRead(page,'7',graphStatement);
+  const consent=page.getByRole('checkbox',{name:/Autorizo escribir/});
+  const native=page.getByLabel('Usar controles nativos de Chrome para dibujar en la pestaña vinculada');
+  const preview=page.getByRole('button',{name:'Consultar vista previa'});
+  const start=page.getByRole('button',{name:'Autorizar e iniciar recorrido'});
+  await native.check();
+  await expect(consent).toBeDisabled();
+  await preview.click();
+  await expect(consent).toBeEnabled();
+  await native.uncheck();
+  await expect(consent).toBeDisabled();
+  await native.check();await consent.check();
+  const capture=page.getByLabel(/Adjuntar captura de la pestaña vinculada/);
+  await capture.check();await expect(consent).toBeDisabled();
+  await capture.uncheck();await expect(consent).toBeDisabled();
+  await preview.click();
+  await consent.check();
+  await expect(start).toBeEnabled();
+  await start.click();
+  expect(await page.evaluate(()=>(window as any).bridgeMock.commands.filter((command:any)=>command.command==='start')))
+    .toMatchObject([{proposalId:'00000000-0000-4000-8000-000000000021',fingerprint:'a'.repeat(64),nativeKeyboard:true}]);
+});
+
+test('un fallo al dibujar retira el aviso de vista previa y pide releer',async({page})=>{
+  await prepare(page,{graph:true});await bindRead(page,'7',graphStatement);
+  const preview=page.getByRole('button',{name:'Consultar vista previa'});
+  await preview.click();
+  await expect(page.getByText('Vista previa lista.',{exact:false})).toBeVisible();
+  await page.getByRole('button',{name:'Dibujar parábola en ALEKS'}).click();
+  await expect(page.getByRole('alert')).toContainText('No hay un clic de dibujo autorizado para esta pestaña.');
+  await expect(page.getByText('Vista previa lista.',{exact:false})).toHaveCount(0);
+  await expect(preview).toBeDisabled();
+  await bindRead(page,'7',graphStatement);
+  await expect(preview).toBeEnabled();
+});
 
 test('puerto simulado: vinculación concreta, propuesta, límites, estado y detener desde web',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));

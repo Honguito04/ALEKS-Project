@@ -224,7 +224,7 @@ Estos pasos sirven si la extensión, Ollama y el backend ya funcionan en tu comp
    ```
 
    Deja esa ventana abierta. Si el backend ya estaba funcionando, continúa con el paso siguiente; no arranques otra copia. `http://127.0.0.1:8000/health` debe abrir en Chrome.
-5. Abre `chrome://extensions`, localiza el asistente y pulsa su botón **Recargar**. Comprueba que indique **0.5.8**. Si conserva otra versión, revisa que hayas compilado el proyecto cuya carpeta `dist` cargaste en Chrome.
+5. Abre `chrome://extensions`, localiza el asistente y pulsa su botón **Recargar**. Comprueba que indique **0.5.9**. Si conserva otra versión, revisa que hayas compilado el proyecto cuya carpeta `dist` cargaste en Chrome.
 6. En la pestaña ALEKS pulsa **F5**. Abre el panel con el icono del asistente. Pulsa **Conectar backend y simulador**, entra en demostración si se perdió la sesión del asistente y pulsa **Autorizar sitio ALEKS** si falta el permiso del sitio.
 7. Selecciona tu pestaña ALEKS y pulsa **Leer actividad seleccionada**. Comprueba Ollama y abre un ejercicio de texto con uno o dos recuadros vacíos reconocidos. Para la primera comprobación configura **Máximo de ejercicios: 1**, **Máximo de minutos: 5** y **Máximo de llamadas IA: 2** en **RECORRIDO AUTOMÁTICO ALEKS**.
 8. Pulsa **Iniciar recorrido automático**. Si prefieres consultar primero y mirar la propuesta, usa **Resolver con IA local** y después **Responder, verificar y continuar**. Ambas opciones utilizan los límites del recorrido. Mantén abiertos Chrome, la pestaña y el panel.

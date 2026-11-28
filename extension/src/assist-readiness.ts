@@ -1,5 +1,6 @@
 import { parseSupportedAnswer } from './answer-format';
 import { answerUnit } from './answer-units';
+import { drawableParabola } from './parabola-answer';
 import type { AssistContext,AssistResult,AssistView,FillBlocker } from './shared';
 
 export const fillBlockerMessages:Record<FillBlocker,string>={
@@ -77,6 +78,10 @@ function answerFormatMessage(view:AssistView):string {
 /** Mismos motivos concretos en el panel, la escritura y el recorrido. */
 export function proposalFillMessages(view:AssistView):string[] {
   return proposalFillBlockers(view).map(blocker=>blocker==='answer_format'?answerFormatMessage(view):fillBlockerMessages[blocker]);
+}
+
+export function automationProposalMessages(view:AssistView):string[] {
+  return drawableParabola(view) ? [] : proposalFillMessages(view);
 }
 
 export function answerPayload(view:AssistView) {

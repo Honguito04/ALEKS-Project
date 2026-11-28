@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { assistContextSchema,assistResultSchema,type AssistView } from './shared';
-import { proposalFillMessages } from './assist-readiness';
+import { automationProposalMessages,proposalFillMessages } from './assist-readiness';
 
 export const automationLimitsSchema=z.object({
   maxExercises:z.number().int().min(1).max(100),
@@ -14,6 +14,7 @@ export interface AutomationView {
   started:number;limits:AutomationLimits;message:string;answer?:string;
 }
 export interface AutomationDependencies {
+  canSubmitParabola?:boolean;
   now():number;
   solve():Promise<AssistView>;
   submit(proposal:AssistView):Promise<unknown>;
@@ -53,7 +54,7 @@ export class AleksAutomation {
       const detail=proposal.result.proposal;
       throw Error(`${detail.status==='needs_context'?'Falta información':'El modelo no obtuvo una solución utilizable'}: ${detail.explanation} ${detail.missing_information.join(' ')}`.trim());
     }
-    const blockers=proposalFillMessages(proposal);
+    const blockers=this.deps.canSubmitParabola?automationProposalMessages(proposal):proposalFillMessages(proposal);
     if(blockers.length)throw Error(blockers.join(' '));
     this.proposal=proposal;
     this.state.phase='LISTO';this.state.answer=proposal.context.fields.map((field,index)=>{
@@ -63,7 +64,9 @@ export class AleksAutomation {
       const label=/^P\([A-Z]\)/u.exec(field.label)?.[0] || `Recuadro ${index+1}`;
       return `${label}: ${value}`;
     }).join('; ');
-    this.state.message='Propuesta preparada. El siguiente paso escribirá cada respuesta y pulsará Verificar o Entregar.';
+    this.state.message=proposal.context.fill_blockers.includes('graph_editor')?
+      'Propuesta preparada. Se marcarán los cinco puntos y se comprobará la curva antes de verificar.':
+      'Propuesta preparada. El siguiente paso escribirá cada respuesta y pulsará Verificar o Entregar.';
   }
 
   private guard() {
@@ -159,7 +162,9 @@ export class AleksAutomation {
       } else if(this.state.phase==='LISTO') {
         if(!this.proposal)throw Error('No queda una propuesta vigente para entregar.');
         const proposal=this.proposal;
-        await this.phase('ENVIANDO','Escribiendo y comprobando las respuestas antes de verificar en ALEKS…');
+        await this.phase('ENVIANDO',proposal.context.fill_blockers.includes('graph_editor')?
+          'Dibujando y comprobando la parábola antes de verificar en ALEKS…':
+          'Escribiendo y comprobando las respuestas antes de verificar en ALEKS…');
         this.submitted.add(proposal.context.fingerprint);this.proposal=undefined;
         const result=await this.deps.submit(proposal);this.guard();
         if(!result || typeof result!=='object' || !('status' in result) || result.status!=='accepted') {

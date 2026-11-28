@@ -6,7 +6,7 @@ import { AleksSubmission } from './aleks-submission';
 import { editorDiagnostics } from './editor-diagnostics';
 import { assistContext,fillAssistAnswer,type NativeInput } from './aleks-assist';
 import { drawAleksParabola,type GraphClick } from './aleks-graph';
-import { parabolaPointsSchema,type PlotPoint } from './parabola-answer';
+import { emptyParabolaContext,parabolaPointsSchema,type PlotPoint } from './parabola-answer';
 import { readAleksPrompt } from './aleks-prompt';
 
 declare global { interface Window { __mathAssistantLoaded?:boolean } }
@@ -74,15 +74,24 @@ if(!window.__mathAssistantLoaded) {
       if(busy) throw Error('Ya hay una operación en curso');
       busy=true;
       try {
-        if(message.type==='drawParabola' && !simulatorURL(location.href)) {
+        if((message.type==='drawParabola' || message.type==='automationSubmitParabola') && !simulatorURL(location.href)) {
+          if(message.type==='automationSubmitParabola' && (!automationId || message.runId!==automationId)) {
+            throw Error('Recorrido detenido o reemplazado.');
+          }
           if(typeof message.nativeWriteId!=='string' || typeof message.fingerprint!=='string')throw Error('Dibujo no autorizado.');
           const points=parabolaPointsSchema.parse(message.points);
           assistAbort=new AbortController();
+          const writeId=message.nativeWriteId,click=nativePlot(writeId);
+          if(message.type==='automationSubmitParabola') {
+            return await submission.submitParabola(message.fingerprint,points,assistAbort.signal,click,async()=>{
+              await rpc('nativeGraphCheck',{writeId});
+            });
+          }
           const prompt=await readAleksPrompt(document),context=await assistContext(document);
-          if(!prompt.fingerprint || context.fingerprint!==message.fingerprint || !context.can_draw_parabola) {
+          if(!prompt.fingerprint || context.fingerprint!==message.fingerprint || !emptyParabolaContext(context)) {
             throw Error('El ejercicio o la cuadrícula cambió. Vuelve a leer la actividad antes de dibujar.');
           }
-          await drawAleksParabola(document,prompt.fingerprint,points,assistAbort.signal,nativePlot(message.nativeWriteId));
+          await drawAleksParabola(document,prompt.fingerprint,points,assistAbort.signal,click);
           return {drawn:true};
         }
         if(message.type==='automationReset' && !simulatorURL(location.href)) {

@@ -767,6 +767,104 @@ it.each(['authorized','focus-lost','capability-revoked'] as const)('web → back
   }
 });
 
+it.each(['same-document','automatic','detached-before-verify','focus-lost-before-verify',
+  'foreign-document','foreign-origin','changed-url','wrong-step','wrong-nonce','focus-lost','stopped'] as const)(
+  'web → background → dibujo vincula los clics al documento principal: %s',async boundary=>{
+    const origin='https://bridge.example.test',documentId='aleks-document';
+    const automatic=boundary==='automatic' || boundary==='detached-before-verify' || boundary==='focus-lost-before-verify';
+    delete session.auth;
+    url=ALEKS_ACTIVITY+'/exercise-fixture#current';
+    const context={...assistContext,can_fill_integer:false,can_fill_fraction:false,can_draw_parabola:true,fill_blockers:['graph_editor']};
+    let accept!:(port:chrome.runtime.Port)=>void,receive!:(message:unknown)=>void,closed!:()=>void,resetRunId:unknown;
+    const replies:any[]=[];
+    (chrome.runtime as any).onConnectExternal={addListener:(fn:typeof accept)=>{accept=fn;}};
+    chrome.scripting.executeScript=vi.fn(async()=>[{documentId,frameId:0}]) as any;
+    let detached!:(target:chrome.debugger.Debuggee,reason:string)=>void;
+    chrome.debugger.onDetach.addListener=vi.fn(listener=>{detached=listener;});
+    chrome.windows.update=vi.fn(async()=>({id:1,focused:true})) as any;
+    chrome.tabs.update=vi.fn(async()=>({id:7,url,active:true,windowId:1})) as any;
+    fetchMock.mockImplementation(async(destination:string,options?:RequestInit)=>{
+      if(destination.endsWith('/session'))return Response.json({user:{id:'account'}});
+      if(options?.method==='DELETE')return new Response(null,{status:204});
+      if(options?.method==='POST')return Response.json({id:'00000000-0000-4000-8000-000000000009'});
+      return Response.json({status:'completed',result:{fingerprint:context.fingerprint,model:'',provider:'deterministic',
+        provider_calls:0,verified:true,verification:'parabola_points',proposal:{status:'proposed',answers:[
+          {field_key:'answer',value:'(-5, 1), (-7, 5), (-6, 2), (-4, 2), (-3, 5)',unit:''}
+        ],explanation:'Parábola exacta.',missing_information:[]}}});
+    });
+    tabsSend.mockImplementation(async(_id:number,message:Record<string,unknown>,options?:chrome.tabs.MessageSendOptions)=>{
+      if(message.type==='assistContext')return {ok:true,data:context};
+      if(message.type==='nativeGraphTarget'){
+        expect(options?.documentId).toBe(documentId);
+        return {ok:true,data:[100,150]};
+      }
+      if(message.type==='automationReset')resetRunId=message.runId;
+      if(message.type!=='drawParabola' && message.type!=='automationSubmitParabola')return {ok:true,data:true};
+      expect(options?.documentId).toBe(documentId);
+      if(message.type==='automationSubmitParabola'){
+        expect(resetRunId).toEqual(expect.any(String));
+        expect(message.runId).toBe(resetRunId);
+      }
+      if(boundary==='focus-lost')nativeFocused=false;
+      if(boundary==='stopped')await command('stop');
+      const sender={...content(),origin:ALEKS_ACTIVITY,documentId};
+      if(boundary==='same-document' || boundary==='automatic')sender.url=ALEKS_ACTIVITY+'/initial-history#previous';
+      if(boundary==='foreign-document')sender.documentId='other-document';
+      if(boundary==='foreign-origin')sender.origin='https://other.example.test';
+      if(boundary==='changed-url')url=ALEKS_ACTIVITY+'/new-activity';
+      const verify={scope:'content',type:'nativeGraphCheck',writeId:message.nativeWriteId};
+      if(automatic)expect((await send(verify,sender)).ok).toBe(false);
+      for(let step=0;step<7;step++){
+        const clicked=await send({scope:'content',type:'nativeGraphClick',step:boundary==='wrong-step'?1:step,
+          writeId:boundary==='wrong-nonce'?'foreigner':message.nativeWriteId},sender);
+        if(!clicked.ok)return clicked;
+      }
+      if(boundary==='detached-before-verify')detached({tabId:7},'canceled_by_user');
+      if(boundary==='focus-lost-before-verify')nativeFocused=false;
+      const verified=await send(verify,sender);
+      if(!automatic)expect(verified.ok).toBe(false);
+      else if(!verified.ok)return verified;
+      return {ok:true,data:message.type==='automationSubmitParabola'?{status:'accepted'}:{drawn:true}};
+    });
+    vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',origin);vi.resetModules();
+    await import('../../extension/src/background');
+    accept({name:'aleks-web-bridge-v1',sender:{url:origin+'/app/',origin,frameId:0,documentId:'web-document',tab:{id:99,url:origin+'/app/'}},
+      onMessage:{addListener:(fn:typeof receive)=>{receive=fn;}},onDisconnect:{addListener:(fn:typeof closed)=>{closed=fn;}},
+      postMessage:(message:any)=>replies.push(message),disconnect:()=>closed()} as any);
+    async function command(name:string,data:Record<string,unknown>={}) {
+      const requestId=crypto.randomUUID();receive({requestId,command:name,...data});
+      await vi.waitFor(()=>expect(replies.some(reply=>reply.requestId===requestId)).toBe(true));
+      return replies.find(reply=>reply.requestId===requestId);
+    }
+    try {
+      expect((await command('connect',{writerVersion:WRITER_VERSION,token:'x'.repeat(43)})).ok).toBe(true);
+      expect((await command('bind',{tabId:7})).ok).toBe(true);
+      const preview=await command('preview');
+      expect(preview.ok,preview.error).toBe(true);
+      const proposalId=preview.value.proposal.id;
+      if(automatic){
+        const started=await command('start',{fingerprint:context.fingerprint,proposalId,nativeKeyboard:true,
+          limits:{maxExercises:1,maxMinutes:1,maxAICalls:2}});
+        expect(started.ok,started.error).toBe(true);
+        const expected=boundary==='automatic'?{phase:'COMPLETADO',accepted:1}:{phase:'DETENIDO',accepted:0};
+        await vi.waitFor(()=>expect(replies.some(r=>r.value?.automation?.phase===expected.phase && r.value.automation.accepted===expected.accepted)).toBe(true));
+        expect(adapterCalls('automationSubmitParabola')).toHaveLength(1);
+      }else{
+        const drawing=await command('draw',{proposalId});
+        expect(drawing.ok,drawing.error).toBe(boundary==='same-document');
+      }
+      if(boundary==='same-document' || automatic){
+        expect(nativeCommand.mock.calls.filter(call=>call[2].type==='mousePressed')).toHaveLength(7);
+        expect(nativeCommand.mock.calls.every(call=>call[1]==='Input.dispatchMouseEvent')).toBe(true);
+      }else expect(nativeCommand).not.toHaveBeenCalled();
+      if(boundary==='detached-before-verify')expect(nativeDetach).not.toHaveBeenCalled();
+      else expect(nativeDetach).toHaveBeenCalledExactlyOnceWith({tabId:7});
+    }finally{
+      await send({scope:'ui',type:'logout'});
+      vi.stubGlobal('__BRIDGE_WEB_ORIGIN__',undefined);
+    }
+  });
+
 it.each([false,true])('escribe dos campos por separado y rechaza repetir el índice de teclado; unidades: %s',async units=>{
   const answers=[{field_key:'field_2',value:'6',unit:units?'cm²':''},{field_key:'field_1',value:'12',unit:units?'cm':''}];
   prepareAssist({...assistResult,proposal:{...assistResult.proposal,answers}});

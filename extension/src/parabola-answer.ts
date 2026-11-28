@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import type { AssistView } from './shared';
+import type { AssistContext, AssistView } from './shared';
 
 export type PlotPoint = [number, number];
 const coordinate = z.number().int().min(-50_000).max(50_000);
@@ -9,10 +9,14 @@ export const parabolaPointsSchema = z.array(z.tuple([coordinate, coordinate])).l
   return a!==0 && [0,-2,-1,1,2].every((dx,i)=>points[i][0]===h+dx && points[i][1]===k+a*dx**2);
 });
 
+export function emptyParabolaContext(context:AssistContext) {
+  return context.can_draw_parabola===true && !context.diagram_required &&
+    context.fill_blockers.length===1 && context.fill_blockers[0]==='graph_editor';
+}
+
 /** Solo permite puntos de un cálculo exacto y vigente para una gráfica vacía. */
 export function drawableParabola(view:AssistView|undefined):PlotPoint[]|undefined {
-  if(!view || !view.context.can_draw_parabola || view.context.diagram_required || !view.context.fill_blockers.includes('graph_editor') ||
-    view.context.fill_blockers.some(blocker=>blocker!=='graph_editor'))return;
+  if(!view || !emptyParabolaContext(view.context))return;
   const {result}=view;
   const proposal=result.proposal;
   if(result.verification!=='parabola_points' || result.provider!=='deterministic' || !result.verified ||

@@ -156,6 +156,12 @@ function snapshot(document:Document):PromptSnapshot|{error:'missing'|'ambiguous'
     ...(graphingExerciseDetected?{graphingExerciseDetected:true}:{})};
 }
 
+/** Conserva el enunciado semántico durante una comprobación externa. */
+export function currentAleksPromptGuard(document:Document):()=>boolean {
+  const initial=JSON.stringify(snapshot(document));
+  return ()=>initial===JSON.stringify(snapshot(document));
+}
+
 /** Lectura acotada al contenedor observado. El contador/título es opcional y no
  * interviene en esta huella del enunciado, que no sustituye identidad de actividad,
  * campos o huella completa del ejercicio para autorizar operaciones. */

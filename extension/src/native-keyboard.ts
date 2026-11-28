@@ -66,7 +66,8 @@ export async function typeNativeAnswer(tabId:number,value:string,deps:NativeKeyb
 export type NativePlotClick = (locate:()=>Promise<PlotPoint|null>)=>Promise<void>;
 
 /** Mantiene una sola sesión para el lápiz, los cinco puntos y la curva. */
-export function withNativePlot<T>(tabId:number,deps:NativeSessionDependencies,draw:(click:NativePlotClick)=>Promise<T>) {
+export function withNativePlot<T>(tabId:number,deps:NativeSessionDependencies,
+  draw:(click:NativePlotClick,check:()=>Promise<void>)=>Promise<T>) {
   return withNativeInput(tabId,deps,'ratón',async({target,current,checked})=>{
     let count=0;
     return draw(async locate=>{
@@ -94,6 +95,6 @@ export function withNativePlot<T>(tabId:number,deps:NativeSessionDependencies,dr
       try {await chrome.debugger.sendCommand(target,'Input.dispatchMouseEvent',{...mouse,type:'mouseReleased',buttons:0});}
       catch {throw Error('Chrome interrumpió el clic. Revisa ALEKS antes de continuar.');}
       current();
-    });
+    },checked);
   });
 }

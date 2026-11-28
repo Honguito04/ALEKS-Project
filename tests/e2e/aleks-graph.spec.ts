@@ -46,3 +46,31 @@ for(const [fault,expectedClicks,error] of [
       trace:{attach:1,detach:1,pencil:1,curve:fault==='wrong-curve'?1:0,verify:0,points:points.slice(0,expectedClicks)}});
   });
 }
+
+test('el recorrido verifica la parábola después del trazo y reconoce el siguiente gráfico vacío',async({page})=>{
+  const result=await page.evaluate(curve=>window.runParabolaPlot(curve,undefined,'submit'),curve);
+  expect(result).toMatchObject({accepted:true,nexts:1,renderedOnVerify:true,after:true,error:'',
+    trace:{verify:1,points,curve:1}});
+  await expect(page.locator('g[id^="figed_point_"] circle')).toHaveCount(0);
+});
+
+test('el recorrido no verifica si la curva cambia después de dibujarla',async({page})=>{
+  const result=await page.evaluate(curve=>window.runParabolaPlot(curve,'changed-after-draw','submit'),curve);
+  expect(result).toMatchObject({accepted:false,nexts:0,error:expect.stringContaining('no reflejó'),
+    trace:{verify:0,points,curve:1}});
+});
+
+test('el recorrido no verifica si Chrome retira el permiso tras la curva',async({page})=>{
+  const result=await page.evaluate(curve=>window.runParabolaPlot(curve,'permission-before-verify','submit'),curve);
+  expect(result).toMatchObject({accepted:false,nexts:0,error:expect.stringContaining('desconectó el ratón'),
+    trace:{verify:0,points,curve:1}});
+});
+
+test('volver a vincular y desplazar la vista no permite repetir una entrega gráfica',async({page})=>{
+  const result=await page.evaluate(curve=>window.runParabolaPlot(curve,undefined,'repeat'),curve) as {
+    priorFingerprint:string;repeatFingerprint:string;
+  };
+  expect(result).toMatchObject({accepted:true,after:true,repeatError:expect.stringContaining('ya tuvo una entrega'),
+    trace:{verify:1,points,curve:1}});
+  expect(result.repeatFingerprint).not.toBe(result.priorFingerprint);
+});

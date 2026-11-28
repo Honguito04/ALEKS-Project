@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { ALEKS_ORIGINS,assistContextSchema,assistResultSchema,type AssistContext,type AssistView } from './shared';
 import { AleksAutomation,automationLimitsSchema,type AutomationView } from './aleks-automation';
 import { answerPayload,captureFillPolicy } from './assist-readiness';
-import { drawableParabola } from './parabola-answer';
+import { drawableParabola,emptyParabolaContext } from './parabola-answer';
 
 declare const __BRIDGE_WEB_ORIGIN__:string;
 export const BRIDGE_WEB_ORIGIN=typeof __BRIDGE_WEB_ORIGIN__==='string'?__BRIDGE_WEB_ORIGIN__:'';
@@ -41,6 +41,13 @@ const JOURNAL='webBridgeJournal';
 const journalKey=(id:number)=>`${JOURNAL}:${id}`;
 type Journal={active?:boolean;tabId?:number;submitted?:string[]};
 const pause=(ms:number)=>new Promise(resolve=>setTimeout(resolve,ms));
+
+async function submissionKey(context:AssistContext) {
+  if(!context.fill_blockers.includes('graph_editor'))return context.fingerprint;
+  // El zoom cambia la huella de escritura, pero no el ejercicio ya enviado.
+  const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(`parabola:${context.statement}`));
+  return Array.from(new Uint8Array(digest),byte=>byte.toString(16).padStart(2,'0')).join('');
+}
 
 /** Closed protocol: the website selects an ALEKS tab, never DOM operations. */
 export class WebBridge {
@@ -262,10 +269,16 @@ export class WebBridge {
     await this.deps.focus(t.id);this.assert(c,epoch);
     const context=await this.read(c,epoch);
     if(context.fingerprint!==command.fingerprint)throw Error('El ejercicio cambió. Vuelve a leerlo antes de autorizar.');
-    if(context.diagram_required || (!context.can_fill_integer && !context.can_fill_fraction))throw Error('El editor o el ejercicio no admite este recorrido automático.');
     const seed=command.proposalId?c.proposal:undefined;
     if(command.proposalId && (!seed || seed.id!==command.proposalId || seed.context.fingerprint!==context.fingerprint))throw Error('La propuesta dejó de estar vigente.');
-    if(this.submitted.get(t.id)?.has(context.fingerprint))throw Error('Este ejercicio ya tuvo una entrega; no se repetirá aunque se reconecte la web. Revisa ALEKS.');
+    if(context.fill_blockers.includes('graph_editor')) {
+      if(!emptyParabolaContext(context) || !drawableParabola(seed))throw Error('Consulta una vista previa comprobada con la cuadrícula vacía antes de autorizar.');
+    } else if(context.diagram_required || (!context.can_fill_integer && !context.can_fill_fraction)) {
+      throw Error('El editor o el ejercicio no admite este recorrido automático.');
+    }
+    const key=await submissionKey(context);
+    this.assert(c,epoch);
+    if(this.submitted.get(t.id)?.has(key))throw Error('Este ejercicio ya tuvo una entrega; no se repetirá aunque se reconecte la web. Revisa ALEKS.');
     if((this.submitted.get(t.id)?.size||0)>=100)throw Error('Se alcanzó el máximo de entregas de esta pestaña. Cierra la pestaña al terminar y abre una nueva actividad.');
     let expectedFingerprint=context.fingerprint;
     const current=()=>c.alive && c.epoch===epoch && Boolean(c.run?.view.active);
@@ -279,15 +292,22 @@ export class WebBridge {
         submitted:[...(this.submitted.get(t.id)||[])]}});this.progress(c);
     };
     const run:AleksAutomation=new AleksAutomation(command.limits,{
+      canSubmitParabola:true,
       now:()=>Date.now(),solve:async()=>{await ensure();return this.solve(c,epoch,false,expectedFingerprint);},
       submit:async proposal=>{
         await ensure();
+        const points=drawableParabola(proposal);
+        const key=await submissionKey(proposal.context);
+        this.assert(c,epoch);
         const ledger=this.submitted.get(t.id)||new Set<string>();
-        if(ledger.has(proposal.context.fingerprint))throw Error('No se repetirá una entrega anterior.');
-        ledger.add(proposal.context.fingerprint);this.submitted.set(t.id,ledger);
+        if(ledger.has(key))throw Error('No se repetirá una entrega anterior.');
+        ledger.add(key);this.submitted.set(t.id,ledger);
         await save(run.view);await ensure();
-        return this.deps.deliver(t.id,'automationSubmit',{
-        fingerprint:proposal.context.fingerprint,value:answerPayload(proposal),runId:run.view.id},current);},
+        const {fingerprint}=proposal.context;
+        return points
+          ? this.deps.deliver(t.id,'automationSubmitParabola',{fingerprint,points,runId:run.view.id},current)
+          : this.deps.deliver(t.id,'automationSubmit',{fingerprint,value:answerPayload(proposal),runId:run.view.id},current);
+      },
       next:async()=>{
         await ensure();await this.deps.send(t.id,'automationNext',{runId:run.view.id},current);await ensure();
         const next=await this.read(c,epoch);
