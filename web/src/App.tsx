@@ -223,7 +223,10 @@ export default function App() {
   const user = session?.user;
   return <div className="app-shell">
     <header className="topbar">
-      <a className="brand" href="/app/" aria-label="Honguito, inicio"><span className="brand-mark" aria-hidden="true">h<span>·</span></span><span>honguito<small>LABORATORIO MATEMÁTICO</small></span></a>
+      <a className="brand" href="/app/" aria-label="Aleks Project, inicio">
+        <span className="brand-mark" aria-hidden="true">A</span>
+        <span>Aleks Project</span>
+      </a>
       {user ? <nav className="account-nav" aria-label="Cuenta"><span className="account-name">{user.email}</span><button className="text-button" onClick={() => { setAccountOpen(!accountOpen); setError(''); }}>Mi cuenta</button><button className="text-button" onClick={() => void logout()} disabled={authBusy}>Cerrar sesión</button></nav> : <span className="demo-tag">DEMO WEB</span>}
     </header>
 
@@ -305,6 +308,9 @@ export default function App() {
         <AleksBridge key={user.id} userId={user.id} csrfToken={session.csrf_token} request={request} disconnectRef={bridgeDisconnect} suspended={authBusy} />
       </>}
     </main>
-    <footer className="site-footer"><span>honguito <span aria-hidden="true">·</span> aprende con criterio</span><span>Demo con cuotas limitadas. No se garantiza disponibilidad continua.</span></footer>
+    <footer className="site-footer">
+      <span>Aleks Project</span>
+      <span>Demo con cuotas limitadas. No se garantiza disponibilidad continua.</span>
+    </footer>
   </div>;
 }
